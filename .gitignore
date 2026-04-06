@@ -1,0 +1,13 @@
+# Workspace directories (generated per-project, not part of plugin)
+*-workspace/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Node (if scripts added later)
+node_modules/
