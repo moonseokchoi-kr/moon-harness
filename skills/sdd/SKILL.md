@@ -306,6 +306,32 @@ Step 8: [사용자 최종 승인 게이트]
 ## 아키텍처 결정
 주요 설계 결정과 근거.
 
+## 폴더 구조
+
+이 feature 구현으로 생성/수정되는 디렉토리와 파일 구조.
+기존 프로젝트 구조를 기반으로, 새로 추가되는 부분을 `(NEW)` 표시.
+
+\```
+src/
+├── components/
+│   └── auth/                    (NEW)
+│       ├── LoginForm.tsx        (NEW) — 로그인 폼 컴포넌트
+│       ├── SignupForm.tsx       (NEW) — 회원가입 폼 컴포넌트
+│       └── AuthGuard.tsx        (NEW) — 인증 가드 래퍼
+├── services/
+│   └── auth.service.ts          (NEW) — 인증 API 호출
+├── stores/
+│   └── auth.store.ts            (NEW) — 인증 상태 관리
+└���─ types/
+    └── auth.types.ts            (NEW) — 인증 관련 타입
+\```
+
+작성 원칙:
+- 기존 프로젝트의 ��렉토리 컨벤션을 따른다 (components/, services/, stores/ 등)
+- 새 파일/폴더에는 `(NEW)` 표시 + 한 줄 설명
+- 기존 파�� 수정��� `(MODIFY)` 표시
+- 파일 위치가 harness의 아키텍처 규칙(architecture-rules.json)과 일치하는지 확인
+
 ## API 설계
 인터페이스, 커맨드, 데이터 흐름.
 
