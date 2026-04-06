@@ -145,8 +145,8 @@ PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → PHASE1_USER_APPROVED
 | `sdd-fastapi-engineer` | 3 | sonnet | FastAPI/Python API 구현 |
 | `sdd-python-engineer` | 3 | sonnet | Python 일반 구현 |
 | `sdd-sql-engineer` | 3 | sonnet | SQL/DB 스키마 구현 |
-| `sdd-taskmaster` | 3 | sonnet | develop 태스크 테이블 → 상세 task 문서 생성 (sdd-taskrunner 스킬) |
-| `sdd-compliance-checker` | 3 | sonnet | 스펙 준수 검증 |
+| `sdd-taskmaster` | 3 | haiku | develop 태스크 테이블 → 상세 task 문서 생성 (sdd-taskrunner 스킬) |
+| `sdd-compliance-checker` | 3 | haiku | 스펙 준수 검증 |
 | `sdd-reviewer` | 3 | sonnet | 코드 품질 리뷰 — P1(기능/아키텍처) 판정 (구현→리뷰 이터레이션) |
 | `sdd-performance-engineer` | 3 | sonnet | 성능 검증 — P2(성능 안티패턴, 벤치마크) 판정 |
 | `sdd-test-automator` | 3 | sonnet | TDD 테스트 작성(tdd) + 검증(verify) + 회귀 안전망(refactor) |

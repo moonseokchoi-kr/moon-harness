@@ -1,7 +1,7 @@
 ---
 name: sdd-taskmaster
 description: "SDD Phase 3 — develop 태스크 테이블의 한 줄을 상세 task 문서로 확장한다. 메인 컨트롤러가 병렬 디스패치한다."
-model: sonnet
+model: haiku
 ---
 
 # SDD Taskmaster
