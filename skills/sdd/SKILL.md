@@ -205,7 +205,11 @@ Phase 2 진입 시 다음 기준으로 **SIMPLE/FULL** 모드를 판정한다:
 3. **접근법 2-3개 제안** — 트레이드오프와 권장안 포함
 4. **태스크 분해** — 각 태스크는 독립 커밋 가능한 단위
 5. **develop 문서 저장**: `docs/sdd/develop/{YYYY-MM-DD}-{feature}.md`
-6. **사용자 승인 게이트** — 명시적 승인 전까지 Phase 3 진입 불가
+6. **develop 평가** — `sdd-architect-reviewer` 디스패치 (develop 문서 + spec 주입)
+   - 요구사항 커버리지, 태스크 분해 품질, 구현 실현 가능성, 테스트 전략 검증
+   - Critical 이슈 → develop 수정 후 재평가
+   - DONE/DONE_WITH_CONCERNS → 다음 단계로
+7. **사용자 승인 게이트** — 명시적 승인 전까지 Phase 3 진입 불가
 
 ### FULL 모드 (에이전트 파이프라인)
 
@@ -239,8 +243,14 @@ Step 6: 컨트롤러가 develop 문서 통합 생성
         - 구현자 배정 (rust-engineer / react-specialist / implementer) 포함
         → 라벨: PHASE2_DEVELOP_INTEGRATED
 
-Step 7: [사용자 최종 승인 게이트]
-        develop 문서 제시 + 사용자 명시적 승인
+Step 7: sdd-architect-reviewer 디스패치 (develop 평가)
+        - 입력: spec + develop 문서 + 프로젝트 구조
+        - 검증: 요구사항 커버리지, 태스크 분해 품질, 구현 실현 가능성, 테스트 전략
+        - BLOCKED이면: develop 수정 후 재평가
+        → 라벨: PHASE2_DEVELOP_REVIEW_PASS
+
+Step 8: [사용자 최종 승인 게이트]
+        develop 문서 + 평가 결과 제시 + 사용자 명시적 승인
         → 라벨: PHASE2_USER_APPROVED
 ```
 
