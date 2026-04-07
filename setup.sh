@@ -141,8 +141,8 @@ if [ "$HOST" = "claude" ]; then
 
   mkdir -p "$HOOKS_DIR"
 
-  # Copy/link hook scripts
-  for hook in secret-detect.sh dangerous-command.sh sensitive-file.sh; do
+  # Copy/link hook scripts (security + cmux progress)
+  for hook in secret-detect.sh dangerous-command.sh sensitive-file.sh cmux-session-start.sh cmux-session-end.sh cmux-task-progress.sh; do
     if [ "$INSTALL_MODE" = "link" ]; then
       ln -sf "$SCRIPT_DIR/hooks/$hook" "$HOOKS_DIR/$hook"
     else
@@ -150,7 +150,7 @@ if [ "$HOST" = "claude" ]; then
       chmod +x "$HOOKS_DIR/$hook"
     fi
   done
-  echo "  🔗 3 security hooks → $HOOKS_DIR"
+  echo "  🔗 6 hooks → $HOOKS_DIR (3 security + 3 cmux progress)"
 
   # Check if hooks are registered in settings.json
   if [ -f "$SETTINGS" ] && ! grep -q "moon-harness" "$SETTINGS" 2>/dev/null; then

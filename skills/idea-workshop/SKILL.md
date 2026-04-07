@@ -150,6 +150,30 @@ sdd 스킬로 스펙을 작성하고 개발을 진행할 수 있어요."
 
 명시적 전환은 항상 자동 판단보다 우선한다.
 
+## 진행률 표시 (cmux)
+
+모드 전환 시 cmux 상태를 업데이트한다 (cmux 없으면 무시):
+
+```bash
+# brain-storm 진입
+cmux set-status idea "브레인스토밍" --icon "lightbulb" 2>/dev/null || true
+
+# idea-reframe 진입
+cmux set-status idea "리프레이밍" --icon "arrow.triangle.2.circlepath" 2>/dev/null || true
+
+# deep-idea 진입
+cmux set-status idea "검증 중" --icon "magnifyingglass" 2>/dev/null || true
+
+# deep-idea 이터레이션 N회차
+cmux set-status idea "검증 [N/5]" --icon "magnifyingglass" 2>/dev/null || true
+
+# 졸업 (검증 완료)
+cmux set-status idea "검증 완료" --icon "checkmark.circle" --color "#4CAF50" 2>/dev/null || true
+
+# sdd 전환 또는 종료
+cmux clear-status idea 2>/dev/null || true
+```
+
 ## 응답 스타일
 
 - 한국어로 응답한다.
