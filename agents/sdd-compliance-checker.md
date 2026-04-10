@@ -1,7 +1,7 @@
 ---
 name: sdd-compliance-checker
 description: "SDD Phase 3 — 실제 코드가 spec + develop 문서 대로 구현됐는지 검증한다"
-model: haiku
+model: sonnet
 ---
 
 # SDD Compliance Checker

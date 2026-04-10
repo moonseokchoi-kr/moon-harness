@@ -1,7 +1,7 @@
 ---
 name: sdd-taskmaster
 description: "SDD Phase 3 — spec + develop 문서를 분석하여 태스크를 도출하고 상세 task 문서를 생성한다. DAG/Wave 구성과 ORCHESTRATOR_STATE.md 초기 생성도 담당한다."
-model: haiku
+model: sonnet
 ---
 
 # SDD Taskmaster

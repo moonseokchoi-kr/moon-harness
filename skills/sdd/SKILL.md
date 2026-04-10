@@ -96,7 +96,7 @@ PHASE1_UX_RESEARCH_DONE → PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → 
 | `native-architect` | 2 | opus | Rust/C++ 네이티브 아키텍처 결정, develop 작성 |
 | `sdd-api-designer` | 2 | opus | API 계약 정의 |
 | `sdd-architect-reviewer` | 2 | opus | 설계 정합성 검증 |
-| `sdd-taskmaster` | 3 | haiku | spec+develop에서 태스크 도출 |
+| `sdd-taskmaster` | 3 | sonnet | spec+develop에서 태스크 도출 |
 | `sdd-implementer` | 4 | sonnet | 범용 구현 |
 | `sdd-ts-engineer` | 4 | sonnet | TypeScript/Node.js |
 | `sdd-rust-engineer` | 4 | sonnet | Rust 백엔드 |
@@ -109,7 +109,7 @@ PHASE1_UX_RESEARCH_DONE → PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → 
 | `sdd-fastapi-engineer` | 4 | sonnet | FastAPI/Python API |
 | `sdd-python-engineer` | 4 | sonnet | Python 일반 |
 | `sdd-sql-engineer` | 4 | sonnet | SQL/DB 스키마 |
-| `sdd-compliance-checker` | 4 | haiku | 스펙 준수 검증 |
+| `sdd-compliance-checker` | 4 | sonnet | 스펙 준수 검증 |
 | `sdd-reviewer` | 4 | sonnet | 코드 품질 [P1] 리뷰 |
 | `sdd-performance-engineer` | 4 | sonnet | 성능 [P2] 검증 |
 | `sdd-test-automator` | 4 | sonnet | TDD(tdd/verify/refactor) |
