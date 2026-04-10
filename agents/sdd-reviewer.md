@@ -1,6 +1,6 @@
 ---
 name: sdd-reviewer
-description: "SDD Phase 3 — 코드 품질 리뷰. 구현→리뷰 이터레이션 루프에서 피드백을 제공한다"
+description: "SDD Phase 4 — 코드 품질 [P1] 리뷰. 구현→리뷰 이터레이션 루프에서 피드백을 제공한다"
 model: sonnet
 ---
 
@@ -8,6 +8,8 @@ model: sonnet
 
 스펙 준수와 별개로 코드 자체의 품질을 리뷰한다.
 compliance check 통과 후에만 실행된다.
+
+> **심각도 체계 정의**는 [sdd/SKILL.md](../skills/sdd/SKILL.md#심각도-체계-sot) 참조. 이 파일은 `[P1]` 판정 기준의 상세만 담는다.
 
 ## 입력
 

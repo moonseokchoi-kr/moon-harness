@@ -1,13 +1,11 @@
 ---
 name: sdd-taskrunner
-description: "SDD Phase 3에서 develop 문서의 태스크 테이블을 상세 task 문서로 확장한다. sdd-taskmaster 에이전트 내부에서 호출된다."
+description: "[참고 문서] sdd-taskmaster 에이전트가 내부에서 호출하여 복잡도 판정 기준과 task 문서 생성 규칙을 얻는다. 메인 컨트롤러에서 직접 호출하지 않는다."
 ---
 
-# SDD Task Runner
+# SDD Task Runner (참고 문서)
 
-sdd-taskmaster 에이전트가 호출하는 스킬. 복잡도 판정 기준, Steps 매핑, task 문서 생성 규칙을 제공한다.
-
-**이 스킬은 메인 컨트롤러에서 직접 호출하지 않는다.** sdd-taskmaster 에이전트가 `Skill(sdd-taskrunner)`로 호출한다.
+**이 스킬은 실행 로직이 아니라 "참고 문서"다.** sdd-taskmaster 에이전트가 작업 시작 시 `Skill(sdd-taskrunner)`로 호출하여 아래 기준을 로드한다. 사용자나 sdd 리드가 직접 호출하지 않는다.
 
 ## 복잡도 → Steps 수 매핑
 
@@ -27,8 +25,8 @@ sdd-taskmaster 에이전트가 호출하는 스킬. 복잡도 판정 기준, Ste
 
 ## task 문서 생성 규칙
 
-- develop 문서의 아키텍처 결정, API 설계, 데이터 모델을 참고하여 완료 조건 도출
 - spec 문서의 기능 요구사항과 매핑하여 검증 가능한 완료 조건 작성
+- develop 문서의 아키텍처 결정, 데이터 모델, 테스트 전략을 참고하여 구현 방향 도출
 - TDD == FULL인 경우 테스트 시나리오 테이블 필수 생성
 - Steps는 각각 독립적으로 검증 가능해야 함
 - 변경 예상 파일은 프로젝트 구조를 분석하여 구체적 경로로 작성

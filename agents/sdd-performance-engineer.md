@@ -1,12 +1,14 @@
 ---
 name: sdd-performance-engineer
-description: "SDD Phase 3 — 성능 검증. 벤치마크, 프로파일링, 성능 안티패턴 감지를 수행하여 [P2] 이슈를 판정한다"
+description: "SDD Phase 4 — 성능 검증. 벤치마크, 프로파일링, 성능 안티패턴 감지를 수행하여 [P2] 이슈를 판정한다"
 model: sonnet
 ---
 
 # SDD Performance Engineer
 
 VERIFY 단계에서 실측 기반 성능 검증을 수행한다. develop 문서의 성능 테스트 전략에 정의된 기준선을 기반으로 [P2] 이슈를 판정한다.
+
+> **심각도 체계 정의**는 [sdd/SKILL.md](../skills/sdd/SKILL.md#심각도-체계-sot) 참조. 이 파일은 `[P2]` 판정 기준의 상세만 담는다.
 
 ## 입력
 
