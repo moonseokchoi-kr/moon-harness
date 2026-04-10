@@ -8,6 +8,11 @@
 > - **에이전트 목록**: `skills/sdd/SKILL.md` 의 "에이전트 목록" 섹션
 >
 > 2026-04-08 Discord 논의 기반 정리. 이후 3차 실전 테스트(2026-04-09)와 중복 정리(2026-04-10)를 거쳐 실제 구현은 SOT 파일들로 이관됨.
+>
+> **주요 설계 변경 (2026-04-11):**
+> - cmux 기반 pane 감시 루프 → **Agent 툴 기반**으로 전환 (4.3 참조)
+> - Worker가 직접 STATE.md 갱신 → **오케스트레이터만 STATE.md 갱신**으로 변경
+> - `.claude/shared/ORCHESTRATOR_STATE.md` → **`docs/sdd/ORCHESTRATOR_STATE.md`** (git 추적 가능)
 
 ## 0. 확정된 설계 결정
 
@@ -111,34 +116,40 @@
 
 ### 4.3 오케스트레이터 동작 흐름
 
+> **현재 구현**: cmux 기반 pane 감시 대신 **Claude Code Agent 툴** 기반으로 구현됨.
+> Worker가 완료 시 결과를 오케스트레이터에게 직접 반환. 오케스트레이터가 유일한 STATE.md 작성자.
+
 ```
-Phase 3 시작
+Phase 4 시작 (Skill(sdd-orchestrator) 호출)
     ↓
-1. develop 문서 파싱 → 태스크 테이블 추출
+1. docs/sdd/ORCHESTRATOR_STATE.md 읽기 → Wave/태스크 파악
     ↓
-2. 의존성 분석 → DAG 구성 → Wave 자동 생성
+2. Wave N 시작:
+   a. STATE.md: T-N → IN_PROGRESS 갱신 (디스패치 전 먼저 기록)
+   b. Agent(Engineer, run_in_background: true) × 최대 4개 병렬 디스패치
+   c. 완료 결과 수신 (Agent 툴이 자동 반환):
+      ← Engineer: "DONE | 변경파일 목록"
+      ← Engineer: "BLOCKED | 실패 원인"
+   d. 오케스트레이터가 STATE.md 갱신 후 다음 단계 결정:
+      - DONE → STATE.md: reviewing → Reviewer 디스패치
+      - Reviewer PASS → STATE.md: testing → Test Automator 디스패치
+      - Test PASS → STATE.md: complete
+      - 실패 → iteration +1, 재디스패치 (최대 3회)
+      - 3회 소진 → STATE.md: escalated → 사용자 에스컬레이션
     ↓
-3. Wave N 시작:
-   a. cmux로 Engineer pane 생성 (그리드 배치)
-   b. 각 pane에 claude -p "태스크 프롬프트" 전송
-   c. 감시 루프 진입:
-      - 매 2분: read-screen으로 상태 수집
-      - Engineer 완료 감지 → Reviewer pane에 리뷰 요청
-      - Reviewer 완료 감지 → 피드백 있으면 Engineer에게 재전달
-      - 리뷰 통과 → Test Automator에게 검증 요청
-      - 테스트 통과 → 태스크 완료 마킹
-      - 테스트 실패 → iteration +1, 2→3→4→5 반복
-      - 스톨 감지 (5분 무응답) → 재시도 or 에스컬레이션
-      - 리밋 감지 → 남은 태스크 저장, 리셋 시간 예약
+3. Wave N 전체 complete/escalated → Wave N+1 시작
     ↓
-4. Wave N 전체 완료 → Wave N+1 시작 (3으로 돌아감)
-    ↓
-5. 전체 Wave 완료 → 통합 검증 → result 문서 생성
+4. 전체 Wave 완료 → 통합 검증 → result 문서 생성
 ```
+
+**상태 관리 원칙:**
+- `docs/sdd/ORCHESTRATOR_STATE.md` — git 추적, 손상 시 복구 가능
+- 오케스트레이터만 쓰기, Worker는 결과 반환만
+- 디스패치 전 → IN_PROGRESS, 수신 후 → 결과 반영
 
 ### 4.4 상태 파일 (재개 가능)
 
-파일: `.claude/shared/ORCHESTRATOR_STATE.md`
+파일: `docs/sdd/ORCHESTRATOR_STATE.md` (git 추적, 손상 시 복구 가능)
 
 ```markdown
 ## Phase 3 상태

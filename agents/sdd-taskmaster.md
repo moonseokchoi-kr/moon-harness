@@ -53,7 +53,7 @@ sdd 리드가 Phase 3(Plan)에서 디스패치하는 에이전트. spec + develo
    - 의존성 없는 태스크 → Wave 1
    - Wave 1에만 의존 → Wave 2
    - ...
-4. ORCHESTRATOR_STATE.md 초기 생성 (`.claude/shared/ORCHESTRATOR_STATE.md`):
+4. ORCHESTRATOR_STATE.md 초기 생성 (`docs/sdd/ORCHESTRATOR_STATE.md`):
    - 메타 정보 (spec/develop 경로, 시작 시각)
    - Wave 구성 테이블
    - 태스크 상태 테이블 (전부 pending)

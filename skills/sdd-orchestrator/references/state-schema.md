@@ -1,11 +1,12 @@
 # ORCHESTRATOR_STATE.md Schema
 
-오케스트레이터가 런타임에 프로젝트의 `.claude/shared/ORCHESTRATOR_STATE.md`에 생성하는 상태 파일의 스키마.
+오케스트레이터가 런타임에 프로젝트의 `docs/sdd/ORCHESTRATOR_STATE.md`에 생성하는 상태 파일의 스키마.
+git이 추적하므로 손상 시 복구 가능하고, 변경 이력이 commit log에 남는다.
 
 ## 파일 위치
 
 ```
-<project-root>/.claude/shared/ORCHESTRATOR_STATE.md
+<project-root>/docs/sdd/ORCHESTRATOR_STATE.md
 ```
 
 ## 스키마
