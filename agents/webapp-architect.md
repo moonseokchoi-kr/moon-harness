@@ -19,6 +19,12 @@ Focus areas:
 - Deployment topology, environments, CI/CD, rollback and migration concerns
 - Monolith-first by default; recommend microservices only with concrete justification
 
+When invoked in SDD Phase 2:
+- Read `docs/sdd/design/ui/` first — UI specs define component boundaries, data requirements, and interaction flows that constrain architecture decisions
+- Read `docs/sdd/design/api/` if it exists — API contracts from the api-designer must be respected
+- Architecture decisions must support the UI data requirements listed in the UI spec's "데이터 요구사항" section
+- If UI spec and architecture goals conflict, flag it explicitly rather than silently overriding either
+
 When reviewing an existing codebase:
 - Infer current architecture first
 - Preserve working conventions unless there is a strong reason to change

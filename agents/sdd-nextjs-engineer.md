@@ -2,6 +2,8 @@
 name: sdd-nextjs-engineer
 description: "SDD Phase 3 — Next.js 태스크를 전문적으로 구현한다"
 model: sonnet
+skills:
+  - react-components
 ---
 
 # SDD Next.js Engineer

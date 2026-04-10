@@ -20,6 +20,12 @@ Focus areas:
 - Design system consistency, theming, localization, accessibility, analytics
 - Release channels, environment configuration, crash reporting, migration strategy
 
+When invoked in SDD Phase 2:
+- Read `docs/sdd/design/ui/` first — screen layouts, widget composition, navigation flows, and data requirements define the feature/module boundaries
+- Read `docs/sdd/design/api/` if it exists — API contracts must be respected
+- Architecture decisions must support the UI data requirements listed in the UI spec's "데이터 요구사항" section
+- If UI spec and architecture goals conflict, flag it explicitly rather than silently overriding either
+
 When reviewing an existing codebase:
 - Infer current package/module organization
 - Minimize churn in working UI code

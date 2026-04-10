@@ -87,8 +87,7 @@ PHASE1_UX_RESEARCH_DONE → PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → 
 
 | 에이전트 | Phase | 모델 | 역할 |
 |---------|-------|------|------|
-| `sdd-ux-researcher` | 1 | sonnet | 사용자 요구사항 분석, 기능 매핑 |
-| `sdd-product-designer` | 1 | sonnet | spec 초안 작성 |
+| `sdd-ux-researcher` | 1 | sonnet | 사용자 요구사항 분석 + spec 작성 |
 | `sdd-ui-designer` | 1 | opus | UI/UX 명세 |
 | `sdd-blocker-checker` | 1 | haiku | spec 블로커 탐지 |
 | `sdd-context-manager` | 전체 | haiku | 공유 상태 관리 |
@@ -125,10 +124,11 @@ sdd는 직접 spec을 작성하지 않는다. 에이전트에 위임한다.
 ### 프로세스
 
 1. 기존 spec 확인 (`docs/sdd/spec/` 스캔)
-2. `sdd-ux-researcher` → 사용자 요구사항 분석 + 기능 매핑
-3. `sdd-product-designer` → spec 초안 작성
-4. `sdd-ui-designer` → UI/UX 명세 (백엔드 전용이면 생략)
-5. spec 저장 → `sdd-blocker-checker` 디스패치
+2. `sdd-ux-researcher` → 사용자 요구사항 분석 + spec 작성 (플랫폼/스택 명시 포함)
+3. `sdd-blocker-checker` 1차 디스패치 → 플랫폼/스택 미확정 여부 우선 확인
+   - BLOCKED(플랫폼/스택 미확정) → 사용자 확인 후 spec 보완 → 재검사
+4. `sdd-ui-designer` → UI/UX 명세 (백엔드 전용이면 생략, 확정된 플랫폼 컨텍스트 주입)
+5. spec 저장 → `sdd-blocker-checker` 2차 디스패치 (전체 블로커 검사)
 6. 블로커 있으면 수정→재검사, 없으면 사용자 승인 게이트
 
 ### spec 템플릿

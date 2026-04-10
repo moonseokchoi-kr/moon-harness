@@ -23,6 +23,53 @@ description: "[참고 문서] sdd-taskmaster 에이전트가 내부에서 호출
 - **테스트 복잡도**: TDD FULL인 경우 테스트 시나리오 수
 - **통합 위험**: 다른 모듈과의 인터페이스 변경 여부
 
+## 프레임워크별 복잡도 가중치
+
+기본 점수에 아래 신호가 있으면 +1~2점을 추가한다.
+
+### Rust
+| 신호 | 가중치 |
+|------|--------|
+| `unsafe` 블록 포함 | +2 |
+| lifetime 파라미터 3개 이상 | +1 |
+| FFI / C interop | +2 |
+| tokio async + 채널 조합 | +1 |
+| trait 객체 + 제네릭 혼용 | +1 |
+
+### Flutter/Dart
+| 신호 | 가중치 |
+|------|--------|
+| Platform channel 구현 | +2 |
+| 복잡한 위젯 트리 (depth 5+) | +1 |
+| Bloc/Cubit 상태 + 이벤트 설계 | +1 |
+| 오프라인 sync 로직 | +2 |
+| 애니메이션 + 제스처 조합 | +1 |
+
+### React / Next.js
+| 신호 | 가중치 |
+|------|--------|
+| RSC ↔ Client Component 경계 설계 | +1 |
+| Server Action + optimistic update | +1 |
+| 복잡한 캐시 전략 (revalidate/tag) | +1 |
+| 커스텀 훅 + Context 조합 | +1 |
+| Streaming SSR + Suspense 경계 | +1 |
+
+### Python / FastAPI
+| 신호 | 가중치 |
+|------|--------|
+| 비동기 DB 쿼리 + 트랜잭션 | +1 |
+| Pydantic 모델 계층 3단계 이상 | +1 |
+| 외부 API 연동 + 재시도 로직 | +1 |
+| Background task + 큐 | +2 |
+
+### C++
+| 신호 | 가중치 |
+|------|--------|
+| 메모리 직접 관리 (RAII 외) | +2 |
+| 템플릿 메타프로그래밍 | +2 |
+| 멀티스레드 + 락 설계 | +2 |
+| 렌더링 파이프라인 변경 | +1 |
+
 ## task 문서 생성 규칙
 
 - spec 문서의 기능 요구사항과 매핑하여 검증 가능한 완료 조건 작성

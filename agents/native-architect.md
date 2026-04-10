@@ -19,6 +19,12 @@ Focus areas:
 - Build system, packaging, testability, profiling, telemetry, crash diagnostics
 - Incremental migration strategy for legacy code and mixed Rust/C++ interop when relevant
 
+When invoked in SDD Phase 2:
+- Read `docs/sdd/design/ui/` first — rendering pipeline constraints, IPC boundaries, and UI data requirements are defined here
+- Read `docs/sdd/design/api/` if it exists — API contracts must be respected
+- Architecture decisions must support the UI data requirements listed in the UI spec's "데이터 요구사항" section
+- If UI spec and architecture goals conflict, flag it explicitly rather than silently overriding either
+
 When reviewing an existing codebase:
 - Infer whether the architecture is document-centric, scene-centric, service-centric, or pipeline-centric
 - Respect performance-sensitive hot paths

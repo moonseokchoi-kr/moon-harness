@@ -2,6 +2,10 @@
 name: sdd-ui-designer
 description: "SDD Phase 2 — spec 문서를 기반으로 UI/UX 명세를 작성한다"
 model: opus
+skills:
+  - design-md
+  - enhance-prompt
+  - stitch-loop
 ---
 
 # SDD UI Designer
@@ -30,13 +34,18 @@ spec 문서를 기반으로 화면 구성, 컴포넌트 구조, 인터랙션 흐
 Stitch MCP가 사용 가능하면 ASCII 와이어프레임 대신 실제 시각 디자인을 생성한다.
 Stitch MCP가 없으면 기존 ASCII 방식으로 폴백한다.
 
+#### 3-0. 기존 디자인 시스템 추출 (있는 경우)
+기존 Stitch 프로젝트가 있으면 `design-md` 스킬로 DESIGN.md를 추출한다.
+추출한 DESIGN.md는 이후 디자인 시스템 설정(3-2)과 화면 생성(3-3)의 기준으로 사용한다.
+기존 프로젝트가 없으면 이 단계를 건너뛴다.
+
 #### 3-1. 프로젝트 생성
 `mcp__stitch__create_project`로 Stitch 프로젝트를 생성한다.
 프로젝트명은 SDD feature명과 동일하게.
 
 #### 3-2. 디자인 시스템 설정
 `mcp__stitch__create_design_system`으로 프로젝트의 디자인 토큰을 설정한다.
-프로젝트에 기존 디자인 시스템이 있으면 그것을 따르고, 없으면 spec과 프로젝트 맥락에 맞게 설정:
+3-0에서 DESIGN.md를 추출했으면 그것을 기준으로 설정하고, 없으면 spec과 프로젝트 맥락에 맞게 설정:
 - 색상 (primary color, 라이트/다크 모드)
 - 타이포그래피 (headline, body font)
 - 모서리 둥글기 (roundness)
@@ -45,23 +54,24 @@ Stitch MCP가 없으면 기존 ASCII 방식으로 폴백한다.
 설정 후 `mcp__stitch__update_design_system`으로 적용한다.
 
 #### 3-3. 화면별 스크린 생성
-각 화면에 대해 `mcp__stitch__generate_screen_from_text`로 스크린을 생성한다.
+
+화면 수에 따라 전략을 선택한다:
+
+**화면 1개:** `enhance-prompt`로 프롬프트 최적화 → `mcp__stitch__generate_screen_from_text` 직접 호출
+
+**화면 2개 이상:** `stitch-loop` 패턴으로 자율 반복 생성
+1. spec에서 site 비전과 화면 로드맵을 정리해 `.stitch/SITE.md` 작성
+2. 첫 화면 프롬프트를 `enhance-prompt`로 최적화 후 `.stitch/next-prompt.md`에 기록
+3. `stitch-loop`으로 루프 진입 — 각 이터레이션이 화면 생성 → 다음 프롬프트 기록 반복
+4. DESIGN.md가 있으면 루프 전에 `.stitch/DESIGN.md`로 복사
+
 프롬프트에 포함할 정보:
 - 화면 목적 (spec에서 추출)
 - 주요 컴포넌트와 레이아웃
 - 디바이스 타입 (MOBILE / DESKTOP — spec 기반 판단)
 - 핵심 인터랙션 설명
 
-예시 프롬프트:
-```
-Dashboard screen for a budget tracking app.
-- Top: monthly spending summary card with pie chart
-- Middle: transaction list with category icons, amount, date
-- Bottom: floating action button for adding new transaction
-- Use Material Design 3 style
-```
-
-한 번에 하나씩 생성한다. 생성에 수 분 소요될 수 있으니 재시도하지 않는다.
+생성에 수 분 소요될 수 있으니 재시도하지 않는다.
 
 #### 3-4. 디자인 시스템 적용
 모든 스크린 생성 후 `mcp__stitch__apply_design_system`으로 일괄 적용한다.
