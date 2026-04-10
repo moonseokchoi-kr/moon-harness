@@ -62,8 +62,9 @@ Agent(T-3, run_in_background: true)
 ← T-1: "DONE | 변경파일 목록"
 ← T-3: "BLOCKED | P1 잔존 내용"
 
-# 3. 수신 즉시 오케스트레이터가 ORCHESTRATOR_STATE.md 갱신
-# 4. Wave 내 전체 완료 확인 → 다음 단계 결정
+# 3. 태스크별 루프: compliance → review → test
+#    (수신 즉시 오케스트레이터가 STATE 갱신 후 다음 단계 디스패치)
+# 4. Wave 내 전체 complete/escalated → 다음 Wave
 ```
 
 5개 이상인 Wave는 4개 먼저 디스패치 → 완료 수신 시마다 다음 태스크 배정.
@@ -85,9 +86,22 @@ Agent(T-3, run_in_background: true)
 
 Engineer는 작업 완료 후 결과만 반환한다. ORCHESTRATOR_STATE.md 수정 금지.
 
-### 2.2 리뷰
+### 2.2 스펙 준수 확인
 
-Engineer 결과 수신 → T-N: reviewing 갱신 → Reviewer 디스패치:
+Engineer 결과 수신 → T-N: verifying 갱신 → Compliance Checker 디스패치:
+
+```
+Agent(subagent_type: "sdd-compliance-checker", prompt: spec 경로 + develop 경로 + 변경 파일 목록)
+```
+
+- **PASS** → 오케스트레이터가 state 갱신 → 리뷰 단계로
+- **FAIL** → 오케스트레이터가 누락 항목 포함 + state 갱신 → Engineer 재디스패치 (iteration +1)
+
+compliance-checker는 "구현됐는가"를 확인한다. "잘 됐는가"는 Reviewer 몫이다.
+
+### 2.3 리뷰
+
+Compliance 결과 수신 → T-N: reviewing 갱신 → Reviewer 디스패치:
 
 ```
 Agent(subagent_type: "sdd-reviewer", prompt: 리뷰 요청)
@@ -96,7 +110,7 @@ Agent(subagent_type: "sdd-reviewer", prompt: 리뷰 요청)
 - **REVIEW_PASS** → 오케스트레이터가 state 갱신 → 테스트 단계로
 - **REVIEW_FAIL** → 오케스트레이터가 피드백 누적 + state 갱신 → Engineer 재디스패치 (iteration +1)
 
-### 2.3 테스트
+### 2.4 테스트
 
 Reviewer 결과 수신 → T-N: testing 갱신 → Test Automator 디스패치:
 
@@ -109,7 +123,7 @@ Agent(subagent_type: "sdd-test-automator", prompt: 검증 요청)
   - < 3: 오케스트레이터가 이전 피드백 누적 + state 갱신 → Engineer 재디스패치
   - >= 3: 오케스트레이터가 `escalated` 갱신 → 사용자 에스컬레이션
 
-### 2.4 Wave 완료 판정
+### 2.5 Wave 완료 판정
 
 현재 Wave의 모든 태스크가 `complete` 또는 `escalated`이면:
 - escalated 없음 → 다음 Wave 시작
