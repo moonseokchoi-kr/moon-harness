@@ -300,7 +300,7 @@ exit 0
         "hooks": [{
           "type": "prompt",
           "prompt": "이번 세션에서 코드에 구조적 변경이 있었는데 docs/ 문서가 갱신되지 않았다면 {\"ok\": false, \"reason\": \"갱신 필요한 문서 목록\"} 응답. 단순 수정이면 {\"ok\": true}.",
-          "model": "claude-haiku",
+          "model": "haiku",
           "timeout": 30
         }]
       }
