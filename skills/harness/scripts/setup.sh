@@ -54,8 +54,10 @@ esac
 # Core skills that are part of the harness plugin
 CORE_SKILLS=(
   "harness"
+  "harness-controller"
   "sdd"
   "sdd-taskrunner"
+  "sdd-orchestrator"
   "brain-storm"
   "idea-reframe"
   "idea-workshop"
@@ -136,6 +138,98 @@ Skills are located in ~/.agents/skills/
 - **git-worktree**: Isolated feature branches
 AGENTS_EOF
     echo "   📝 AGENTS.md — created"
+  fi
+fi
+
+# ─── Install hooks ────────────────────────────────────────────
+if [ "$HOST" = "claude" ]; then
+  echo ""
+  echo "🪝 Installing hooks..."
+
+  HOOK_SOURCE="$SCRIPT_DIR/../../hooks"
+  HOOK_DIR="$HOME/.claude/hooks/$HARNESS_NAME"
+  mkdir -p "$HOOK_DIR"
+
+  HOOK_FILES=(
+    "secret-detect.sh"
+    "dangerous-command.sh"
+    "sensitive-file.sh"
+    "file-ownership.sh"
+    "cmux-session-start.sh"
+    "cmux-session-end.sh"
+    "cmux-task-progress.sh"
+  )
+
+  # on-rate-limit.sh는 sdd-orchestrator 스킬 내부에 있음
+  ORCH_HOOK_SOURCE="$SCRIPT_DIR/../../skills/sdd-orchestrator/scripts/on-rate-limit.sh"
+
+  for hook in "${HOOK_FILES[@]}"; do
+    if [ -f "$HOOK_SOURCE/$hook" ]; then
+      if [ "$INSTALL_MODE" = "link" ]; then
+        ln -sf "$HOOK_SOURCE/$hook" "$HOOK_DIR/$hook"
+      else
+        cp "$HOOK_SOURCE/$hook" "$HOOK_DIR/$hook"
+        chmod +x "$HOOK_DIR/$hook"
+      fi
+      echo "   🪝 $hook — installed"
+    fi
+  done
+
+  # on-rate-limit.sh (스킬 내부에서)
+  if [ -f "$ORCH_HOOK_SOURCE" ]; then
+    if [ "$INSTALL_MODE" = "link" ]; then
+      ln -sf "$ORCH_HOOK_SOURCE" "$HOOK_DIR/on-rate-limit.sh"
+    else
+      cp "$ORCH_HOOK_SOURCE" "$HOOK_DIR/on-rate-limit.sh"
+      chmod +x "$HOOK_DIR/on-rate-limit.sh"
+    fi
+    echo "   🪝 on-rate-limit.sh — installed"
+  fi
+
+  # ─── Register hooks in settings.json ──────────────────────────
+  echo ""
+  echo "📋 Registering hooks in settings.json..."
+
+  SETTINGS_FILE="$HOME/.claude/settings.json"
+
+  # settings.json이 없으면 생성
+  if [ ! -f "$SETTINGS_FILE" ]; then
+    echo '{}' > "$SETTINGS_FILE"
+  fi
+
+  # jq가 있으면 자동 등록
+  if command -v jq &>/dev/null; then
+    TEMP_SETTINGS=$(mktemp)
+
+    jq --arg hook_dir "$HOOK_DIR" '
+      # PreToolUse hooks
+      .hooks.PreToolUse = (
+        (.hooks.PreToolUse // []) |
+        [.[] | select(.hooks[0].command | contains("secret-detect") or contains("dangerous-command") or contains("sensitive-file") or contains("file-ownership") | not)] +
+        [
+          {"matcher": {"tool_name": "Bash"}, "hooks": [{"type": "command", "command": ($hook_dir + "/secret-detect.sh")}]},
+          {"matcher": {"tool_name": "Bash"}, "hooks": [{"type": "command", "command": ($hook_dir + "/dangerous-command.sh")}]},
+          {"matcher": {"tool_name": "Write"}, "hooks": [{"type": "command", "command": ($hook_dir + "/sensitive-file.sh")}]},
+          {"matcher": {"tool_name": "Edit"}, "hooks": [{"type": "command", "command": ($hook_dir + "/file-ownership.sh")}]},
+          {"matcher": {"tool_name": "Write"}, "hooks": [{"type": "command", "command": ($hook_dir + "/file-ownership.sh")}]}
+        ]
+      ) |
+      # StopFailure hook
+      .hooks.StopFailure = (
+        (.hooks.StopFailure // []) |
+        [.[] | select(.hooks[0].command | contains("on-rate-limit") | not)] +
+        [
+          {"matcher": {"error_type": "rate_limit"}, "hooks": [{"type": "command", "command": ($hook_dir + "/on-rate-limit.sh")}]}
+        ]
+      )
+    ' "$SETTINGS_FILE" > "$TEMP_SETTINGS" && mv "$TEMP_SETTINGS" "$SETTINGS_FILE"
+
+    echo "   ✅ Hooks registered in settings.json"
+  else
+    echo "   ⚠️  jq not found — manual hook registration required"
+    echo "   Add the following to ~/.claude/settings.json hooks section:"
+    echo "   - PreToolUse: secret-detect, dangerous-command, sensitive-file, file-ownership"
+    echo "   - StopFailure: on-rate-limit (matcher: rate_limit)"
   fi
 fi
 
