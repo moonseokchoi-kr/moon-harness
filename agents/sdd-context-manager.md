@@ -114,6 +114,8 @@ interface XxxResponse { ... }
 
 ## 규칙
 
+- context 문서 **파일명의 날짜는 feature date를 따른다** (spec 파일명과 동일 날짜) — 생성 시점 날짜가 아님. 예: spec이 `2026-04-06-money-track-mvp.md`이면 context도 `2026-04-06-money-track-mvp.md`
+- context 문서 저장 경로: `docs/sdd/context/{YYYY-MM-DD}-{feature}.md`
 - context 문서의 **구조를 변경하지 않는다** — 섹션 내 데이터만 갱신
 - 소유권 충돌 시 무조건 `BLOCKED` — 컨트롤러가 판단
 - 라벨은 **전진만 가능** (이전 상태로 되돌리지 않음, 컨트롤러만 예외)

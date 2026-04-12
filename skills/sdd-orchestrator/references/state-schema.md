@@ -22,6 +22,27 @@ git이 추적하므로 손상 시 복구 가능하고, 변경 이력이 commit l
 - 상태: PLANNING | EXECUTING | PAUSED_AT_LIMIT | COMPLETED | FAILED
 - resume_at: <ISO 8601, PAUSED_AT_LIMIT일 때만>
 
+## 팀 배정
+| Team | 담당 Wave | 선행 팀 | 상태 |
+|------|-----------|---------|------|
+| 1    | Wave 1~4  | 없음    | PENDING |
+| 2    | Wave 5~7  | Team 1  | PENDING |
+| 3    | Wave 8~11 | Team 2  | PENDING |
+
+> Wave가 모두 순차 의존이거나 팀이 1개이면 이 섹션을 생략하고 기존 단일 오케스트레이터 모드로 실행.
+
+## Team 상태 (팀별 독립 섹션 — 각 팀 리더만 자기 섹션 씀)
+
+### Team 1
+- 상태: PENDING | EXECUTING | COMPLETED | FAILED
+- 완료 Wave: -
+- 마지막 갱신: -
+
+### Team 2
+- 상태: PENDING
+- 완료 Wave: -
+- 마지막 갱신: -
+
 ## Wave 구성
 | Wave | 태스크 | 의존성 |
 |------|--------|--------|

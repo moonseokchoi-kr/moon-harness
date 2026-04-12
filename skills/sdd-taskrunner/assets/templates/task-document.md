@@ -2,32 +2,30 @@
 
 ## 관련 문서
 - spec: `docs/sdd/spec/{{date}}-{{feature}}.md`
-- develop: `docs/sdd/develop/{{date}}-{{feature}}.md`
+- arch: `docs/sdd/design/arch/{{date}}-{{feature}}.md`
+- ui: `docs/sdd/design/ui/{{date}}-{{feature}}.md`
+- api: `docs/sdd/design/api/{{date}}-{{feature}}.md`
 
 ## 구현자
 {{implementer}}
 
-## TDD 수준
-{{tdd_level}}
-{{#if tdd_skip_reason}}사유: {{tdd_skip_reason}}{{/if}}
+## 테스트 타입
+이 태스크에서 변경되는 레이어와 테스트 방식:
+
+| 레이어 | 테스트 타입 | 비고 |
+|--------|-----------|------|
+{{#each test_layers}}
+| {{this.layer}} | {{this.type}} | {{this.note}} |
+{{/each}}
+
+(arch 문서의 테스트 전략 기반. test-automator가 이 정보를 참고하여 적합한 프레임워크로 RED 테스트 작성)
 
 ## 완료 조건
 {{#each completion_conditions}}
 - [ ] {{this}}
 {{/each}}
-{{#if tdd_full}}
-- [ ] 모든 단위 테스트 통과
-{{/if}}
-
-{{#if tdd_full}}
-## 테스트 시나리오
-test-automator(tdd 모드)가 이 시나리오를 기반으로 테스트를 작성한다.
-
-| # | 시나리오 | 입력 | 기대 결과 | 유형 |
-|---|----------|------|----------|------|
-{{#each test_scenarios}}
-| {{this.number}} | {{this.scenario}} | {{this.input}} | {{this.expected}} | {{this.type}} |
-{{/each}}
+{{#if has_tests}}
+- [ ] 모든 테스트 통과 (단위/통합/E2E 해당 타입)
 {{/if}}
 
 ## 의존 태스크
