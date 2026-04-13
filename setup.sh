@@ -1,220 +1,268 @@
 #!/bin/bash
-# Moon Harness — 30-second installer
-# Usage: ./setup.sh [--host claude|codex] [--link|--copy]
+# Moon Harness — One-touch installer
+# Usage: ./setup.sh [--copy]
+#
+# 기본(symlink 모드): 파일을 심링크로 연결 — repo 수정이 즉시 반영됨
+# --copy 모드: 파일을 복사 — repo 없이 독립 배포용
 set -euo pipefail
 
-# ─── Configuration ─────────────────────────────────────────────
-HARNESS_NAME="moon-harness"
-HARNESS_VERSION="0.1.0"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-# Defaults
-HOST="claude"
-INSTALL_MODE="link"  # link = symlink (dev), copy = copy files (dist)
+HARNESS_VERSION="0.2.0"
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+INSTALL_MODE="link"
 
 # ─── Parse args ────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --host)   HOST="$2"; shift 2 ;;
-    --link)   INSTALL_MODE="link"; shift ;;
     --copy)   INSTALL_MODE="copy"; shift ;;
     --help|-h)
       echo "Moon Harness Installer v${HARNESS_VERSION}"
+      echo "Usage: ./setup.sh [--copy]"
       echo ""
-      echo "Usage: ./setup.sh [OPTIONS]"
-      echo ""
-      echo "Options:"
-      echo "  --host claude|codex   Target host (default: claude)"
-      echo "  --link                Symlink mode for development (default)"
-      echo "  --copy                Copy mode for distribution"
-      echo "  -h, --help            Show this help"
-      exit 0
-      ;;
+      echo "  (기본) symlink 모드 — repo 수정이 즉시 반영"
+      echo "  --copy              — 파일 복사 (독립 배포용)"
+      exit 0 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
-# ─── Host-specific paths ──────────────────────────────────────
-case "$HOST" in
-  claude)
-    SKILL_DIR="$HOME/.claude/skills"
-    ;;
-  codex)
-    SKILL_DIR="$HOME/.agents/skills"
-    ;;
-  *)
-    echo "❌ Unknown host: $HOST (supported: claude, codex)"
-    exit 1
-    ;;
-esac
+# ─── Helpers ───────────────────────────────────────────────────
+ok()   { echo "  ✓ $*"; }
+skip() { echo "  · $* (이미 설치됨)"; }
+warn() { echo "  ⚠ $*"; }
+fail() { echo "  ✗ $*" >&2; exit 1; }
 
-# ─── Skills to install ─────────────────────────────────────────
-CORE_SKILLS=(
-  "harness"
-  "sdd"
-  "sdd-taskrunner"
-  "brain-storm"
-  "idea-reframe"
-  "idea-workshop"
-  "deep-idea"
-  "adversarial-review"
-  "handoff"
-  "git-worktree"
-)
+install_item() {
+  local src="$1" dst="$2"
+  if [ "$INSTALL_MODE" = "link" ]; then
+    [ -L "$dst" ] && rm "$dst"
+    ln -sf "$src" "$dst"
+  else
+    [ -f "$src" ] && cp "$src" "$dst" && chmod +x "$dst"
+    [ -d "$src" ] && cp -r "$src" "$dst"
+  fi
+}
 
-# ─── Pre-flight checks ─────────────────────────────────────────
+# ─── Pre-flight ────────────────────────────────────────────────
 echo ""
 echo "  🌙 Moon Harness v${HARNESS_VERSION}"
-echo "  ─────────────────────────────"
-echo "  Host:   $HOST"
+echo "  ─────────────────────────────────"
 echo "  Mode:   $INSTALL_MODE"
-echo "  Target: $SKILL_DIR"
+echo "  Source: $REPO_DIR"
+echo "  Target: $CLAUDE_DIR"
 echo ""
 
+command -v python3 &>/dev/null || fail "python3가 필요합니다"
+command -v jq &>/dev/null     || warn "jq가 없습니다 — settings.json 업데이트 시 필요"
+
+# ─── 1. Skills ─────────────────────────────────────────────────
+SKILL_DIR="$CLAUDE_DIR/skills"
 mkdir -p "$SKILL_DIR"
 
-# ─── Install skills ────────────────────────────────────────────
-INSTALLED=0
-SKIPPED=0
+SKILLS=(
+  harness sdd sdd-taskrunner
+  brain-storm idea-reframe idea-workshop deep-idea
+  adversarial-review handoff git-worktree
+  sdd-orchestrator
+)
 
-for skill in "${CORE_SKILLS[@]}"; do
-  SOURCE="$SCRIPT_DIR/skills/$skill"
-  TARGET="$SKILL_DIR/$skill"
-
-  if [ ! -d "$SOURCE" ]; then
-    echo "  ⚠️  $skill — source not found, skipping"
-    ((SKIPPED++))
-    continue
-  fi
-
-  # Skip if already exists and not a symlink (copy mode safety)
-  if [ -d "$TARGET" ] && [ ! -L "$TARGET" ] && [ "$INSTALL_MODE" = "copy" ]; then
-    echo "  ⏭️  $skill — already exists, skipping"
-    ((SKIPPED++))
-    continue
-  fi
-
-  # Remove existing symlink if re-linking
-  [ -L "$TARGET" ] && rm "$TARGET"
-
-  if [ "$INSTALL_MODE" = "link" ]; then
-    ln -sf "$SOURCE" "$TARGET"
-    echo "  🔗 $skill"
+SKILL_COUNT=0
+for skill in "${SKILLS[@]}"; do
+  src="$REPO_DIR/skills/$skill"
+  dst="$SKILL_DIR/$skill"
+  [ ! -d "$src" ] && continue
+  if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
+    skip "skill: $skill"
   else
-    rm -rf "$TARGET"
-    cp -r "$SOURCE" "$TARGET"
-    echo "  📦 $skill"
+    install_item "$src" "$dst"
+    ok "skill: $skill"
+    ((SKILL_COUNT++))
   fi
-  ((INSTALLED++))
 done
 
-# ─── Install agents ────────────────────────────────────────────
-if [ "$HOST" = "claude" ]; then
-  AGENT_DIR="$HOME/.claude/agents"
-elif [ "$HOST" = "codex" ]; then
-  AGENT_DIR="$HOME/.agents/agents"
-fi
-
+# ─── 2. Agents ─────────────────────────────────────────────────
+AGENT_DIR="$CLAUDE_DIR/agents"
 mkdir -p "$AGENT_DIR"
+
 AGENT_COUNT=0
-
-for agent_file in "$SCRIPT_DIR/agents/"*.md; do
-  [ ! -f "$agent_file" ] && continue
-  BASENAME=$(basename "$agent_file")
-  TARGET="$AGENT_DIR/$BASENAME"
-
-  if [ "$INSTALL_MODE" = "link" ]; then
-    ln -sf "$agent_file" "$TARGET"
+for src in "$REPO_DIR/agents/"*.md; do
+  [ ! -f "$src" ] && continue
+  base=$(basename "$src")
+  dst="$AGENT_DIR/$base"
+  if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
+    skip "agent: $base"
   else
-    cp "$agent_file" "$TARGET"
+    install_item "$src" "$dst"
+    ((AGENT_COUNT++))
   fi
-  ((AGENT_COUNT++))
 done
-echo "  🤖 $AGENT_COUNT agents → $AGENT_DIR"
+ok "$AGENT_COUNT agents → $AGENT_DIR"
 
-# ─── Install global hooks (Claude Code only) ──────────────────
-if [ "$HOST" = "claude" ]; then
-  echo "  🔒 Installing security hooks..."
+# ─── 3. Hooks ──────────────────────────────────────────────────
+MH_DIR="$CLAUDE_DIR/hooks/moon-harness"
+ENF_LINK="$CLAUDE_DIR/hooks/enforcement"
+mkdir -p "$MH_DIR"
 
-  HOOKS_DIR="$HOME/.claude/hooks/moon-harness"
-  SETTINGS="$HOME/.claude/settings.json"
-
-  mkdir -p "$HOOKS_DIR"
-
-  # Copy/link hook scripts (security + cmux progress)
-  for hook in secret-detect.sh dangerous-command.sh sensitive-file.sh cmux-session-start.sh cmux-session-end.sh cmux-task-progress.sh; do
-    if [ "$INSTALL_MODE" = "link" ]; then
-      ln -sf "$SCRIPT_DIR/hooks/$hook" "$HOOKS_DIR/$hook"
-    else
-      cp "$SCRIPT_DIR/hooks/$hook" "$HOOKS_DIR/$hook"
-      chmod +x "$HOOKS_DIR/$hook"
-    fi
-  done
-  echo "  🔗 6 hooks → $HOOKS_DIR (3 security + 3 cmux progress)"
-
-  # Check if hooks are registered in settings.json
-  if [ -f "$SETTINGS" ] && ! grep -q "moon-harness" "$SETTINGS" 2>/dev/null; then
-    echo ""
-    echo "  ⚠️  훅을 settings.json에 등록해야 합니다."
-    echo "  Claude Code에서 다음을 실행하세요:"
-    echo ""
-    echo "    /update-config"
-    echo "    \"moon-harness 보안 훅 3개를 PreToolUse에 등록해줘."
-    echo "     Bash 매처: $HOOKS_DIR/secret-detect.sh, $HOOKS_DIR/dangerous-command.sh"
-    echo "     Edit|Write 매처: $HOOKS_DIR/sensitive-file.sh\""
-    echo ""
+# moon-harness 개별 훅 심링크
+MH_HOOKS=(
+  secret-detect.sh dangerous-command.sh sensitive-file.sh
+  file-ownership.sh
+  cmux-session-start.sh cmux-session-end.sh cmux-task-progress.sh
+)
+for hook in "${MH_HOOKS[@]}"; do
+  src="$REPO_DIR/hooks/$hook"
+  dst="$MH_DIR/$hook"
+  [ ! -f "$src" ] && continue
+  if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
+    skip "hook: $hook"
+  else
+    install_item "$src" "$dst"
+    ok "hook: $hook"
   fi
+done
+
+# enforcement 디렉토리 심링크 (또는 복사)
+ENF_SRC="$REPO_DIR/hooks/enforcement"
+if [ -L "$ENF_LINK" ] && [ "$(readlink "$ENF_LINK")" = "$ENF_SRC" ]; then
+  skip "hook: enforcement/"
+elif [ "$INSTALL_MODE" = "link" ]; then
+  [ -L "$ENF_LINK" ] && rm "$ENF_LINK"
+  [ -d "$ENF_LINK" ] && mv "$ENF_LINK" "${ENF_LINK}.bak.$(date +%s)"
+  ln -sf "$ENF_SRC" "$ENF_LINK"
+  ok "hook: enforcement/ (symlink)"
+else
+  [ -d "$ENF_LINK" ] && mv "$ENF_LINK" "${ENF_LINK}.bak.$(date +%s)"
+  cp -r "$ENF_SRC" "$ENF_LINK"
+  chmod +x "$ENF_LINK"/*.sh "$ENF_LINK"/lib/*.sh 2>/dev/null
+  ok "hook: enforcement/ (copy)"
 fi
 
-# ─── Post-install: Codex host adaptation ───────────────────────
-if [ "$HOST" = "codex" ]; then
-  echo ""
-  echo "  🔄 Adapting for Codex..."
+# ─── 4. settings.json 훅 등록 ──────────────────────────────────
+SETTINGS="$CLAUDE_DIR/settings.json"
 
-  AGENTS_MD="$SKILL_DIR/../AGENTS.md"
-  if [ ! -f "$AGENTS_MD" ]; then
-    cat > "$AGENTS_MD" << 'AGENTS_EOF'
-# Moon Harness — Agent Configuration
-
-## Available Skills
-Skills are located in ~/.agents/skills/
-
-### Idea Pipeline
-- **idea-workshop**: Idea lifecycle orchestrator
-- **brain-storm**: Divergent brainstorming
-- **idea-reframe**: Multi-lens reframing (iterates with deep-idea)
-- **deep-idea**: Data-driven idea validation
-
-### Implementation
-- **sdd**: Spec-Driven Development — 3-phase + review/ship/verify
-- **harness**: Agent-friendly environment setup
-
-### Support
-- **adversarial-review**: Escalation when review fails 3x
-- **handoff**: Session context preservation
-- **git-worktree**: Isolated feature branches
-
-## Security Rules
-- Do not hardcode API keys. Use environment variables.
-- Do not commit .env files.
-- Verify external input (SQL injection, XSS).
-
-## Mistake Learning
-- Known pitfalls: docs/pitfalls.md
-- Lessons learned: docs/lessons-learned.md
-- Check relevant pitfalls before starting work in a domain.
-AGENTS_EOF
-    echo "  📝 AGENTS.md created"
-  fi
+# settings.json 없으면 최소 구조로 생성
+if [ ! -f "$SETTINGS" ]; then
+  echo '{"hooks":{}}' > "$SETTINGS"
+  ok "settings.json 생성"
 fi
 
-# ─── Summary ───────────────────────────────────────────────────
+# Python으로 settings.json 업데이트
+python3 - "$SETTINGS" "$MH_DIR" "$ENF_LINK" <<'PYEOF'
+import json, sys, os, tempfile, shutil
+
+settings_path = sys.argv[1]
+mh_dir        = sys.argv[2]
+enf_dir       = sys.argv[3]
+
+def cmd(path): return {"type": "command", "command": path}
+
+# 등록할 훅 목록 (이벤트 → matcher → 훅 순서)
+HOOKS_TO_ADD = {
+    "SessionStart": [
+        (None, [
+            cmd(f"{enf_dir}/phase-gate.sh"),
+            cmd(f"{enf_dir}/harness-check.sh"),
+        ]),
+    ],
+    "PreToolUse": [
+        ("Bash", [
+            cmd(f"{mh_dir}/dangerous-command.sh"),
+            cmd(f"{mh_dir}/secret-detect.sh"),
+            cmd(f"{enf_dir}/branch-gate.sh"),
+            cmd(f"{enf_dir}/e2e-gate.sh"),
+        ]),
+        ("Edit|Write", [
+            cmd(f"{mh_dir}/sensitive-file.sh"),
+            cmd(f"{mh_dir}/file-ownership.sh"),
+            cmd(f"{enf_dir}/role-gate.sh"),
+            cmd(f"{enf_dir}/tdd-gate.sh"),
+        ]),
+    ],
+    "PostToolUse": [
+        ("TaskUpdate|TaskCreate", [
+            cmd(f"{mh_dir}/cmux-task-progress.sh"),
+        ]),
+        ("Agent", [
+            cmd(f"{enf_dir}/escalation-tracker.sh"),
+        ]),
+    ],
+    "Stop": [
+        (None, [
+            cmd(f"{mh_dir}/cmux-session-end.sh"),
+        ]),
+    ],
+}
+
+with open(settings_path) as f:
+    settings = json.load(f)
+
+if "hooks" not in settings:
+    settings["hooks"] = {}
+
+added = 0
+
+for event, matcher_groups in HOOKS_TO_ADD.items():
+    if event not in settings["hooks"]:
+        settings["hooks"][event] = []
+
+    event_entries = settings["hooks"][event]
+
+    for matcher, new_hooks in matcher_groups:
+        # 기존 엔트리 중 matcher가 같은 것 찾기
+        target_entry = None
+        for entry in event_entries:
+            entry_matcher = entry.get("matcher")
+            if matcher is None and entry_matcher is None:
+                target_entry = entry; break
+            if entry_matcher == matcher:
+                target_entry = entry; break
+
+        # 없으면 새 엔트리 생성
+        if target_entry is None:
+            target_entry = {"hooks": []}
+            if matcher:
+                target_entry = {"matcher": matcher, "hooks": []}
+            event_entries.append(target_entry)
+
+        if "hooks" not in target_entry:
+            target_entry["hooks"] = []
+
+        # 기존 커맨드 경로 집합 (basename 기준)
+        existing_basenames = {
+            os.path.basename(h.get("command", ""))
+            for h in target_entry["hooks"]
+            if isinstance(h, dict)
+        }
+
+        for hook in new_hooks:
+            basename = os.path.basename(hook["command"])
+            if basename not in existing_basenames:
+                target_entry["hooks"].append(hook)
+                existing_basenames.add(basename)
+                added += 1
+
+# 원자적 쓰기 (temp → rename)
+tmp = settings_path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(settings, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+shutil.move(tmp, settings_path)
+
+print(f"  ✓ settings.json: {added}개 훅 등록 완료" if added else "  · settings.json: 이미 최신 상태")
+PYEOF
+
+# ─── 5. Summary ────────────────────────────────────────────────
 echo ""
-echo "  ✅ Done! Installed $INSTALLED skills + $AGENT_COUNT agents."
-[ $SKIPPED -gt 0 ] && echo "  ⏭️  Skipped $SKIPPED skills."
+echo "  ✅ 설치 완료!"
 echo ""
-echo "  Next steps:"
-echo "    1. Run '/harness' in a project to set up the environment"
-echo "    2. Run '/harness audit' to check harness health"
-echo "    3. Run '/idea-workshop' to start brainstorming"
+echo "  설치된 항목:"
+echo "    Skills  : $SKILL_COUNT개"
+echo "    Agents  : $AGENT_COUNT개"
+echo "    Hooks   : moon-harness/ + enforcement/"
+echo "    Config  : $SETTINGS"
+echo ""
+echo "  다음 단계:"
+echo "    1. Claude Code 재시작 (settings.json 변경 적용)"
+echo "    2. 프로젝트에서 /harness 실행 → 환경 구성"
+echo "    3. /sdd 로 개발 시작"
 echo ""

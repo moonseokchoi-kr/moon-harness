@@ -9,11 +9,13 @@ source "$SCRIPT_DIR/constants.sh"
 init_state_dir() {
   mkdir -p "$HARNESS_STATE_DIR"
 
-  # agent-context.json — 없으면 기본값으로 생성
+  # agent-context.json — 없으면 비활성 상태로 생성
+  # role은 오케스트레이터가 에이전트를 디스패치할 때 명시적으로 설정한다.
+  # 기본값 null → role-gate가 동작하지 않음 (일반 편집 허용)
   if [ ! -f "$HARNESS_AGENT_CONTEXT" ]; then
     cat > "$HARNESS_AGENT_CONTEXT" <<'EOF'
 {
-  "role": "orchestrator",
+  "role": null,
   "task_id": null,
   "dispatch_phase": null,
   "session_id": null
