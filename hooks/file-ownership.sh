@@ -26,7 +26,7 @@ if [ -z "$PROJECT_DIR" ]; then
   exit 0
 fi
 
-STATE_FILE="$PROJECT_DIR/.claude/shared/ORCHESTRATOR_STATE.md"
+STATE_FILE="$PROJECT_DIR/docs/sdd/ORCHESTRATOR_STATE.md"
 
 # 상태 파일이 없으면 오케스트레이션 모드가 아님 — 통과
 if [ ! -f "$STATE_FILE" ]; then

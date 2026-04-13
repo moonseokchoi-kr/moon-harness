@@ -11,12 +11,16 @@ sdd는 **순수 팀장**이다. 직접 문서를 작성하지 않고, 관리/보
 **핵심 원칙:** 문서가 곧 상태. 문서 존재 여부 + checkbox + 라벨로 Phase를 추적한다.
 
 <HARD-GATE>
-1. Phase 순서를 건너뛰지 않는다. Phase N 진입 시점에 **직전 Phase 산출물 완전성**을 필수 검증하고, 불완전하면 직전 Phase로 롤백하여 누락 산출물을 먼저 복원한 뒤 재진입한다. blocker-checker 통과 + 사용자 승인 없이 Phase 2로, develop 승인 없이 Phase 3으로 진입하지 않는다.
-2. TDD Iron Law — FULL 태스크: RED 먼저, 구현자는 테스트 파일 수정 금지, GREEN 필수, 리뷰 필수.
-3. Phase 4 격리: 모든 구현은 worktree 안에서 수행. main 브랜치 직접 수정 금지.
-4. Adversarial Escalation: 이터레이션 3회 소진 시 adversarial-review 호출. BLOCKED이면 worktree 폐기.
-5. 의존 태스크 순서: 의존 태스크가 DONE이 아니면 시작 금지.
-6. Phase 3(Plan) 없이 Phase 4(Execute) 진입 금지. task 문서 + DAG/Wave + 사용자 승인 필수.
+1. Phase 순서를 건너뛰지 않는다. 직전 Phase 산출물이 불완전하면 해당 Phase로 롤백해서 복원 후 재진입.
+   blocker-checker 통과 + 사용자 승인 없이 Phase 2 진입 불가. develop 승인 없이 Phase 3 진입 불가.
+   → 선행조건 미충족 시 phase-gate.sh가 세션 시작 시 자동 경고한다.
+2. TDD Iron Law — FULL 태스크: RED 먼저, GREEN 필수, 리뷰 필수.
+   → 구현자의 테스트 파일 수정은 tdd-gate.sh가 물리적으로 차단한다.
+3. Phase 4 격리: 모든 구현은 worktree 안에서 수행.
+   → main 브랜치 직접 커밋/푸시는 branch-gate.sh가 물리적으로 차단한다.
+4. 의존 태스크 순서: 의존 태스크가 DONE이 아니면 시작 금지.
+5. Phase 3(Plan) 없이 Phase 4(Execute) 진입 금지. task 문서 + DAG/Wave + 사용자 승인 필수.
+   → 3회 BLOCKED 시 escalation-tracker.sh가 자동으로 ESCALATED 표시 + adversarial-review 권고한다.
 </HARD-GATE>
 
 ## Anti-Patterns (HARD-GATE 위반 트리거)
@@ -28,8 +32,8 @@ sdd는 **순수 팀장**이다. 직접 문서를 작성하지 않고, 관리/보
 | "스펙이 짧으니 검사 생략" | 짧은 스펙일수록 누락이 많다 | blocker-checker 실행 |
 | "설계 없이 바로 태스크" | 설계 없는 구현은 재작업을 낳는다 | Phase 2 설계 먼저 |
 | "이슈 1개니 그냥 진행" | 이슈 1개도 쌓이면 P1 | 사용자 확인 후 진행 |
-| "간단한 변경이라 worktree 불필요" | 격리 없으면 main 오염 | Phase 4 시작 시 worktree 필수 |
-| "테스트를 살짝 수정하면 통과" | TDD 무결성 파괴 | 테스트 파일 수정 금지, 구현으로 통과 |
+| "간단한 변경이라 worktree 불필요" | 격리 없으면 main 오염 | Phase 4 시작 시 worktree 필수 *(branch-gate.sh 자동 차단)* |
+| "테스트를 살짝 수정하면 통과" | TDD 무결성 파괴 | 구현으로 테스트 통과 *(tdd-gate.sh 자동 차단)* |
 | "Plan 없이 바로 구현" | 방향 없는 구현 | task + DAG + 승인 후 진입 |
 
 ## 문서 구조
@@ -45,6 +49,10 @@ docs/sdd/
 ├── task/{feature}/{YYYY-MM-DD}-T-{N}-{task}.md  # Phase 3 태스크
 ├── ORCHESTRATOR_STATE.md                 # Phase 4 상태 추적
 └── result/{YYYY-MM-DD}-{feature}.md     # Phase 4 최종 결과
+
+.claude/state/
+└── e2e-config.json                      # Phase 2 완료 시 sdd-ui-designer가 생성
+                                         # e2e-gate.sh가 커밋 시 참조
 ```
 
 파일명: `{YYYY-MM-DD}-{feature-name}.md` (kebab-case, 영문).
@@ -250,9 +258,10 @@ Phase 2 프로세스를 시작하기 **전에** 아래 체크리스트를 먼저
    → PHASE2_ARCH_USER_APPROVED
 
 3. sdd-ui-designer → 순수 UX 명세 (아키텍처 제약 안에서)
-   → design/ui/ 저장
+   ※ 디스패치 프롬프트에 반드시 포함: "Stitch MCP로 화면을 생성하고 design-md 스킬로 DESIGN.md를 작성해야 한다"
    ※ 작성 범위: 화면 레이아웃, 플로우, 인터랙션, 비주얼 가이드
    ※ 작성 금지: 상태 타입/관리 위치, API 엔드포인트, 프레임워크 API 명칭
+   → 산출물: design/ui/ + docs/sdd/design/DESIGN.md (둘 다 필수)
    → sdd-architect-reviewer → UI 명세 리뷰 → 수정 → PASS
    → [사용자 UI 피드백] → 반영
    → PHASE2_UI_DESIGN_COMPLETE
@@ -274,13 +283,15 @@ Phase 2 프로세스를 시작하기 **전에** 아래 체크리스트를 먼저
 
 모든 레이어는 테스트를 먼저 작성한다 (RED → GREEN). 차이는 테스트 타입뿐이다.
 
-| 레이어 | 테스트 타입 | 시점 |
-|--------|-----------|------|
-| Model/Service/Domain | 단위 테스트 | 구현 전 RED |
-| ViewModel/Controller | 단위 테스트 | 구현 전 RED |
-| View/UI | 통합/E2E 테스트 (Maestro, Playwright 등) | 구현 전 RED |
-| Platform Channel | E2E 테스트 | 구현 전 RED |
-| DB 스키마/마이그레이션 | 단위 테스트 | 구현 전 RED |
+| 레이어 | 테스트 타입 | 시점 | 비고 |
+|--------|-----------|------|------|
+| Model/Service/Domain | 단위 테스트 | 구현 전 RED | |
+| ViewModel/Controller | 단위 테스트 | 구현 전 RED | |
+| View/UI | **E2E 테스트 필수** (Maestro, Playwright 등) | 구현 전 RED | UI가 있으면 반드시 E2E |
+| Platform Channel | E2E 테스트 | 구현 전 RED | |
+| DB 스키마/마이그레이션 | 단위 테스트 | 구현 전 RED | |
+
+> **UI가 있는 프로젝트 (design/ui/ 문서 존재)**: View/UI 레이어 E2E 테스트는 선택이 아니라 **필수**. test-automator가 verify 단계에서 E2E 테스트 없이 DONE 반환 금지.
 | 설정/스캐폴딩 | 검증 테스트 (프레임워크별) | 구현 전 또는 후 |
 
 ### 아키텍처 문서 템플릿
