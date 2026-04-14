@@ -10,6 +10,76 @@ sdd는 **순수 팀장**이다. 직접 문서를 작성하지 않고, 관리/보
 
 **핵심 원칙:** 문서가 곧 상태. 문서 존재 여부 + checkbox + 라벨로 Phase를 추적한다.
 
+---
+
+## 자동 파이프라인 모드 (기본)
+
+SDD는 **Stop 훅 파이프라인 컨트롤러**로 자동 진행된다. 사용자가 `/sdd start` 한 번만 실행하면 Phase 4 진입까지 자동. 각 Phase 사이의 사용자 승인 게이트에서만 멈춤.
+
+### 시작
+
+```bash
+# 사용자 요청 감지 시
+source "$HARNESS_HOOKS/enforcement/lib/pipeline-utils.sh"
+init_pipeline "<feature-name>" "<FULL|SIMPLE>"
+```
+
+- `FULL`: UI + API 필요 (프론트+백 혼합, 3개 이상 기능)
+- `SIMPLE`: arch만 (기능 3개 이하, UI/API 미언급)
+
+### 흐름
+
+```
+init_pipeline → Claude가 작업 → Stop 훅 → directive 주입 → 다음 작업
+                                    ↓
+                        (반복, 16개 라벨 따라 자동 전진)
+                                    ↓
+            사용자 게이트 도달 → waiting_for_user=true → Claude 멈춤
+                                    ↓
+            사용자 응답 → pipeline.json 갱신 → 재개
+                                    ↓
+            PHASE4_WORKTREE_CREATED → Skill(sdd-orchestrator) 호출 → 파이프라인 종료
+```
+
+### 사용자 승인 감지 (자연어)
+
+`waiting_for_user=true` 상태에서 사용자 응답 받으면:
+
+| 응답 | 처리 |
+|------|------|
+| "승인", "좋아", "진행", "ok", "go" | `advance_label <next>` + `set_waiting_for_user false null` |
+| "X를 수정해줘", "Y 바꿔줘" | 해당 phase로 롤백 + 수정 요청을 담당 agent에게 전달 |
+| "취소", "중단" | `cancel_pipeline` |
+
+### 핵심 헬퍼 함수 (`pipeline-utils.sh`)
+
+```bash
+init_pipeline <feature> <mode>      # 파이프라인 시작
+advance_label <new_label>           # 다음 라벨로 전이
+set_waiting_for_user <bool> <type>  # 사용자 게이트 설정/해제
+set_worktree_path <path>            # worktree 경로 기록
+cancel_pipeline                     # 파이프라인 종료
+show_pipeline                       # 현재 상태 조회
+```
+
+### Stop 훅 Directive 우선
+
+**Stop 훅이 block + directive를 반환하면 directive를 최우선으로 따른다.**
+
+directive는 라벨별로 "지금 무엇을 할지"를 구체적으로 지시한다. Phase 판정, 에이전트 선택, 파일 경로가 모두 포함된다. 혼동이 생기면 아래 "참조 절차" 섹션을 보되 directive와 충돌하면 directive 우선.
+
+### 파이프라인 재개 / 취소
+
+- 재개: 같은 프로젝트의 다음 세션에서 자동 재개 (pipeline.json + session_id 매칭)
+- 취소: `cancel_pipeline` 또는 `.claude/state/pipeline.json` 삭제
+
+---
+
+## 참조 절차 (directive 상세 해설)
+
+아래 내용은 파이프라인 directive가 지시하는 각 단계의 상세 절차다.
+일반적으로 directive만 따르면 되지만, 특수 상황(복수 기능, 복잡한 의존성)에서는 이 절차를 참조한다.
+
 <HARD-GATE>
 1. Phase 순서를 건너뛰지 않는다. 직전 Phase 산출물이 불완전하면 해당 Phase로 롤백해서 복원 후 재진입.
    blocker-checker 통과 + 사용자 승인 없이 Phase 2 진입 불가. develop 승인 없이 Phase 3 진입 불가.
@@ -51,6 +121,8 @@ docs/sdd/
 └── result/{YYYY-MM-DD}-{feature}.md     # Phase 4 최종 결과
 
 .claude/state/
+├── pipeline.json                        # 파이프라인 상태 (current_label, waiting_for_user 등)
+│                                         # init_pipeline 시 생성, cancel_pipeline 시 삭제
 └── e2e-config.json                      # Phase 2 완료 시 sdd-ui-designer가 생성
                                          # e2e-gate.sh가 커밋 시 참조
 ```

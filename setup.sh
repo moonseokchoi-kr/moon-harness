@@ -188,6 +188,7 @@ HOOKS_TO_ADD = {
     ],
     "Stop": [
         (None, [
+            cmd(f"{enf_dir}/stop-pipeline.sh"),
             cmd(f"{mh_dir}/cmux-session-end.sh"),
         ]),
     ],
