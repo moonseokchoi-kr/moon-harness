@@ -1,0 +1,29 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "moon-harness",
+  "owner": {
+    "name": "moonseokchoi-kr",
+    "url": "https://github.com/moonseokchoi-kr"
+  },
+  "metadata": {
+    "description": "Moon Harness — AI 에이전트 개발 라이프사이클 하네스. SDD 4단계 파이프라인, 아이디어 워크샵, enforcement 훅 시스템.",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "moon-harness",
+      "source": "./",
+      "description": "아이디어에서 배포까지 AI 에이전트의 전체 개발 라이프사이클을 구조화. /sdd 자동 파이프라인, /harness 환경 구성, enforcement 훅(role-gate, tdd-gate, branch-gate, e2e-gate, phase-gate, stop-pipeline 등).",
+      "category": "workflow",
+      "tags": [
+        "sdd",
+        "harness",
+        "agent-orchestration",
+        "pipeline",
+        "spec-driven-development",
+        "enforcement-hooks",
+        "korean"
+      ]
+    }
+  ]
+}

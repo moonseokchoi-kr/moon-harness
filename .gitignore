@@ -11,3 +11,12 @@ Thumbs.db
 
 # Node (if scripts added later)
 node_modules/
+
+# Local state (runtime-only, not part of plugin)
+.claude/state/
+**/.claude/state/
+
+# Stray analysis artifacts
+compatibility-report.md
+detect-claude-deps.csv
+
