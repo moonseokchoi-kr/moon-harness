@@ -26,27 +26,46 @@ if [ ! -f "$STATE_FILE" ]; then
 fi
 
 # 상태를 PAUSED_AT_LIMIT으로 변경
-sed -i '' "s/^- 상태: EXECUTING/- 상태: PAUSED_AT_LIMIT/" "$STATE_FILE"
-
-# 이력에 기록
-echo "- [$TIMESTAMP] StopFailure: rate_limit 감지, 상태 저장 완료" >> "$STATE_FILE"
-
-# interrupted 상태로 실행 중이던 태스크 변경
-sed -i '' 's/| implementing |/| interrupted |/g' "$STATE_FILE"
-sed -i '' 's/| reviewing |/| interrupted |/g' "$STATE_FILE"
-sed -i '' 's/| fixing |/| interrupted |/g' "$STATE_FILE"
-sed -i '' 's/| testing |/| interrupted |/g' "$STATE_FILE"
+# macOS의 "sed -i ''"와 GNU sed의 "sed -i" 차이를 처리합니다.
+if sed --version >/dev/null 2>&1; then
+  # GNU sed
+  sed -i "s/^- 상태: EXECUTING/- 상태: PAUSED_AT_LIMIT/" "$STATE_FILE"
+  sed -i 's/| implementing |/| interrupted |/g' "$STATE_FILE"
+  sed -i 's/| reviewing |/| interrupted |/g' "$STATE_FILE"
+  sed -i 's/| fixing |/| interrupted |/g' "$STATE_FILE"
+  sed -i 's/| testing |/| interrupted |/g' "$STATE_FILE"
+else
+  # Assume BSD/macOS sed
+  sed -i '' "s/^- 상태: EXECUTING/- 상태: PAUSED_AT_LIMIT/" "$STATE_FILE"
+  sed -i '' 's/| implementing |/| interrupted |/g' "$STATE_FILE"
+  sed -i '' 's/| reviewing |/| interrupted |/g' "$STATE_FILE"
+  sed -i '' 's/| fixing |/| interrupted |/g' "$STATE_FILE"
+  sed -i '' 's/| testing |/| interrupted |/g' "$STATE_FILE"
+fi
 
 # 리셋 시간 계산 (다음 날 01:00 KST)
-TOMORROW_1AM=$(date -v+1d -j -f '%Y-%m-%d %H:%M:%S' "$(date -v+1d '+%Y-%m-%d') 01:00:30" '+%s' 2>/dev/null)
+# macOS와 GNU date 옵션 차이 처리 (간단한 fallback)
+if date -v+1d >/dev/null 2>&1; then
+  TOMORROW_1AM=$(date -v+1d -j -f '%Y-%m-%d %H:%M:%S' "$(date -v+1d '+%Y-%m-%d') 01:00:30" '+%s' 2>/dev/null || true)
+  RESUME_AT=$(date -v+1d -j -f '%H:%M:%S' '01:00:30' '+%Y-%m-%dT%H:%M:%S+09:00' 2>/dev/null || echo "unknown")
+else
+  # GNU date fallback: use --date='tomorrow 01:00:30'
+  TOMORROW_1AM=$(date --date='tomorrow 01:00:30' '+%s' 2>/dev/null || true)
+  RESUME_AT=$(date --date='tomorrow 01:00:30' '+%Y-%m-%dT%H:%M:%S+09:00' 2>/dev/null || echo "unknown")
+fi
+
 NOW=$(date '+%s')
 
 if [ -n "$TOMORROW_1AM" ] && [ "$TOMORROW_1AM" -gt "$NOW" ]; then
   SLEEP_SEC=$((TOMORROW_1AM - NOW))
 
   # resume_at 기록
-  RESUME_AT=$(date -v+1d -j -f '%H:%M:%S' '01:00:30' '+%Y-%m-%dT%H:%M:%S+09:00' 2>/dev/null || echo "unknown")
-  sed -i '' "s/^- resume_at:.*/- resume_at: $RESUME_AT/" "$STATE_FILE"
+  # sed 호환성 함수 처리 위에서 이미 적용되므로 reuse
+  if sed --version >/dev/null 2>&1; then
+    sed -i "s/^- resume_at:.*/- resume_at: $RESUME_AT/" "$STATE_FILE"
+  else
+    sed -i '' "s/^- resume_at:.*/- resume_at: $RESUME_AT/" "$STATE_FILE"
+  fi
 
   echo "- [$TIMESTAMP] 리밋 감지: 재개 예정 시각 $RESUME_AT" >> "$STATE_FILE"
 fi

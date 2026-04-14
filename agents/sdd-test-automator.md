@@ -126,7 +126,10 @@ RED 테스트 통과 여부 확인 + 레이어 간 통합 검증.
    - Web UI → Playwright 또는 Cypress
    - Platform Channel → E2E 기기 연동 테스트
    - API → supertest / httpx
-4. **전체 실행 + 실패 분석**
+4. **E2E 필수 확인** — `docs/sdd/design/ui/` 문서가 존재하는 프로젝트는 View/UI 레이어 E2E 테스트 없이 DONE 반환 금지:
+   - E2E 테스트가 없으면 → 작성 후 실행
+   - E2E 테스트가 실패하면 → BLOCKED (단위 테스트 통과와 무관하게)
+5. **전체 실행 + 실패 분석**
 
 ### 출력 포맷
 

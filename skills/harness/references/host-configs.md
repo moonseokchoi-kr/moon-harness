@@ -7,13 +7,13 @@
 
 ## 호스트별 차이점
 
-| 항목 | Claude Code | Codex |
-|------|------------|-------|
-| 스킬 경로 | `~/.claude/skills/` | `~/.agents/skills/` |
-| 설정 파일 | `CLAUDE.md` | `AGENTS.md` |
-| 도구 이름 | Bash tool | Exec tool |
-| 훅 시스템 | `.claude/settings.json` | `.agents/config.json` (다를 수 있음) |
-| 에이전트 시스템 | Agent tool (subagent_type) | Codex 자체 에이전트 시스템 |
+| 항목 | Claude Code | Codex | Copilot |
+|------|------------|-------|--------|
+| 스킬 경로 | `~/.claude/skills/` | `~/.agents/skills/` | `~/.copilot/skills/` |
+| 설정 파일 | `CLAUDE.md` | `AGENTS.md` | `COPILOT.md` |
+| 도구 이름 | Bash tool | Exec tool | Exec tool |
+| 훅 시스템 | `.claude/settings.json` | `.agents/config.json` (다를 수 있음) | `.copilot/settings.json` (다를 수 있음) |
+| 에이전트 시스템 | Agent tool (subagent_type) | Codex 자체 에이전트 시스템 | Copilot 에이전트 시스템 (다를 수 있음) |
 
 ## 변환 규칙
 
