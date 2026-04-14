@@ -18,6 +18,5 @@
     "spec-driven-development",
     "workflow",
     "enforcement-hooks"
-  ],
-  "hooks": "./hooks/hooks.json"
+  ]
 }

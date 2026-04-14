@@ -1,0 +1,11 @@
+# Force LF line endings for shell scripts and Python (executables read by /bin/bash, /usr/bin/env python)
+*.sh       text eol=lf
+*.bash     text eol=lf
+*.py       text eol=lf
+
+# Config/data formats that tools parse as UTF-8 — keep LF to avoid cross-platform surprises
+*.json     text eol=lf
+*.yaml     text eol=lf
+*.yml      text eol=lf
+*.toml     text eol=lf
+*.md       text eol=lf
