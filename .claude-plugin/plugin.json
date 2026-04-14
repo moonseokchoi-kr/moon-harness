@@ -19,7 +19,5 @@
     "workflow",
     "enforcement-hooks"
   ],
-  "skills": "./skills",
-  "agents": "./agents",
   "hooks": "./hooks/hooks.json"
 }
