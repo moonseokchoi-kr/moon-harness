@@ -133,7 +133,7 @@ elif [ "$INSTALL_MODE" = "link" ]; then
 else
   [ -d "$ENF_LINK" ] && mv "$ENF_LINK" "${ENF_LINK}.bak.$(date +%s)"
   cp -r "$ENF_SRC" "$ENF_LINK"
-  chmod +x "$ENF_LINK"/*.sh "$ENF_LINK"/lib/*.sh 2>/dev/null
+  chmod +x "$ENF_LINK"/*.sh "$ENF_LINK"/*.py "$ENF_LINK"/lib/*.sh 2>/dev/null
   ok "hook: enforcement/ (copy)"
 fi
 
