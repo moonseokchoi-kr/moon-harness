@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Moon Harness — AI 에이전트 개발 라이프사이클 하네스. SDD 4단계 파이프라인, 아이디어 워크샵, enforcement 훅 시스템.",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "plugins": [
     {
