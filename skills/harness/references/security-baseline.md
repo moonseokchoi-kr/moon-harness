@@ -70,6 +70,7 @@ harness 설치 시 CLAUDE.md에 다음 섹션을 추가한다:
 - [ ] CLAUDE.md에 시크릿 미포함
 - [ ] hook 스크립트에 하드코딩된 경로 미포함
 
-### deep-idea (리서치)
+### idea-workshop (리서치)
 - [ ] WebSearch 결과에서 내부 URL 미노출
 - [ ] 경쟁사 분석 시 저작권 준수
+- [ ] 리뷰/커뮤니티 크롤링 시 개인정보(닉네임) 익명화

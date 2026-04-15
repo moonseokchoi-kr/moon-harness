@@ -29,7 +29,7 @@
 ### 보유 자산
 | 항목 | 수량 | 상태 |
 |------|------|------|
-| 스킬 | 10개 | brain-storm, idea-reframe, deep-idea, idea-workshop, sdd, sdd-taskrunner, harness, handoff, git-worktree, adversarial-review |
+| 스킬 | 7개 | idea-workshop, sdd, sdd-taskrunner, harness, handoff, git-worktree, adversarial-review |
 | SDD 에이전트 | 22개 | api-designer, architect-reviewer, blocker-checker, compliance-checker, context-manager, 언어별 engineer x10, implementer, taskmaster, test-automator, reviewer, ui-designer, performance-engineer, react-specialist, vue-engineer, sql-engineer |
 | 훅 | 6개 | 보안 3개 (secret/dangerous/sensitive) + cmux 3개 (session-start/end/task-progress) |
 
