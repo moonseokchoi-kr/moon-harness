@@ -6,21 +6,21 @@
     "url": "https://github.com/moonseokchoi-kr"
   },
   "metadata": {
-    "description": "Moon Harness — AI 에이전트 개발 라이프사이클 하네스. SDD 4단계 파이프라인, 아이디어 워크샵, enforcement 훅 시스템.",
+    "description": "Moon Harness — AI 에이전트 설계 라이프사이클 하네스. spec-design 2단계(요구 명세 + 설계) 파이프라인, 아이디어 워크샵, enforcement 훅 시스템.",
     "version": "0.2.1"
   },
   "plugins": [
     {
       "name": "moon-harness",
       "source": "./",
-      "description": "아이디어에서 배포까지 AI 에이전트의 전체 개발 라이프사이클을 구조화. /sdd 자동 파이프라인, /harness 환경 구성, enforcement 훅(role-gate, tdd-gate, branch-gate, e2e-gate, phase-gate, stop-pipeline 등).",
+      "description": "아이디어에서 설계 산출물까지 AI 에이전트의 구조화된 워크플로우. /spec-design 자동 파이프라인, /harness 환경 구성, enforcement 훅(role-gate, phase-gate, stop-pipeline 등).",
       "category": "workflow",
       "tags": [
-        "sdd",
+        "spec-design",
         "harness",
         "agent-orchestration",
         "pipeline",
-        "spec-driven-development",
+        "design-doc",
         "enforcement-hooks",
         "korean"
       ]

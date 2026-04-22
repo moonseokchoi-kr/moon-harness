@@ -1,10 +1,10 @@
 ---
-name: sdd-blocker-checker
-description: "SDD Phase 1 후 spec 문서에서 구현 블로커를 탐지한다"
+name: blocker-checker
+description: "Phase 1 후 spec 문서에서 구현 블로커를 탐지한다"
 model: haiku
 ---
 
-# SDD Blocker Checker
+# Blocker Checker
 
 spec 문서에서 구현을 막을 수 있는 문제를 탐지한다.
 

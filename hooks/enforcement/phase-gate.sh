@@ -6,7 +6,7 @@
 # 이유: Phase를 건너뛰면 불완전한 산출물 위에 다음 Phase가 쌓인다.
 #       조기 발견이 나중 재작업보다 훨씬 저렴하다.
 #
-# 대체된 텍스트 규칙: skills/sdd/SKILL.md HARD-GATE 섹션
+# 대체된 텍스트 규칙: skills/spec-design/SKILL.md HARD-GATE 섹션
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/constants.sh"
@@ -18,14 +18,14 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 # 상태 파일 초기화 (없으면 생성)
 init_state_dir
 
-# SDD 문서 경로 (skills/sdd/SKILL.md 구조 기준)
-CONTEXT_DIR="$PROJECT_DIR/docs/sdd/context"
-SPEC_DIR="$PROJECT_DIR/docs/sdd/spec"
-DESIGN_DIR="$PROJECT_DIR/docs/sdd/design"
-TASK_DIR="$PROJECT_DIR/docs/sdd/task"
-ORCH_STATE="$PROJECT_DIR/docs/sdd/ORCHESTRATOR_STATE.md"
+# Spec-Design 문서 경로 (skills/spec-design/SKILL.md 구조 기준)
+CONTEXT_DIR="$PROJECT_DIR/docs/spec-design/context"
+SPEC_DIR="$PROJECT_DIR/docs/spec-design/spec"
+DESIGN_DIR="$PROJECT_DIR/docs/spec-design/design"
+TASK_DIR="$PROJECT_DIR/docs/spec-design/task"
+ORCH_STATE="$PROJECT_DIR/docs/spec-design/ORCHESTRATOR_STATE.md"
 
-# context 문서가 없으면 SDD 미시작 — 조용히 종료
+# context 문서가 없으면 Spec-Design 미시작 — 조용히 종료
 [ ! -d "$CONTEXT_DIR" ] && [ ! -d "$SPEC_DIR" ] && exit 0
 
 # Phase 판정
@@ -93,7 +93,7 @@ esac
 # E2E 커버리지 계획 검증 — Phase 무관, UI 명세가 있으면 항상 확인
 if [ -d "$DESIGN_DIR/ui" ] && ls "$DESIGN_DIR/ui"/*.md &>/dev/null 2>&1; then
   if [ ! -f "$HARNESS_E2E_CONFIG" ]; then
-    WARNINGS+=("UI 명세가 있지만 .claude/state/e2e-config.json이 없습니다 — sdd-ui-designer Step 5(E2E 커버리지 계획)가 누락됐을 수 있습니다")
+    WARNINGS+=("UI 명세가 있지만 .claude/state/e2e-config.json이 없습니다 — ui-designer Step 5(E2E 커버리지 계획)가 누락됐을 수 있습니다")
   else
     E2E_ENABLED=$(jq -r '.enabled // false' "$HARNESS_E2E_CONFIG" 2>/dev/null)
     if [ "$E2E_ENABLED" != "true" ]; then
@@ -109,7 +109,7 @@ if [ ${#WARNINGS[@]} -gt 0 ]; then
   for w in "${WARNINGS[@]}"; do
     echo "  • $w" >&2
   done
-  echo "  /sdd 스킬로 현재 Phase를 확인하세요" >&2
+  echo "  /spec-design 스킬로 현재 Phase를 확인하세요" >&2
   echo "" >&2
 fi
 

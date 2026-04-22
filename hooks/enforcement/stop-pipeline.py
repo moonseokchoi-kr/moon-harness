@@ -2,7 +2,7 @@
 """
 enforcement/stop-pipeline.py — Stop 훅 파이프라인 컨트롤러
 
-SDD 워크플로우의 Phase 간 자동 전환을 담당한다.
+Spec-Design 워크플로우의 Phase 간 자동 전환을 담당한다.
 pipeline.json의 current_label을 읽고 다음 액션을 지시하여
 Claude가 수동 개입 없이 Phase 1 → Phase 4 진입까지 자동 진행하도록 한다.
 
@@ -44,19 +44,19 @@ CONTEXT_LIMIT_PCT = 90
 
 DIRECTIVES = {
     "PHASE1_UX_RESEARCH_DONE": (
-        "[SDD-PIPELINE] Phase 1 시작.\n"
-        "Agent(sdd-ux-researcher) 를 디스패치하여 spec 문서를 작성하세요.\n"
-        "저장 경로: docs/sdd/spec/{YYYY-MM-DD}-{feature}.md\n"
+        "[SPEC-DESIGN] Phase 1 시작.\n"
+        "Agent(ux-researcher) 를 디스패치하여 spec 문서를 작성하세요.\n"
+        "저장 경로: docs/spec-design/spec/{YYYY-MM-DD}-{feature}.md\n"
         "완료 후 pipeline.json 의 current_label 을 PHASE1_SPEC_DRAFT 로 갱신하세요."
     ),
     "PHASE1_SPEC_DRAFT": (
-        "[SDD-PIPELINE] spec 작성 완료.\n"
-        "Agent(sdd-blocker-checker) 를 디스패치하여 블로커 검사하세요.\n"
+        "[SPEC-DESIGN] spec 작성 완료.\n"
+        "Agent(blocker-checker) 를 디스패치하여 블로커 검사하세요.\n"
         "PASS 시: spec 말미에 'BLOCKER_PASS' 마크 추가 후 current_label 을 PHASE1_BLOCKER_CHECK_PASS 로 갱신.\n"
         "BLOCKED 시: spec 보완 후 재검사."
     ),
     "PHASE1_BLOCKER_CHECK_PASS": (
-        "[SDD-PIPELINE] 블로커 통과. 사용자 승인 필요.\n"
+        "[SPEC-DESIGN] 블로커 통과. 사용자 승인 필요.\n"
         "다음을 수행하세요:\n"
         "1. spec 문서 요약을 사용자에게 제시\n"
         "2. pipeline.json 에서 waiting_for_user=true, waiting_for_approval_type='spec' 설정\n"
@@ -64,16 +64,16 @@ DIRECTIVES = {
         "4. 승인 시 current_label=PHASE1_USER_APPROVED, waiting_for_user=false"
     ),
     "PHASE1_USER_APPROVED": (
-        "[SDD-PIPELINE] Phase 1 완료. Phase 2 시작.\n"
+        "[SPEC-DESIGN] Phase 1 완료. Phase 2 시작.\n"
         "current_label 을 PHASE2_START 로 갱신하세요."
     ),
     "PHASE2_START": (
-        "[SDD-PIPELINE] Phase 2 시작. Worktree 생성 필요.\n"
+        "[SPEC-DESIGN] Phase 2 시작. Worktree 생성 필요.\n"
         "Skill(git-worktree) 를 호출하여 feat/{feature} 브랜치와 worktree 를 생성하세요.\n"
         "완료 후 pipeline.json 의 worktree_path 기록 + current_label=PHASE2_WORKTREE_CREATED."
     ),
     "PHASE2_WORKTREE_CREATED": (
-        "[SDD-PIPELINE] Worktree 준비 완료. 아키텍처 설계 필요.\n"
+        "[SPEC-DESIGN] Worktree 준비 완료. 아키텍처 설계 필요.\n"
         "프로젝트 스택 감지 후 적절한 architect 디스패치:\n"
         "- Flutter: flutter-architect\n"
         "- React/Vue/Next: webapp-architect\n"
@@ -81,56 +81,56 @@ DIRECTIVES = {
         "완료 후 sdd-architect-reviewer 로 리뷰 → PASS → current_label=PHASE2_ARCH_STRUCTURE_DONE."
     ),
     "PHASE2_ARCH_STRUCTURE_DONE": (
-        "[SDD-PIPELINE] 아키텍처 설계 완료. 사용자 승인 필요.\n"
+        "[SPEC-DESIGN] 아키텍처 설계 완료. 사용자 승인 필요.\n"
         "1. 아키텍처 구조 요약을 사용자에게 제시\n"
         "2. waiting_for_user=true, approval_type='arch' 설정\n"
         "3. 승인 시 current_label=PHASE2_ARCH_USER_APPROVED"
     ),
     "PHASE2_ARCH_USER_APPROVED": (
-        "[SDD-PIPELINE] 아키텍처 승인됨.\n"
+        "[SPEC-DESIGN] 아키텍처 승인됨.\n"
         "모드에 따라 분기:\n"
-        "- FULL 모드: Agent(sdd-ui-designer) 디스패치 + e2e-config.json 생성 → current_label=PHASE2_UI_DESIGN_COMPLETE\n"
+        "- FULL 모드: Agent(ui-designer) 디스패치 + e2e-config.json 생성 → current_label=PHASE2_UI_DESIGN_COMPLETE\n"
         "- SIMPLE 모드: UI/API 건너뛰고 current_label=PHASE2_DESIGN_USER_APPROVED"
     ),
     "PHASE2_UI_DESIGN_COMPLETE": (
-        "[SDD-PIPELINE] UI 명세 완료. 사용자 승인 필요.\n"
+        "[SPEC-DESIGN] UI 명세 완료. 사용자 승인 필요.\n"
         "1. UI 명세 + Stitch 링크를 사용자에게 제시\n"
         "2. waiting_for_user=true, approval_type='ui' 설정\n"
-        "3. 승인 시 Agent(sdd-api-designer) 디스패치 → current_label=PHASE2_API_DESIGN_COMPLETE"
+        "3. 승인 시 Agent(api-designer) 디스패치 → current_label=PHASE2_API_DESIGN_COMPLETE"
     ),
     "PHASE2_API_DESIGN_COMPLETE": (
-        "[SDD-PIPELINE] API 명세 완료. 사용자 승인 필요.\n"
+        "[SPEC-DESIGN] API 명세 완료. 사용자 승인 필요.\n"
         "1. API 계약을 사용자에게 제시\n"
         "2. waiting_for_user=true, approval_type='api' 설정\n"
         "3. 승인 시 current_label=PHASE2_DESIGN_USER_APPROVED"
     ),
     "PHASE2_DESIGN_USER_APPROVED": (
-        "[SDD-PIPELINE] 전체 설계 승인됨.\n"
-        "FULL 모드: Agent(sdd-context-manager) 디스패치하여 context 문서 생성.\n"
+        "[SPEC-DESIGN] 전체 설계 승인됨.\n"
+        "FULL 모드: Agent(context-manager) 디스패치하여 context 문서 생성.\n"
         "완료 후 current_label=PHASE2_USER_APPROVED."
     ),
     "PHASE2_USER_APPROVED": (
-        "[SDD-PIPELINE] Phase 2 완료. Phase 3 시작.\n"
+        "[SPEC-DESIGN] Phase 2 완료. Phase 3 시작.\n"
         "current_label 을 PHASE3_PLAN_START 로 갱신하세요."
     ),
     "PHASE3_PLAN_START": (
-        "[SDD-PIPELINE] Phase 3 시작. 태스크 문서 생성 필요.\n"
+        "[SPEC-DESIGN] Phase 3 시작. 태스크 문서 생성 필요.\n"
         "Agent(sdd-taskmaster, mode='tasks') 를 디스패치하세요.\n"
         "완료 후 current_label=PHASE3_TASKMASTER_DONE."
     ),
     "PHASE3_TASKMASTER_DONE": (
-        "[SDD-PIPELINE] 태스크 문서 생성 완료. DAG 구성 필요.\n"
+        "[SPEC-DESIGN] 태스크 문서 생성 완료. DAG 구성 필요.\n"
         "Agent(sdd-taskmaster, mode='dag') 를 디스패치하여 ORCHESTRATOR_STATE.md 를 생성하세요.\n"
         "완료 후 current_label=PHASE3_DAG_CONSTRUCTED."
     ),
     "PHASE3_DAG_CONSTRUCTED": (
-        "[SDD-PIPELINE] DAG 구성 완료. 사용자 승인 필요.\n"
+        "[SPEC-DESIGN] DAG 구성 완료. 사용자 승인 필요.\n"
         "1. 태스크 목록 + Wave 구성 + 예상 시간을 사용자에게 제시\n"
         "2. waiting_for_user=true, approval_type='plan' 설정\n"
         "3. 승인 시 current_label=PHASE3_USER_APPROVED"
     ),
     "PHASE3_USER_APPROVED": (
-        "[SDD-PIPELINE] Phase 3 완료. Phase 4 진입.\n"
+        "[SPEC-DESIGN] Phase 3 완료. Phase 4 진입.\n"
         "다음을 수행하세요:\n"
         "1. git commit --allow-empty -m 'chore: Phase 4 실행 시작'\n"
         "2. pipeline.json 의 current_label=PHASE4_WORKTREE_CREATED 로 갱신\n"
@@ -143,10 +143,10 @@ DIRECTIVES = {
 # ─── 파일 존재 검사 (라벨별 전이 조건) ────────────────────────
 
 def has_spec(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob("docs/sdd/spec/*.md")))
+    return bool(list(project_dir.glob("docs/spec-design/spec/*.md")))
 
 def has_blocker_pass(project_dir: Path, feature: str) -> bool:
-    for f in project_dir.glob("docs/sdd/spec/*.md"):
+    for f in project_dir.glob("docs/spec-design/spec/*.md"):
         try:
             if "BLOCKER_PASS" in f.read_text():
                 return True
@@ -160,23 +160,23 @@ def has_worktree(project_dir: Path, feature: str, worktree_path: str) -> bool:
     return Path(worktree_path).is_dir()
 
 def has_arch(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob("docs/sdd/design/arch/*.md")))
+    return bool(list(project_dir.glob("docs/spec-design/design/arch/*.md")))
 
 def has_ui(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob("docs/sdd/design/ui/*.md")))
+    return bool(list(project_dir.glob("docs/spec-design/design/ui/*.md")))
 
 def has_api(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob("docs/sdd/design/api/*.md")))
+    return bool(list(project_dir.glob("docs/spec-design/design/api/*.md")))
 
 def has_context(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob("docs/sdd/context/*.md")))
+    return bool(list(project_dir.glob("docs/spec-design/context/*.md")))
 
 def has_tasks(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob(f"docs/sdd/task/{feature}/T-*.md")) or
-                list(project_dir.glob("docs/sdd/task/*/T-*.md")))
+    return bool(list(project_dir.glob(f"docs/spec-design/task/{feature}/T-*.md")) or
+                list(project_dir.glob("docs/spec-design/task/*/T-*.md")))
 
 def has_orchestrator_state(project_dir: Path) -> bool:
-    return (project_dir / "docs/sdd/ORCHESTRATOR_STATE.md").exists()
+    return (project_dir / "docs/spec-design/ORCHESTRATOR_STATE.md").exists()
 
 
 # ─── 상태 파일 I/O ─────────────────────────────────────────────

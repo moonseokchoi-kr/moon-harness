@@ -3,8 +3,8 @@
 > **⚠️ 이 문서는 설계 당시 계획을 기록한 이력 문서입니다. 현재 구현의 Source of Truth가 아닙니다.**
 > 현재 구현 상태는 아래 SOT를 참조하세요:
 > - **SDD 전체 흐름**: `skills/sdd/SKILL.md`
-> - **Phase 4 오케스트레이션**: `skills/sdd-orchestrator/SKILL.md`
-> - **상태 스키마**: `skills/sdd-orchestrator/references/state-schema.md`
+> - **Phase 4 오케스트레이션**: `skills/spec-design-orchestrator/SKILL.md`
+> - **상태 스키마**: `skills/spec-design-orchestrator/references/state-schema.md`
 > - **에이전트 목록**: `skills/sdd/SKILL.md` 의 "에이전트 목록" 섹션
 >
 > 2026-04-08 Discord 논의 기반 정리. 이후 3차 실전 테스트(2026-04-09)와 중복 정리(2026-04-10)를 거쳐 실제 구현은 SOT 파일들로 이관됨.
@@ -120,7 +120,7 @@
 > Worker가 완료 시 결과를 오케스트레이터에게 직접 반환. 오케스트레이터가 유일한 STATE.md 작성자.
 
 ```
-Phase 4 시작 (Skill(sdd-orchestrator) 호출)
+Phase 4 시작 (Skill(spec-design-orchestrator) 호출)
     ↓
 1. docs/sdd/ORCHESTRATOR_STATE.md 읽기 → Wave/태스크 파악
     ↓
@@ -187,7 +187,7 @@ develop 문서의 폴더 구조 섹션에서 파일 소유권 파싱:
 
 ## 5. 신규 필요 컴포넌트
 
-### 5.1 sdd-orchestrator (신규 스킬)
+### 5.1 spec-design-orchestrator (신규 스킬)
 - **역할**: Phase 3 전체 오케스트레이션
 - **모델**: opus (설계/판단이 핵심)
 - **기능**:
@@ -219,13 +219,13 @@ develop 문서의 폴더 구조 섹션에서 파일 소유권 파싱:
 
 ## 6. 기존 컴포넌트 수정
 
-### 6.1 sdd-reviewer (역할 강화)
+### 6.1 reviewer (역할 강화)
 - 현재: 정의만 되어있고 호출 안 됨
 - 변경: 오케스트레이터가 Engineer 완료 후 자동 호출
 - 입력: 변경된 파일 목록 + diff
 - 출력: 승인 or 피드백 (구체적 수정 요청)
 
-### 6.2 sdd-test-automator (역할 강화)
+### 6.2 test-automator (역할 강화)
 - 현재: TDD 테스트 작성 전용
 - 변경: 리뷰 통과 후 통합 검증 역할 추가
 - 입력: 태스크 범위의 테스트 대상
@@ -254,7 +254,7 @@ develop 문서의 폴더 구조 섹션에서 파일 소유권 파싱:
   → 통합 검증도 수동
 ```
 
-### After (sdd-orchestrator)
+### After (spec-design-orchestrator)
 ```
 사용자 "/sdd phase3"
   → orchestrator가 develop 파싱 → DAG → Wave 자동 생성
@@ -293,8 +293,8 @@ develop 문서의 폴더 구조 섹션에서 파일 소유권 파싱:
 **스킬 체이닝 수정:**
 - brain-storm: 완료 시 → "구현하려면 /sdd를 안내"
 - deep-idea: 졸업 시 → "구현하려면 /sdd를 안내"
-- sdd Phase 2 완료 → "Phase 3는 /sdd-orchestrator 호출"
-- sdd-orchestrator 완료 → "배포는 Phase 4 안내"
+- sdd Phase 2 완료 → "Phase 3는 /spec-design-orchestrator 호출"
+- spec-design-orchestrator 완료 → "배포는 Phase 4 안내"
 
 ### Track B: 멀티 에이전트 오케스트레이터 (SDD Phase 3)
 
@@ -304,7 +304,7 @@ cmux 기반으로 Engineer/Reviewer/Test 에이전트를 자동 관리하고,
 | 순서 | 항목 | 방법 | 난이도 | 상태 |
 |------|------|------|--------|------|
 | B-1 | ORCHESTRATOR_STATE.md 스키마 정의 | 직접 작성 | 하 | ✅ 완료 |
-| B-2 | sdd-orchestrator 스킬 생성 | skill-creator | 중 | ✅ 완료 |
+| B-2 | spec-design-orchestrator 스킬 생성 | skill-creator | 중 | ✅ 완료 |
 | B-3 | on-rate-limit.sh (StopFailure 훅) | 직접 작성 | 중 | ✅ 완료 |
 | B-4 | file-ownership.sh (PreToolUse 훅) | 직접 작성 | 중 | ✅ 완료 |
 | B-5 | setup.sh에 훅 자동 등록 추가 | 직접 수정 | 중 | ✅ 완료 |
@@ -344,7 +344,7 @@ Phase 5 — 전체 E2E 테스트:
 
 ### 우선순위 근거
 
-- **Track A가 Track B보다 먼저**: 컨트롤러 없이 오케스트레이터를 테스트하면, 사용자가 수동으로 /sdd-orchestrator를 호출해야 하는 기존 문제가 반복됨
+- **Track A가 Track B보다 먼저**: 컨트롤러 없이 오케스트레이터를 테스트하면, 사용자가 수동으로 /spec-design-orchestrator를 호출해야 하는 기존 문제가 반복됨
 - **Track C는 가장 나중**: 학습은 실제 사용 경험이 쌓인 후 더 효과적
 - **Phase 3(통합 테스트)에서 A와 B를 함께 검증**: 실제 프로젝트로 전체 흐름 테스트
 
@@ -494,7 +494,7 @@ brain-storm → idea-reframe → deep-idea → sdd
    - 리서치: "시장 규모, 경쟁사, 기술 가능성" → 사실 수집
    - 검증: "치명적 결함은? 이 방향이 맞는지?" → 판단
 
-2. **이터레이션 오케스트레이터** — idea-workshop을 Phase 3의 sdd-orchestrator처럼 루프 관리자로 강화
+2. **이터레이션 오케스트레이터** — idea-workshop을 Phase 3의 spec-design-orchestrator처럼 루프 관리자로 강화
    - 각 단계 완료 감지 → 다음 단계 안내
    - 검증 실패 시 → 어느 단계로 돌아갈지 판단 (발산? 구체화? 리서치?)
    - 졸업 조건 자동 판별

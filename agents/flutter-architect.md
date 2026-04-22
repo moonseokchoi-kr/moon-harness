@@ -21,7 +21,7 @@ Focus areas:
 - Release channels, environment configuration, crash reporting, migration strategy
 
 When invoked in SDD Phase 2 (Step 1 — architecture first):
-- Read `docs/sdd/spec/` — spec is the only input at this stage. UI and API docs do not exist yet.
+- Read `docs/spec-design/spec/` — spec is the only input at this stage. UI and API docs do not exist yet.
 - Define architecture boundaries that will constrain the upcoming ui-designer and api-designer
 - If an existing codebase exists, read it to infer current patterns — respect them unless there is a strong reason to change
 - After your arch doc is approved, ui-designer and api-designer will use it as the foundation
@@ -66,7 +66,7 @@ Always produce:
 ## Output (SDD Phase 2)
 
 When invoked for SDD Phase 2 arch document generation:
-- **MUST** use the Write tool to save the file at `docs/sdd/design/arch/{YYYY-MM-DD}-{feature}.md`
+- **MUST** use the Write tool to save the file at `docs/spec-design/design/arch/{YYYY-MM-DD}-{feature}.md`
 - Return only a summary + file path, NOT the full document inline
 - The orchestrator will NOT save documents for you — you MUST write the file yourself
 

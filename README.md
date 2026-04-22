@@ -60,7 +60,7 @@ Phase 3A에서 **기획팀 Agent Team** (market/user/feasibility/biz-model resea
 
 | 스킬 | 역할 |
 |------|------|
-| `/sdd` | 자동 파이프라인 기반 Spec-Driven Development |
+| `/spec-design` | 자동 파이프라인 기반 Spec-Driven Development |
 | `/adversarial-review` | 리뷰 3회 실패 시 에스컬레이션 |
 | `/git-worktree` | 격리된 feature 브랜치 |
 
@@ -74,9 +74,9 @@ Phase 3A에서 **기획팀 Agent Team** (market/user/feasibility/biz-model resea
 
 ---
 
-## 자동 파이프라인 (SDD)
+## 자동 파이프라인 (spec-design)
 
-`/sdd start <feature>` 한 번으로 Phase 4 진입까지 자동 진행.
+`/spec-design start <feature>` 한 번으로 Phase 4 진입까지 자동 진행.
 
 - **Stop 훅 컨트롤러** (`stop-pipeline.py`) 가 각 Phase 전환을 자동 관리
 - 16개 라벨 기반 상태 머신
@@ -99,7 +99,7 @@ Phase 3A에서 **기획팀 Agent Team** (market/user/feasibility/biz-model resea
 | `phase-gate` | SessionStart | Phase 선행조건 진단 |
 | `harness-check` | SessionStart | 하네스 미설정 프로젝트 경고 |
 | `escalation-tracker` | PostToolUse Agent | 3회 BLOCKED 자동 에스컬레이션 |
-| `stop-pipeline` | Stop | SDD 파이프라인 자동 진행 |
+| `stop-pipeline` | Stop | spec-design 파이프라인 자동 진행 |
 
 보안 훅 (secret-detect, dangerous-command, sensitive-file)도 함께 포함.
 

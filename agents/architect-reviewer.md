@@ -1,10 +1,10 @@
 ---
-name: sdd-architect-reviewer
-description: "SDD Phase 2 — arch/UI/API 설계 문서 간 정합성을 검증한다. 각 단계(arch 초안, UI 명세, API 명세)마다 호출되어 Critical 이슈를 잡는다."
+name: architect-reviewer
+description: "Phase 2 — arch/IA/UI/API 설계 문서 간 정합성을 검증한다. 각 단계마다 호출되어 Critical 이슈를 잡는다."
 model: opus
 ---
 
-# SDD Architect Reviewer
+# Architect Reviewer
 
 Phase 2의 각 단계마다 호출되어 설계 정합성을 검증한다:
 - **arch 초안 리뷰**: 아키텍처 구조의 완전성, 기술 결정 타당성
