@@ -4,7 +4,7 @@ enforcement/stop-pipeline.py — Stop 훅 파이프라인 컨트롤러
 
 Spec-Design 워크플로우의 Phase 간 자동 전환을 담당한다.
 pipeline.json의 current_label을 읽고 다음 액션을 지시하여
-Claude가 수동 개입 없이 Phase 1 → Phase 4 진입까지 자동 진행하도록 한다.
+Claude가 수동 개입 없이 Phase 1 → Phase 2 최종 승인까지 자동 진행하도록 한다.
 
 참고: oh-my-claudecode/scripts/persistent-mode.cjs의 우선순위 기반
      circuit breaker + session 격리 + context limit fail-safe 패턴 차용.
@@ -19,16 +19,14 @@ Claude가 수동 개입 없이 Phase 1 → Phase 4 진입까지 자동 진행하
 import sys
 import os
 import json
-import time
 import tempfile
 import shutil
-import glob
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # ─── 상수 ──────────────────────────────────────────────────────
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 1  # 단계 3 에서 2 로 확장 예정
 
 # Circuit breaker
 CB_MAX_BLOCKS = 20
@@ -78,7 +76,7 @@ DIRECTIVES = {
         "- Flutter: flutter-architect\n"
         "- React/Vue/Next: webapp-architect\n"
         "- Rust/C++: native-architect\n"
-        "완료 후 sdd-architect-reviewer 로 리뷰 → PASS → current_label=PHASE2_ARCH_STRUCTURE_DONE."
+        "완료 후 architect-reviewer 로 리뷰 → PASS → current_label=PHASE2_ARCH_STRUCTURE_DONE."
     ),
     "PHASE2_ARCH_STRUCTURE_DONE": (
         "[SPEC-DESIGN] 아키텍처 설계 완료. 사용자 승인 필요.\n"
@@ -89,12 +87,13 @@ DIRECTIVES = {
     "PHASE2_ARCH_USER_APPROVED": (
         "[SPEC-DESIGN] 아키텍처 승인됨.\n"
         "모드에 따라 분기:\n"
-        "- FULL 모드: Agent(ui-designer) 디스패치 + e2e-config.json 생성 → current_label=PHASE2_UI_DESIGN_COMPLETE\n"
-        "- SIMPLE 모드: UI/API 건너뛰고 current_label=PHASE2_DESIGN_USER_APPROVED"
+        "- WITH_UI 모드: Agent(ui-designer) 디스패치 → current_label=PHASE2_UI_DESIGN_COMPLETE\n"
+        "  (단계 3 이후: Phase 2-B 상세 흐름 — teach-impeccable → ia-designer → UI 브리프 → iteration 루프)\n"
+        "- WITHOUT_UI 모드: UI 건너뛰고 current_label=PHASE2_API_DESIGN_COMPLETE"
     ),
     "PHASE2_UI_DESIGN_COMPLETE": (
         "[SPEC-DESIGN] UI 명세 완료. 사용자 승인 필요.\n"
-        "1. UI 명세 + Stitch 링크를 사용자에게 제시\n"
+        "1. UI 명세 + 시각 디자인 링크를 사용자에게 제시\n"
         "2. waiting_for_user=true, approval_type='ui' 설정\n"
         "3. 승인 시 Agent(api-designer) 디스패치 → current_label=PHASE2_API_DESIGN_COMPLETE"
     ),
@@ -102,42 +101,9 @@ DIRECTIVES = {
         "[SPEC-DESIGN] API 명세 완료. 사용자 승인 필요.\n"
         "1. API 계약을 사용자에게 제시\n"
         "2. waiting_for_user=true, approval_type='api' 설정\n"
-        "3. 승인 시 current_label=PHASE2_DESIGN_USER_APPROVED"
+        "3. 승인 시 current_label=PHASE2_FINAL_APPROVED"
     ),
-    "PHASE2_DESIGN_USER_APPROVED": (
-        "[SPEC-DESIGN] 전체 설계 승인됨.\n"
-        "FULL 모드: Agent(context-manager) 디스패치하여 context 문서 생성.\n"
-        "완료 후 current_label=PHASE2_USER_APPROVED."
-    ),
-    "PHASE2_USER_APPROVED": (
-        "[SPEC-DESIGN] Phase 2 완료. Phase 3 시작.\n"
-        "current_label 을 PHASE3_PLAN_START 로 갱신하세요."
-    ),
-    "PHASE3_PLAN_START": (
-        "[SPEC-DESIGN] Phase 3 시작. 태스크 문서 생성 필요.\n"
-        "Agent(sdd-taskmaster, mode='tasks') 를 디스패치하세요.\n"
-        "완료 후 current_label=PHASE3_TASKMASTER_DONE."
-    ),
-    "PHASE3_TASKMASTER_DONE": (
-        "[SPEC-DESIGN] 태스크 문서 생성 완료. DAG 구성 필요.\n"
-        "Agent(sdd-taskmaster, mode='dag') 를 디스패치하여 ORCHESTRATOR_STATE.md 를 생성하세요.\n"
-        "완료 후 current_label=PHASE3_DAG_CONSTRUCTED."
-    ),
-    "PHASE3_DAG_CONSTRUCTED": (
-        "[SPEC-DESIGN] DAG 구성 완료. 사용자 승인 필요.\n"
-        "1. 태스크 목록 + Wave 구성 + 예상 시간을 사용자에게 제시\n"
-        "2. waiting_for_user=true, approval_type='plan' 설정\n"
-        "3. 승인 시 current_label=PHASE3_USER_APPROVED"
-    ),
-    "PHASE3_USER_APPROVED": (
-        "[SPEC-DESIGN] Phase 3 완료. Phase 4 진입.\n"
-        "다음을 수행하세요:\n"
-        "1. git commit --allow-empty -m 'chore: Phase 4 실행 시작'\n"
-        "2. pipeline.json 의 current_label=PHASE4_WORKTREE_CREATED 로 갱신\n"
-        "3. Skill(sdd-orchestrator) 를 호출하여 Wave/Task 실행을 위임\n"
-        "파이프라인은 여기서 종료됩니다. 이후 Stop 훅은 개입하지 않습니다."
-    ),
-    "PHASE4_WORKTREE_CREATED": None,  # 터미널
+    "PHASE2_FINAL_APPROVED": None,  # 터미널
 }
 
 # ─── 파일 존재 검사 (라벨별 전이 조건) ────────────────────────
@@ -167,16 +133,6 @@ def has_ui(project_dir: Path, feature: str) -> bool:
 
 def has_api(project_dir: Path, feature: str) -> bool:
     return bool(list(project_dir.glob("docs/spec-design/design/api/*.md")))
-
-def has_context(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob("docs/spec-design/context/*.md")))
-
-def has_tasks(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob(f"docs/spec-design/task/{feature}/T-*.md")) or
-                list(project_dir.glob("docs/spec-design/task/*/T-*.md")))
-
-def has_orchestrator_state(project_dir: Path) -> bool:
-    return (project_dir / "docs/spec-design/ORCHESTRATOR_STATE.md").exists()
 
 
 # ─── 상태 파일 I/O ─────────────────────────────────────────────
@@ -293,11 +249,6 @@ def label_prerequisite_met(label: str, state: dict, project_dir: Path) -> tuple:
         "PHASE2_ARCH_STRUCTURE_DONE":    lambda: has_arch(project_dir, feature),
         "PHASE2_UI_DESIGN_COMPLETE":     lambda: has_ui(project_dir, feature),
         "PHASE2_API_DESIGN_COMPLETE":    lambda: has_api(project_dir, feature),
-        "PHASE2_USER_APPROVED":          lambda: (
-            has_context(project_dir, feature) if state.get("mode") == "FULL" else True
-        ),
-        "PHASE3_TASKMASTER_DONE":        lambda: has_tasks(project_dir, feature),
-        "PHASE3_DAG_CONSTRUCTED":        lambda: has_orchestrator_state(project_dir),
     }
 
     if label not in checks:
@@ -307,7 +258,7 @@ def label_prerequisite_met(label: str, state: dict, project_dir: Path) -> tuple:
         if checks[label]():
             return (True, "")
         return (False, f"[{label}] 선행 파일이 아직 없습니다. directive 를 따라 생성하세요.")
-    except Exception as e:
+    except Exception:
         return (True, "")  # fail-safe: 검증 에러 시 진행 허용
 
 
@@ -348,9 +299,9 @@ def decide(stop_data: dict, project_dir: Path, pipeline_path: Path) -> dict:
     if allow_cb:
         return {"continue": True, "suppressOutput": True}
 
-    # Step 5: 터미널 라벨 (Phase 4 진입 완료)
+    # Step 5: 터미널 라벨 (Phase 2 최종 승인)
     current_label = state.get("current_label", "")
-    if current_label == "PHASE4_WORKTREE_CREATED":
+    if current_label == "PHASE2_FINAL_APPROVED":
         return {"continue": True, "suppressOutput": True}
 
     # Step 6: 사용자 승인 대기 중 → Claude 멈춤 허용
