@@ -456,3 +456,13 @@ Phase 2 도중 spec 수정 필요 시: Phase 1로 롤백 → spec 수정 → blo
 
 - 각 feature는 독립 worktree + 독립 문서. 동시 진행 가능.
 - `WITHOUT_UI` 모드가 기본 가정. UI가 명시되면 `WITH_UI`.
+
+---
+
+## 상세 레퍼런스 (references/)
+
+세부 절차·레시피는 `references/` 디렉토리로 분리되어 있다. 필요 시 참조:
+
+- **[impeccable-integration.md](references/impeccable-integration.md)** — iter 루프의 critique/audit/normalize 평가 기준, 디테일 강화(animate/clarify/harden/adapt) 레시피, 사용자 게이트 응답 해석
+- **[claude-design-handoff.md](references/claude-design-handoff.md)** — Claude Design 수동 게이트 흐름, 브리프 템플릿, 번들 검증 로직, DESIGN.md 추출, 재작업 시 브리프 업데이트
+- **[stitch-mode.md](references/stitch-mode.md)** — Stitch MCP 자동 스크린 생성 절차, stitch-loop 패턴, MCP 부재 시 대응
