@@ -51,10 +51,20 @@ case "$PHASE" in
     ;;
 esac
 
-# UI 문서가 있는데 IA 문서가 없으면 경고 (단계 3 이후 의미 있음)
+# UI 문서가 있는데 IA 문서가 없으면 경고
 if [ -d "$DESIGN_DIR/ui" ] && ls "$DESIGN_DIR/ui"/*.md &>/dev/null 2>&1; then
   if [ ! -d "$DESIGN_DIR/ia" ] || ! ls "$DESIGN_DIR/ia"/*.md &>/dev/null 2>&1; then
     WARNINGS+=("UI 명세가 있지만 IA 문서(docs/spec-design/design/ia/)가 없습니다 — ia-designer 단계가 누락됐을 수 있습니다")
+  fi
+fi
+
+# pipeline.json 에 bundle_path 지정됐는데 디렉토리 비었으면 경고
+if [ -f "$HARNESS_PIPELINE_STATE" ]; then
+  BUNDLE_PATH=$(jq -r '.bundle_path // ""' "$HARNESS_PIPELINE_STATE" 2>/dev/null)
+  if [ -n "$BUNDLE_PATH" ] && [ -d "$BUNDLE_PATH" ]; then
+    if ! find "$BUNDLE_PATH" -maxdepth 2 -name "*.html" -print -quit | grep -q .; then
+      WARNINGS+=("Claude Design 번들 경로가 지정됐지만 HTML 파일이 없습니다: $BUNDLE_PATH")
+    fi
   fi
 fi
 

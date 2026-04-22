@@ -105,15 +105,27 @@ directive는 라벨별로 "지금 무엇을 할지"를 구체적으로 지시한
 
 ```
 docs/spec-design/
-├── spec/{YYYY-MM-DD}-{feature}.md       # Phase 1 요구 명세
-└── design/                              # Phase 2 설계
-    ├── arch/{YYYY-MM-DD}-{feature}.md   # 아키텍처 (모든 모드)
-    ├── ui/{YYYY-MM-DD}-{feature}.md     # UI/UX 명세 (WITH_UI 모드)
-    └── api/{YYYY-MM-DD}-{feature}.md    # API 계약
+├── spec/{YYYY-MM-DD}-{feature}.md              # Phase 1 요구 명세
+└── design/
+    ├── arch/{YYYY-MM-DD}-{feature}.md          # Phase 2-A 아키텍처 (모든 모드)
+    ├── ia/{YYYY-MM-DD}-{feature}.md            # Phase 2-B1 정보 구조 (WITH_UI)
+    ├── ui/
+    │   ├── {YYYY-MM-DD}-{feature}.md           # Phase 2-B 최종 UI 명세 (WITH_UI)
+    │   ├── claude-design/{feature}/            # visual_tool=claude-design 때
+    │   │   ├── BRIEF.md                        # 사용자에게 전달하는 브리프
+    │   │   └── bundle/                         # Claude Design HTML export
+    │   ├── stitch/{feature}/                   # visual_tool=stitch 때 (.stitch 메타)
+    │   └── iteration-reports/{feature}/
+    │       ├── iter-1.md                        # critique/audit/normalize 회차 리포트
+    │       └── iter-2.md ...
+    ├── DESIGN.md                                # Phase 2-B 디자인 토큰 SOT
+    └── api/{YYYY-MM-DD}-{feature}.md           # Phase 2-C API 계약
 
 .claude/state/
-└── pipeline.json                        # 파이프라인 상태 (current_label, waiting_for_user 등)
-                                         # init_pipeline 시 생성, cancel_pipeline 시 삭제
+└── pipeline.json                                # 파이프라인 상태 (v2 스키마)
+                                                 # init_pipeline 시 생성, cancel_pipeline 시 삭제
+
+{project_root}/.impeccable.md                    # 프로젝트 디자인 컨텍스트 (teach-impeccable 산출물)
 ```
 
 파일명: `{YYYY-MM-DD}-{feature-name}.md` (kebab-case, 영문).
@@ -136,15 +148,34 @@ docs/spec-design/
 ## 라벨 기반 상태 머신
 
 ```
+# Phase 1
 PHASE1_UX_RESEARCH_DONE → PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → PHASE1_USER_APPROVED
-→ PHASE2_START → PHASE2_WORKTREE_CREATED → PHASE2_ARCH_STRUCTURE_DONE → PHASE2_ARCH_USER_APPROVED
-→ PHASE2_UI_DESIGN_COMPLETE (WITH_UI만)
+
+# Phase 2-A: 아키텍처
+→ PHASE2_START → PHASE2_WORKTREE_CREATED
+→ PHASE2_ARCH_STRUCTURE_DONE → PHASE2_ARCH_USER_APPROVED
+
+# Phase 2-B: UI (WITH_UI 모드만; WITHOUT_UI 는 전부 skip)
+→ PHASE2_UI_CONTEXT_SET         (impeccable:teach-impeccable)
+→ PHASE2_UI_IA_DONE             (ia-designer)
+→ PHASE2_UI_IA_USER_APPROVED
+→ PHASE2_UI_BRIEF_READY         (ui-designer BRIEF 생성)
+
+  [visual_tool=claude-design]   → PHASE2_UI_BUNDLE_RECEIVED
+  [visual_tool=stitch]          → PHASE2_UI_STITCH_GENERATED
+
+→ PHASE2_UI_ITER_{1..4}_CRITIQUE → _AUDIT → _NORMALIZE → _USER_GATE
+  (통과 → DESIGN_COMPLETE / 재작업 → 다음 iter / 중단 → cancel)
+
+→ PHASE2_UI_DESIGN_COMPLETE     (모든 iter 통과)
+→ PHASE2_UI_DETAIL_ENRICHED     (animate+clarify+harden+adapt)
+→ PHASE2_UI_USER_APPROVED
+
+# Phase 2-C: API
 → PHASE2_API_DESIGN_COMPLETE → PHASE2_FINAL_APPROVED
 ```
 
 라벨은 **전진만 가능**. 스펙 변경 정책에서만 롤백 허용.
-
-> **참고:** Phase 2-B (UI 디자인) 는 단계 3 이후 `teach-impeccable → ia-designer → 브리프 → iteration 루프 → 디테일 강화` 로 대폭 확장될 예정. 현재는 단순 `ui-designer` 디스패치 → `PHASE2_UI_DESIGN_COMPLETE`.
 
 ## 에이전트 출력 표준
 
@@ -179,11 +210,10 @@ PHASE1_UX_RESEARCH_DONE → PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → 
 | `webapp-architect` | 2-A | opus | 웹 앱 아키텍처 결정 |
 | `flutter-architect` | 2-A | opus | Flutter 앱 아키텍처 결정 |
 | `native-architect` | 2-A | opus | Rust/C++ 네이티브 아키텍처 결정 |
-| `ui-designer` | 2-B | opus | UI/UX 명세 + 시각 디자인 브리프 |
+| `ia-designer` | 2-B1 | opus | 정보 구조(IA), 네비게이션, 사용자 플로우 |
+| `ui-designer` | 2-B3~5 | opus | 시각 디자인 브리프 + UI 명세 (Claude Design/Stitch) |
 | `api-designer` | 2-C | opus | API 계약 정의 |
-| `architect-reviewer` | 2 | opus | 설계 정합성 검증 |
-
-> **단계 3 이후 추가**: `ia-designer` (opus) — Phase 2-B 의 IA/플로우 전담
+| `architect-reviewer` | 2 | opus | arch/IA/UI/API 정합성 검증 |
 
 ---
 
@@ -284,31 +314,87 @@ Phase 2 프로세스 시작 전에 worktree를 생성한다. 이후 **Phase 2의
 ### WITH_UI 모드 (순차)
 
 ```
+Phase 2-A: 아키텍처
+---------------------
 1. [Architect 선택 기준으로 판정한 architect] → 아키텍처 설계
-   (레이어 구조, 폴더 구조, 컴포넌트 경계, 기술 제약사항)
    → design/arch/ 저장
    → architect-reviewer 리뷰 → 수정 → 재리뷰 (PASS까지 반복)
    → PHASE2_ARCH_STRUCTURE_DONE
 
 2. [사용자 아키텍처 승인 게이트]
-   아키텍처 구조 요약 제시 → 사용자 확인
-   피드백 있으면 architect 재디스패치 후 재검토
    → PHASE2_ARCH_USER_APPROVED
 
-3. ui-designer → UX 명세
-   ※ 단계 3 이후: teach-impeccable → ia-designer → 시각 도구 브리프(Claude Design/Stitch)
-   → 산출물: design/ui/ + DESIGN.md
-   → architect-reviewer → UI 명세 리뷰 → 수정 → PASS
-   → [사용자 UI 피드백] → 반영
+Phase 2-B: UI 디자인 (IA → 시각 → 품질 루프 → 디테일)
+------------------------------------------------
+3. Skill(impeccable:teach-impeccable) 실행
+   — 프로젝트 디자인 컨텍스트(.impeccable.md) 수립
+   — 이미 존재하면 skip
+   → PHASE2_UI_CONTEXT_SET
+
+4. Agent(ia-designer) → 정보 구조 + 사용자 플로우
+   → design/ia/ 저장
+   → architect-reviewer → IA 리뷰 → 수정 → PASS
+   → PHASE2_UI_IA_DONE
+
+5. [사용자 IA 검토 게이트]
+   섹션/네비게이션/플로우/KPI 요약 제시 → 확인
+   → PHASE2_UI_IA_USER_APPROVED
+
+6. visual_tool 선택 (미설정이면 사용자에게 claude-design/stitch 선택 요청)
+   set_visual_tool <choice>
+   Agent(ui-designer) → 시각 디자인 브리프 생성
+   → PHASE2_UI_BRIEF_READY
+
+7a. visual_tool == claude-design (수동 게이트):
+    - BRIEF.md 생성 (docs/spec-design/design/ui/claude-design/{feature}/)
+    - 사용자에게 Claude Design 에서 작업 요청
+    - waiting_for_user=true, approval_type='bundle'
+    - 사용자가 번들 경로 제공 → set_bundle_path
+    - ui-designer 재디스패치(검증 모드) → 번들 유효성 확인
+    → PHASE2_UI_BUNDLE_RECEIVED
+
+7b. visual_tool == stitch (MCP 자동):
+    - ui-designer 가 mcp__stitch__* 로 스크린 자동 생성
+    → PHASE2_UI_STITCH_GENERATED
+
+8. 품질 검증 루프 (최대 4회):
+   for N in 1..4:
+     - Skill(impeccable:critique) → iter-N.md (critique 섹션)
+     → PHASE2_UI_ITER_{N}_CRITIQUE
+     - Skill(impeccable:audit) → iter-N.md (audit 섹션 append)
+     → PHASE2_UI_ITER_{N}_AUDIT
+     - Skill(impeccable:normalize) → iter-N.md (normalize 섹션 append)
+     → PHASE2_UI_ITER_{N}_NORMALIZE
+     - [사용자 게이트] 통과 / 재작업 지시 / 중단
+     → PHASE2_UI_ITER_{N}_USER_GATE
+     - 통과 → PHASE2_UI_DESIGN_COMPLETE
+     - 재작업 → inc_iteration + ui-designer 재디스패치 → ITER_{N+1}
+     - 중단 → cancel_pipeline
+
+   iter 4 소진 + 재작업 선택 시 강제 통과 (경고 동반) 또는 중단만 가능
    → PHASE2_UI_DESIGN_COMPLETE
 
-4. api-designer (UI 명세 필수 입력) → UI 에서 도출된 데이터 요구사항 + arch 기반 API/데이터 계약 설계
-   → design/api/ 저장
-   → architect-reviewer → API 명세 리뷰 → 수정 → PASS
-   → [사용자 API 피드백] → 반영
-   → PHASE2_API_DESIGN_COMPLETE
+9. 디테일 강화 (4개 impeccable 스킬 순차 호출):
+   - Skill(impeccable:animate) → 모션·마이크로 인터랙션
+   - Skill(impeccable:clarify) → UX 카피 개선
+   - Skill(impeccable:harden) → 에러/엣지/i18n
+   - Skill(impeccable:adapt) → 반응형
+   → UI 명세 문서에 각 결과 섹션별로 누적
+   → PHASE2_UI_DETAIL_ENRICHED
 
-5. [사용자 최종 설계 승인] → PHASE2_FINAL_APPROVED
+10. [사용자 UI 최종 승인 게이트]
+    UI 명세 + DESIGN.md + iteration 리포트 요약 제시
+    → PHASE2_UI_USER_APPROVED
+
+Phase 2-C: API 설계
+---------------------
+11. Agent(api-designer) (spec + arch + IA + UI 입력) → API/데이터 계약
+    → design/api/ 저장
+    → architect-reviewer → API 명세 리뷰 → 수정 → PASS
+    → [사용자 API 피드백] → 반영
+    → PHASE2_API_DESIGN_COMPLETE
+
+12. [사용자 최종 설계 승인] → PHASE2_FINAL_APPROVED
 ```
 
 ### 아키텍처 문서 템플릿
@@ -346,14 +432,21 @@ lib/
 
 ## 게이트 정책
 
-| 전환 | 게이트 |
-|------|--------|
-| Phase 1 → 2 | spec + blocker-checker PASS + 사용자 승인 |
-| Phase 2 모드 | `init_pipeline` 의 mode 인자로 결정 (WITH_UI / WITHOUT_UI) |
-| 아키텍처 승인 | arch 문서 + 사용자 승인 |
-| UI 승인 (WITH_UI만) | UI 명세 + 사용자 승인 |
-| API 승인 | API 계약 + 사용자 승인 |
-| Phase 2 최종 | 전 산출물 + 최종 승인 |
+| 전환 | 게이트 | 자동/수동 |
+|------|--------|----------|
+| Phase 1 → 2 | spec + blocker-checker PASS + 사용자 승인 | 수동 승인 |
+| Phase 2 모드 | `init_pipeline` 의 mode 인자 (WITH_UI / WITHOUT_UI) | 자동 |
+| Phase 2-A → 2-B | arch 승인 | 수동 승인 |
+| Phase 2-B 진입 | `.impeccable.md` 존재 (없으면 teach-impeccable 자동 호출) | 자동 |
+| IA 승인 | IA 문서 + 사용자 승인 | 수동 승인 |
+| visual_tool 선택 | claude-design / stitch (미설정 시 사용자 선택) | 수동 |
+| 번들 수신 (claude-design) | `bundle_path/` 에 HTML 존재 | 자동 검증 |
+| iter 사용자 게이트 | "통과/재작업/중단" 자연어 (최대 4회) | 수동 승인 |
+| iter 4 소진 | 강제 통과 or 중단만 선택 가능 | 자동 경고 |
+| UI 최종 승인 | UI 명세 + DESIGN.md + iter 리포트 | 수동 승인 |
+| Phase 2-B → 2-C | UI 승인 완료 (WITH_UI) / arch 승인 완료 (WITHOUT_UI) | 자동 |
+| API 승인 | API 계약 | 수동 승인 |
+| Phase 2 최종 | 전 산출물 + 최종 승인 | 수동 승인 |
 
 ## 스펙 변경 정책
 

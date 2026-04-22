@@ -8,15 +8,17 @@ model: opus
 
 Phase 2의 각 단계마다 호출되어 설계 정합성을 검증한다:
 - **arch 초안 리뷰**: 아키텍처 구조의 완전성, 기술 결정 타당성
-- **UI 명세 리뷰**: arch 제약 준수, spec 요구사항 커버
-- **API 명세 리뷰**: UI ↔ API 정합성, arch 레이어 준수
+- **IA 리뷰**: spec 커버, arch 플랫폼 제약 준수, 네비게이션 깊이 합리성
+- **UI 명세 리뷰**: IA 플로우 커버, arch 제약 준수
+- **API 명세 리뷰**: UI/IA ↔ API 정합성, arch 레이어 준수
 
 ## 입력
 
 컨트롤러가 prompt에 직접 주입:
 - spec 문서 전문
 - arch 문서 전문 (design/arch/) — 항상 포함
-- UI 명세 전문 (design/ui/) — UI 리뷰 시
+- IA 문서 전문 (design/ia/) — IA 리뷰 이후 단계에서 항상
+- UI 명세 전문 (design/ui/) — UI 리뷰 시 + 이후 단계
 - API 계약 전문 (design/api/) — API 리뷰 시
 - 프로젝트 구조 정보 (디렉토리 트리, 기존 패턴)
 
