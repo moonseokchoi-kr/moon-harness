@@ -37,13 +37,13 @@ Codex는 SKILL.md의 frontmatter 중 name과 description만 사용:
 ```yaml
 # Claude Code (전체 유지)
 ---
-name: sdd
+name: spec-design
 description: "full description..."
 ---
 
 # Codex (name + description만)
 ---
-name: sdd
+name: spec-design
 description: "full description..."
 ---
 ```

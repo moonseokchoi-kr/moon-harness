@@ -12,10 +12,10 @@
 |------|------|
 | {마일스톤/Phase/단계} | **완료** / **진행 중** / **미시작** / **블로킹** — 부연 설명 |
 
-<!-- SDD 프로젝트인 경우 아래 행 추가:
-| SDD Phase 1 (Spec) | **완료** — blocker check 결과 요약 |
-| SDD Phase 2 (Develop) | **완료** — 사용자 승인 여부 |
-| SDD Phase 3 (Task) | **진행 중** — N/M 태스크 완료 |
+<!-- spec-design 프로젝트인 경우 아래 행 추가:
+| spec-design Phase 1 (Spec) | **완료** — blocker check 결과 요약 |
+| spec-design Phase 2 (Design) | **완료** — 사용자 승인 여부 |
+| spec-design Phase 2-C (API) | **진행 중** — N/M 태스크 완료 |
 | Worktree | `경로` / 브랜치 `이름` |
 -->
 

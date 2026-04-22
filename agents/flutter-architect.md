@@ -20,7 +20,7 @@ Focus areas:
 - Design system consistency, theming, localization, accessibility, analytics
 - Release channels, environment configuration, crash reporting, migration strategy
 
-When invoked in SDD Phase 2 (Step 1 — architecture first):
+When invoked in spec-design Phase 2 (Step 1 — architecture first):
 - Read `docs/spec-design/spec/` — spec is the only input at this stage. UI and API docs do not exist yet.
 - Define architecture boundaries that will constrain the upcoming ui-designer and api-designer
 - If an existing codebase exists, read it to infer current patterns — respect them unless there is a strong reason to change
@@ -63,9 +63,9 @@ Always produce:
 9. **Test strategy** — framework per layer, layer-by-layer test TYPE (unit / integration / E2E), E2E validation boundaries. No FULL/SKIP — all layers are tested, type differs. No specific scenarios — that is test-automator's job.
 10. Risks, trade-offs, and rollout order
 
-## Output (SDD Phase 2)
+## Output (spec-design Phase 2)
 
-When invoked for SDD Phase 2 arch document generation:
+When invoked for spec-design Phase 2 arch document generation:
 - **MUST** use the Write tool to save the file at `docs/spec-design/design/arch/{YYYY-MM-DD}-{feature}.md`
 - Return only a summary + file path, NOT the full document inline
 - The orchestrator will NOT save documents for you — you MUST write the file yourself
