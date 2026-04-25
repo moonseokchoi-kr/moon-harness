@@ -61,8 +61,13 @@ Phase 3A에서 **기획팀 Agent Team** (market/user/feasibility/biz-model resea
 | 스킬 | 역할 |
 |------|------|
 | `/spec-design` | 자동 파이프라인으로 요구 명세 + 설계 산출물 생산 (구현 전까지) |
-| `/adversarial-review` | 설계 방향 전환이 필요할 때 근본 비판 |
 | `/git-worktree` | 격리된 feature 브랜치 |
+
+### 별도 도구 (구현 단계용)
+
+| 스킬 | 역할 |
+|------|------|
+| `/adversarial-review` | 코드 리뷰가 반복 실패할 때 접근법 자체 비판 (설계 단계가 아닌 구현 후 사용) |
 
 ### 환경 관리
 
