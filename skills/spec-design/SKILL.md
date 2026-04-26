@@ -73,7 +73,7 @@ directive는 라벨별로 "지금 무엇을 할지"를 구체적으로 지시한
 ### 파이프라인 재개 / 취소
 
 - 재개: 같은 프로젝트의 다음 세션에서 자동 재개 (pipeline.json + session_id 매칭)
-- 취소: `cancel_pipeline` 또는 `.claude/state/pipeline.json` 삭제
+- 취소: `cancel_pipeline` 또는 `.harness/state/pipeline.json` 삭제
 
 ---
 
@@ -121,7 +121,7 @@ docs/spec-design/
     ├── DESIGN.md                                # Phase 2-B 디자인 토큰 SOT
     └── api/{YYYY-MM-DD}-{feature}.md           # Phase 2-C API 계약
 
-.claude/state/
+.harness/state/
 └── pipeline.json                                # 파이프라인 상태 (v2 스키마)
                                                  # init_pipeline 시 생성, cancel_pipeline 시 삭제
 

@@ -13,8 +13,8 @@ Thumbs.db
 node_modules/
 
 # Local state (runtime-only, not part of plugin)
-.claude/state/
-**/.claude/state/
+.harness/state/
+**/.harness/state/
 
 # Stray analysis artifacts
 compatibility-report.md

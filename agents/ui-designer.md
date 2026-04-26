@@ -31,7 +31,7 @@ IA 문서를 입력받아 시각 디자인 브리프를 생성하고, 선택된 
 - `docs/spec-design/design/ia/{feature}.md` — **IA 문서 (필수 입력)**
 - `.impeccable.md` — 디자인 컨텍스트
 - worktree 절대 경로
-- `.claude/state/pipeline.json` 경로 — `visual_tool`, `ui_iteration.count`, `bundle_path` 확인용
+- `.harness/state/pipeline.json` 경로 — `visual_tool`, `ui_iteration.count`, `bundle_path` 확인용
 
 ## 작업 분기 (visual_tool 에 따라)
 

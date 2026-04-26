@@ -474,7 +474,7 @@ def main():
         stop_data = {}
 
     project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
-    pipeline_path = project_dir / ".claude/state/pipeline.json"
+    pipeline_path = project_dir / ".harness/state/pipeline.json"
 
     try:
         result = decide(stop_data, project_dir, pipeline_path)

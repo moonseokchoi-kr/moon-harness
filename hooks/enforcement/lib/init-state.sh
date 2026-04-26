@@ -1,6 +1,6 @@
 #!/bin/bash
 # enforcement/lib/init-state.sh
-# .claude/state/ 디렉토리와 초기 상태 파일을 생성한다.
+# .harness/state/ 디렉토리와 초기 상태 파일을 생성한다.
 # SessionStart 훅(phase-gate.sh)에서 호출된다.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
