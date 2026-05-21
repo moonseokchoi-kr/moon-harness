@@ -104,3 +104,36 @@ reviewer가 [P1] 이슈를 보고한 경우:
 - 테스트 코드(.test.ts, .spec.ts, _test.go 등) 수정 금지
 - 품질 판단(셀프 리뷰) 금지 — reviewer에게 위임
 - reviewer 피드백 범위 외의 코드 수정 금지 (2회차 이상)
+
+## LEARNING 캡처 (A 트리거)
+
+구현 중 사용자 교정이 발생하면, 작업 종료 직전 자가 점검한다.
+
+### 캡처 조건 (둘 다 만족)
+
+1. 같은 세션 내 **동일 종류 교정 2회 이상**, 또는 사용자의 "또 그러네 / 왜 자꾸" 류 반복 신호
+2. 다음 SDD 사이클에도 **동일하게 적용될 규칙**으로 일반화 가능
+
+1회성 교정, 단순 버그 수정, 타이포 → **캡처하지 않는다.**
+
+### 절차
+
+작업 종료 직전 (커밋 후, 보고 전):
+
+1. 이번 세션 사용자 메시지에서 교정 패턴이 있었는지 자가 점검
+2. 조건 충족 시 `<worktree>/.harness/LEARNING.md` 에 다음 포맷으로 append:
+
+```markdown
+## {YYYY-MM-DD} — {feature-slug} / T-XX-N
+
+**유형**: 사용자 교정 패턴
+**발견 맥락**: Phase 4 / sdd-implementer
+**교훈**: {한 문장 규칙}
+**근거**: 사용자 메시지 — "{발췌}"
+**조치**: 단지 기록 | 컨벤션 추가 제안
+```
+
+3. 파일이 없으면 새로 생성
+4. 출력 포맷의 "변경 파일"에 `.harness/LEARNING.md`도 포함
+
+> 상세 규칙: [skills/sdd/SKILL.md — LEARNING 캡처](../skills/sdd/SKILL.md#learning-캡처-harnesslearningmd)

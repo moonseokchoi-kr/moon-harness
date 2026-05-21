@@ -139,3 +139,43 @@ adversarial review 권장 — 잔존 P1 목록 + 해소 불가 사유.
 - 이전 [P1] 이슈가 미수정이면 `BLOCKED`
 - 새로 발견된 [P1] 이슈가 있으면 `BLOCKED`
 - 모든 이전 [P1] 이슈 수정 + 새 [P1] 이슈 없음 → `DONE`
+
+---
+
+## LEARNING 캡처 (B 트리거 — 숨은 제약)
+
+[P1] 검토 중, 이슈의 근원이 **PRD/spec에 명시되지 않은 코드베이스 규약/제약** 위반인 경우 `.harness/LEARNING.md`에 append.
+
+### 캡처 조건
+
+다음 모두 충족 시:
+1. [P1] 판정 (BLOCKED 사유)
+2. 위반된 규약/제약이 spec, arch, design 문서 어디에도 명시되지 않음
+3. 다음 사이클에도 **동일 종류 위반이 재발할 위험**이 있음
+
+**캡처 제외:**
+- 일반 로직 버그 (스펙 외 사실 아님)
+- 타이포, 명확한 실수
+- 이미 spec/arch에 명시된 규칙 위반 — 단순 미준수 보고로 충분
+
+### 절차
+
+이슈 보고 작성 시 함께 처리:
+
+1. [P1] 이슈 중 위 조건 충족 항목 식별
+2. `<worktree>/.harness/LEARNING.md` 에 append:
+
+```markdown
+## {YYYY-MM-DD} — {feature-slug} / T-XX-N
+
+**유형**: 숨은 제약
+**발견 맥락**: Phase 4 / sdd-reviewer
+**교훈**: {한 문장 — 다음 코드 작성/리뷰 시 적용할 규칙}
+**근거**: {file:line} — {위반 내용} (spec/arch 미명시)
+**조치**: arch/컨벤션 문서 갱신 권고 | 단지 기록
+```
+
+3. 파일이 없으면 새로 생성
+4. 출력 포맷 이슈 목록 아래에 "LEARNING.md에 N건 기록"으로 보고
+
+> 상세 규칙: [skills/sdd/SKILL.md — LEARNING 캡처](../skills/sdd/SKILL.md#learning-캡처-harnesslearningmd)

@@ -553,6 +553,57 @@ sdd 리드는 오케스트레이터 실행 결과만 수신한다. 리뷰 루프
 
 Phase 4 도중: 현재 태스크 완료 → spec v2 수정 → blocker-checker 재실행 → (FULL) design/arch/ui/api 영향 분석 → 해당 문서 수정 → 승인 → Phase 4 재개.
 
+## LEARNING 캡처 (`.harness/LEARNING.md`)
+
+SDD 사이클 중 발견된 **반복 가능한 교훈**을 프로젝트 단위로 누적한다.
+다음 SDD 사이클 시작 시 프로젝트 `CLAUDE.md`의 `@.harness/LEARNING.md` import로 자동 로드되어, 같은 실수를 반복하지 않게 한다.
+
+### 위치 / 로딩
+
+- 파일: `<repo>/.harness/LEARNING.md` (프로젝트 루트 기준)
+- 로딩: 프로젝트 `CLAUDE.md`에 `@.harness/LEARNING.md` 1줄 import (harness 스킬이 보장)
+- 파일 부재 시: 첫 append하는 에이전트가 생성
+
+### 캡처 대상 (좁게)
+
+| 유형 | 누가 잡나 | 트리거 |
+|------|----------|--------|
+| **사용자 교정 패턴** | sdd-implementer (및 engineer agents) | 구현 중 사용자가 교정한 항목 중 *반복 가능한 규칙* (예: "이 codebase에선 항상 X 패턴", "테스트 누락") |
+| **스펙 가정 오류** | sdd-compliance-checker | spec vs 코드 mismatch 분석 결과 *스펙 자체가 틀렸던* 항목 |
+| **숨은 제약** | sdd-reviewer | [P1] 검토 중 PRD/스펙에 명시되지 않았던 *코드베이스 제약*이 드러난 경우 |
+
+**캡처하지 말 것:**
+- 일회성 버그 수정, 타이포, 단순 트러블슈팅
+- 이미 spec/arch에 적힌 사실 (중복 기록)
+- 사용자 선호 (auto memory의 feedback 타입이 담당)
+- 아이디어 단계의 거부된 방향 (idea-workshop은 캡처 안 함)
+
+### 엔트리 포맷 (append-only)
+
+```markdown
+## {YYYY-MM-DD} — {feature-slug} / {task-id}
+
+**유형**: 사용자 교정 패턴 | 스펙 가정 오류 | 숨은 제약
+**발견 맥락**: Phase {N} / {Agent name}
+**교훈**: {한 문장 — 다음에도 적용할 규칙}
+**근거**: {사용자 메시지 발췌 또는 spec:line vs code:line}
+**조치**: {스펙 갱신 / 컨벤션 추가 / 단지 기록}
+```
+
+기존 파일 끝에 `##` 헤더로 append만 한다. 기존 엔트리 수정/삭제 금지.
+
+### 트리거 규칙 (Anti-noise)
+
+- **사용자 교정**: 같은 세션에서 *2회 이상 동일 종류 교정* 또는 사용자가 "또 그러네", "왜 자꾸" 류의 반복 신호를 보낸 경우만 캡처. 1회성 교정은 무시.
+- **스펙 가정 오류**: compliance check에서 `BLOCKED` 판정인데 원인이 *코드가 틀린 게 아니라 스펙이 틀린* 경우만. 단순 누락은 컴플라이언스 보고로 충분.
+- **숨은 제약**: P1 이슈 중 PRD/스펙에 *명시되지 않은* 코드베이스 규약 위반인 경우만. 일반 P1은 LEARNING 대상 아님.
+
+### Engineer agents 일반 규칙
+
+`sdd-implementer`에 정의된 LEARNING 캡처 규칙은 **모든 engineer agent** (sdd-ts-engineer, sdd-rust-engineer, sdd-react-specialist 등)에 동일하게 적용된다. 개별 agent 파일에서 별도 명시하지 않더라도 위 규칙을 따른다.
+
+---
+
 ## 멀티 feature / 하위 호환성
 
 - 각 feature는 독립 worktree + 독립 문서. 동시 진행 가능.
