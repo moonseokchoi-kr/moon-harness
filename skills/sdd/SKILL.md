@@ -330,7 +330,7 @@ Phase 2 프로세스를 시작하기 **전에** 아래 체크리스트를 먼저
    → PHASE2_ARCH_USER_APPROVED
 
 3. sdd-ui-designer → 순수 UX 명세 (아키텍처 제약 안에서)
-   ※ 디스패치 프롬프트에 반드시 포함: "Stitch MCP로 화면을 생성하고 design-md 스킬로 DESIGN.md를 작성해야 한다"
+   ※ 디스패치 프롬프트에 반드시 포함: "DESIGN.md를 작성해야 한다 (화면 레이아웃, 플로우, 인터랙션, 비주얼 가이드)"
    ※ 작성 범위: 화면 레이아웃, 플로우, 인터랙션, 비주얼 가이드
    ※ 작성 금지: 상태 타입/관리 위치, API 엔드포인트, 프레임워크 API 명칭
    → 산출물: design/ui/ + docs/sdd/design/DESIGN.md (둘 다 필수)
