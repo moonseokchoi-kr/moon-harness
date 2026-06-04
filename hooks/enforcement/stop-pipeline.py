@@ -26,6 +26,24 @@ import glob
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
+
+def _winify_path(p: str) -> str:
+    """Git-bash/MSYS '/c/foo' 경로를 'C:/foo' 로 정규화한다 (Windows 전용).
+
+    네이티브 Windows Python 은 '/c/foo' 를 'C:\\c\\foo' 로 잘못 해석해 파일을
+    못 연다. macOS/Linux(os.name != 'nt') 와 이미 Windows 형식인 경로엔 무변경.
+    """
+    if (
+        os.name == "nt"
+        and len(p) >= 2
+        and p[0] == "/"
+        and p[1].isalpha()
+        and (len(p) == 2 or p[2] == "/")
+    ):
+        return p[1].upper() + ":" + p[2:]
+    return p
+
+
 # ─── 상수 ──────────────────────────────────────────────────────
 
 SCHEMA_VERSION = 1
@@ -148,7 +166,7 @@ def has_spec(project_dir: Path, feature: str) -> bool:
 def has_blocker_pass(project_dir: Path, feature: str) -> bool:
     for f in project_dir.glob("docs/sdd/spec/*.md"):
         try:
-            if "BLOCKER_PASS" in f.read_text():
+            if "BLOCKER_PASS" in f.read_text(encoding="utf-8"):
                 return True
         except Exception:
             continue
@@ -183,7 +201,7 @@ def has_orchestrator_state(project_dir: Path) -> bool:
 
 def load_state(path: Path) -> dict:
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
@@ -387,7 +405,7 @@ def main():
     except Exception:
         stop_data = {}
 
-    project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
+    project_dir = Path(_winify_path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())))
     pipeline_path = project_dir / ".claude/state/pipeline.json"
 
     try:

@@ -22,4 +22,7 @@ if [ ! -f "$PYTHON_ENGINE" ]; then
 fi
 
 # stdin 을 Python 엔진으로 전달
+# Windows(cp949 등) 에서 UTF-8 파일/스트림(한글 directive 포함) 디코드 실패를
+# 막기 위해 UTF-8 모드 강제. macOS/Linux 는 이미 UTF-8 기본이라 영향 없음.
+export PYTHONUTF8=1
 exec python3 "$PYTHON_ENGINE"

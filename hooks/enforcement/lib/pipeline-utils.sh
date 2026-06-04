@@ -8,6 +8,11 @@
 #   set_waiting_for_user "true" "arch"
 #   advance_label "PHASE2_ARCH_STRUCTURE_DONE"
 
+# Windows(cp949 등) 에서 UTF-8 pipeline.json(한글 directive 포함) 디코드 실패를
+# 막기 위해 UTF-8 모드 강제. 이 파일을 source 한 셸의 모든 python3 호출이 상속한다.
+# macOS/Linux 는 이미 UTF-8 기본이라 영향 없음.
+export PYTHONUTF8=1
+
 # bash/zsh 호환 SCRIPT_DIR 계산
 if [ -n "${BASH_SOURCE-}" ] && [ -n "${BASH_SOURCE[0]-}" ]; then
   _PIPELINE_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
