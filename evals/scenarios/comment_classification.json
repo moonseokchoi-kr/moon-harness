@@ -1,0 +1,79 @@
+{
+  "id": "eval-comment-cls-001",
+  "description": "코멘트 분류 정확도 — actionable vs escalation 판단 레이어 시나리오",
+  "scenario_type": "comment_classification",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "cc-001",
+      "input": {
+        "comment": "함수 이름을 더 명확하게 바꿔주세요. `process_data` → `normalize_input_records` 가 의미가 명확합니다.",
+        "context": {
+          "pr_number": "42",
+          "iteration": 1,
+          "prior_signals": []
+        }
+      },
+      "expected_label": "actionable",
+      "judge_criteria": {
+        "rubric": "코멘트가 구체적인 수정 지시를 포함하고 작성자가 단독으로 처리 가능하면 actionable. 의사결정권자나 외부 승인이 필요하면 escalation.",
+        "accept_conditions": [
+          "LLM 판정이 expected_label과 일치"
+        ],
+        "reject_conditions": [
+          "LLM 판정이 expected_label과 불일치",
+          "판정 근거 없이 결론만 반환"
+        ]
+      },
+      "human_note": "명확한 이름 변경 요청. 단독 처리 가능. 골든 레이블: 2026-06-17"
+    },
+    {
+      "id": "cc-002",
+      "input": {
+        "comment": "이 API 설계 변경은 다른 팀과 조율이 필요합니다. 아키텍처 회의 후 재검토해주세요.",
+        "context": {
+          "pr_number": "55",
+          "iteration": 2,
+          "prior_signals": ["api-design-concern"]
+        }
+      },
+      "expected_label": "escalation",
+      "judge_criteria": {
+        "rubric": "코멘트가 구체적인 수정 지시를 포함하고 작성자가 단독으로 처리 가능하면 actionable. 의사결정권자나 외부 승인이 필요하면 escalation.",
+        "accept_conditions": [
+          "LLM 판정이 expected_label과 일치"
+        ],
+        "reject_conditions": [
+          "LLM 판정이 expected_label과 불일치",
+          "판정 근거 없이 결론만 반환"
+        ]
+      },
+      "human_note": "팀 간 조율 필요. 단독 처리 불가. 골든 레이블: 2026-06-17"
+    },
+    {
+      "id": "cc-003",
+      "input": {
+        "comment": "테스트 커버리지 80% 이상 확보해주세요. pytest-cov 리포트 첨부 필수.",
+        "context": {
+          "pr_number": "67",
+          "iteration": 1,
+          "prior_signals": []
+        }
+      },
+      "expected_label": "actionable",
+      "judge_criteria": {
+        "rubric": "코멘트가 구체적인 수정 지시를 포함하고 작성자가 단독으로 처리 가능하면 actionable. 의사결정권자나 외부 승인이 필요하면 escalation.",
+        "accept_conditions": [
+          "LLM 판정이 expected_label과 일치"
+        ],
+        "reject_conditions": [
+          "LLM 판정이 expected_label과 불일치",
+          "판정 근거 없이 결론만 반환"
+        ]
+      },
+      "human_note": "커버리지 기준 명확. 작성자 단독 처리 가능. 골든 레이블: 2026-06-17"
+    }
+  ],
+  "judge_model": "claude-3-5-sonnet-20241022",
+  "judge_prompt_template": "다음 PR 코멘트를 분류하세요.\n\n분류 기준:\n- actionable: 구체적인 수정 지시가 있고 작성자가 단독으로 처리 가능\n- escalation: 의사결정권자나 외부 팀의 승인/조율이 필요\n\nPR 코멘트: {comment}\n\n컨텍스트: {context}\n\n판정 결과를 JSON으로 반환하세요:\n{\"label\": \"actionable\" | \"escalation\", \"reason\": \"<판정 근거 1-2문장>\"}"
+}

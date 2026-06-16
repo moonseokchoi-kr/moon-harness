@@ -1,0 +1,66 @@
+{
+  "id": "eval-clustering-001",
+  "description": "클러스터링 품질 — PR 코멘트 시그널 클러스터링 판단 레이어 시나리오",
+  "scenario_type": "clustering_quality",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "cq-001",
+      "input": {
+        "comments": [
+          {"id": "c1", "signal_key": "naming-c1", "body": "함수 이름 변경: process → normalize"},
+          {"id": "c2", "signal_key": "naming-c2", "body": "클래스 이름 변경: Handler → Processor"},
+          {"id": "c3", "signal_key": "test-c3", "body": "유닛 테스트 커버리지 80% 이상 확보"},
+          {"id": "c4", "signal_key": "naming-c4", "body": "변수명 축약 금지: tmp → temporary_buffer"}
+        ],
+        "expected_clusters": {
+          "naming": ["c1", "c2", "c4"],
+          "testing": ["c3"]
+        }
+      },
+      "expected_label": "GOOD_CLUSTERING",
+      "judge_criteria": {
+        "rubric": "동일 도메인(naming, testing, performance 등) 코멘트가 같은 클러스터에 속하면 GOOD_CLUSTERING. 이종 코멘트가 혼합되면 BAD_CLUSTERING.",
+        "accept_conditions": [
+          "naming 관련 코멘트가 동일 클러스터에 묶임",
+          "testing 코멘트가 별도 클러스터로 분리됨"
+        ],
+        "reject_conditions": [
+          "naming과 testing 코멘트가 동일 클러스터에 혼합됨",
+          "클러스터 수가 1개 (과소 분할)"
+        ]
+      },
+      "human_note": "명확한 2그룹 분리 케이스. 골든 레이블: 2026-06-17"
+    },
+    {
+      "id": "cq-002",
+      "input": {
+        "comments": [
+          {"id": "c1", "signal_key": "perf-c1", "body": "N+1 쿼리 제거 필요"},
+          {"id": "c2", "signal_key": "perf-c2", "body": "캐시 레이어 추가로 응답속도 개선"},
+          {"id": "c3", "signal_key": "security-c3", "body": "SQL 인젝션 취약점 수정 필요"},
+          {"id": "c4", "signal_key": "perf-c4", "body": "인덱스 최적화로 조회 속도 10배 향상 가능"}
+        ],
+        "expected_clusters": {
+          "performance": ["c1", "c2", "c4"],
+          "security": ["c3"]
+        }
+      },
+      "expected_label": "GOOD_CLUSTERING",
+      "judge_criteria": {
+        "rubric": "동일 도메인(naming, testing, performance 등) 코멘트가 같은 클러스터에 속하면 GOOD_CLUSTERING. 이종 코멘트가 혼합되면 BAD_CLUSTERING.",
+        "accept_conditions": [
+          "performance 코멘트 3개가 동일 클러스터에 묶임",
+          "security 코멘트가 별도 클러스터로 분리됨"
+        ],
+        "reject_conditions": [
+          "performance와 security 코멘트가 혼합됨",
+          "c3이 performance 클러스터에 포함됨"
+        ]
+      },
+      "human_note": "성능/보안 2그룹 분리. 골든 레이블: 2026-06-17"
+    }
+  ],
+  "judge_model": "claude-3-5-sonnet-20241022",
+  "judge_prompt_template": "다음 PR 코멘트 목록의 클러스터링 품질을 평가하세요.\n\n평가 기준:\n- GOOD_CLUSTERING: 동일 도메인 코멘트가 같은 클러스터에 묶이고 이종 코멘트가 분리됨\n- BAD_CLUSTERING: 이종 코멘트가 혼합되거나 과소/과다 분할됨\n\n코멘트 목록: {comments}\n예상 클러스터: {expected_clusters}\n\n판정 결과를 JSON으로 반환하세요:\n{\"label\": \"GOOD_CLUSTERING\" | \"BAD_CLUSTERING\", \"reason\": \"<판정 근거 1-2문장>\", \"cluster_quality_score\": 0.0-1.0}"
+}

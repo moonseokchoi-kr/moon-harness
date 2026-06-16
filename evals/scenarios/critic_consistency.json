@@ -1,0 +1,83 @@
+{
+  "id": "eval-critic-consistency-001",
+  "description": "critic 판정 일관성 — UPHELD/REFUTED/NARROW 판정 레이어 시나리오",
+  "scenario_type": "critic_consistency",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "crit-001",
+      "input": {
+        "original_claim": "이 함수는 O(n²) 시간복잡도를 가지므로 대용량 데이터에서 병목이 발생합니다.",
+        "rebuttal": "실제 운영 데이터 크기는 최대 1,000건이며 프로파일링 결과 해당 함수는 전체 실행시간의 0.1%만 차지합니다.",
+        "evidence": {
+          "profiling_report": "function_x: 0.1% of total runtime (1000 samples)",
+          "data_size_limit": 1000
+        }
+      },
+      "expected_label": "REFUTED",
+      "judge_criteria": {
+        "rubric": "반론이 원본 주장을 실증적으로 반박하면 REFUTED. 원본 주장이 증거에도 불구하고 타당하면 UPHELD. 부분적으로만 반박되면 NARROW.",
+        "accept_conditions": [
+          "LLM 판정이 REFUTED",
+          "프로파일링 수치와 데이터 크기 한계를 근거로 제시"
+        ],
+        "reject_conditions": [
+          "증거를 무시하고 UPHELD 판정",
+          "판정 근거 없이 결론만 반환"
+        ]
+      },
+      "human_note": "실측 데이터로 주장 반박. 판정: REFUTED. 골든 레이블: 2026-06-17"
+    },
+    {
+      "id": "crit-002",
+      "input": {
+        "original_claim": "인증 토큰을 클라이언트 로컬스토리지에 저장하면 XSS 공격에 취약합니다.",
+        "rebuttal": "현재 CSP 헤더가 인라인 스크립트를 차단하므로 XSS 위험이 없습니다.",
+        "evidence": {
+          "csp_header": "Content-Security-Policy: script-src 'self'",
+          "attack_vectors": ["stored_xss_via_user_input", "third_party_script_injection"]
+        }
+      },
+      "expected_label": "UPHELD",
+      "judge_criteria": {
+        "rubric": "반론이 원본 주장을 실증적으로 반박하면 REFUTED. 원본 주장이 증거에도 불구하고 타당하면 UPHELD. 부분적으로만 반박되면 NARROW.",
+        "accept_conditions": [
+          "LLM 판정이 UPHELD",
+          "CSP가 모든 XSS 벡터를 완전히 차단하지 못함을 지적"
+        ],
+        "reject_conditions": [
+          "CSP만으로 XSS가 불가능하다고 REFUTED 판정",
+          "판정 근거 없이 결론만 반환"
+        ]
+      },
+      "human_note": "CSP는 부분적 완화일 뿐 XSS 위험 완전 제거 불가. 판정: UPHELD. 골든 레이블: 2026-06-17"
+    },
+    {
+      "id": "crit-003",
+      "input": {
+        "original_claim": "이 모듈의 의존성 주입 방식은 테스트 불가능한 구조입니다.",
+        "rebuttal": "unittest.mock을 사용하면 현재 구조에서도 충분히 테스트 가능합니다. 실제로 기존 테스트 스위트가 통과하고 있습니다.",
+        "evidence": {
+          "test_suite_status": "passing",
+          "test_count": 45,
+          "mock_usage": "unittest.mock.patch used in 12 tests"
+        }
+      },
+      "expected_label": "NARROW",
+      "judge_criteria": {
+        "rubric": "반론이 원본 주장을 실증적으로 반박하면 REFUTED. 원본 주장이 증거에도 불구하고 타당하면 UPHELD. 부분적으로만 반박되면 NARROW.",
+        "accept_conditions": [
+          "LLM 판정이 NARROW",
+          "현재는 테스트 가능하나 구조적 개선 여지가 있음을 인정"
+        ],
+        "reject_conditions": [
+          "단순히 REFUTED 또는 UPHELD 중 하나로만 판정",
+          "판정 근거 없이 결론만 반환"
+        ]
+      },
+      "human_note": "부분적 반박. mock으로 가능하나 구조 개선 여지 있음. 판정: NARROW. 골든 레이블: 2026-06-17"
+    }
+  ],
+  "judge_model": "claude-3-5-sonnet-20241022",
+  "judge_prompt_template": "다음 주장과 반론을 평가하여 critic 판정을 내리세요.\n\n판정 기준:\n- UPHELD: 반론이 원본 주장을 실증적으로 반박하지 못함 (주장 유지)\n- REFUTED: 반론이 증거와 함께 원본 주장을 완전히 반박함\n- NARROW: 반론이 일부만 반박하거나 조건부로 타당함\n\n원본 주장: {original_claim}\n반론: {rebuttal}\n증거: {evidence}\n\n판정 결과를 JSON으로 반환하세요:\n{\"label\": \"UPHELD\" | \"REFUTED\" | \"NARROW\", \"reason\": \"<판정 근거 1-2문장>\", \"confidence\": 0.0-1.0}"
+}
