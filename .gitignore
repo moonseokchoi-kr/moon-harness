@@ -20,3 +20,5 @@ node_modules/
 compatibility-report.md
 detect-claude-deps.csv
 
+__pycache__/
+*.pyc
