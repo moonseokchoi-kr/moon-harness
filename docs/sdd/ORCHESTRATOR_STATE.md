@@ -32,8 +32,8 @@
 ---
 
 ## 현재 진행
-- 현재 Wave: 1-B
-- 완료 Wave: 1-A (T-1, T-2 complete — 103/103 pytest, P1 0)
+- 현재 Wave: 2 (사용자 승인 대기 — protected set EXTEND)
+- 완료 Wave: 1-A, 1-B, 1-C (Wave 1 foundation 완료 — T-1~T-5, 243/243 pytest, P1 0)
 
 ---
 
@@ -43,9 +43,9 @@
 |----|------|--------|--------|-----------|-------|------|
 | T-1 | 1-A | sdd-python-engineer | complete | 1 | - | cb8c411. 103/103, REVIEW_PASS P1 0 |
 | T-2 | 1-A | sdd-python-engineer | complete | 1 | - | a265023. 103/103, REVIEW_PASS P1 0 |
-| T-3 | 1-B | sdd-python-engineer | impl-done | 1 | slot-1 | 62신규/243전체 통과(25200cd). ⚠️커밋에 T-4 partial 혼입 — T-4 완료후 정리 |
-| T-4 | 1-B | sdd-python-engineer | implementing | 1 | slot-2 | 상한/케이던스/서킷브레이커 + 라우터 |
-| T-5 | 1-C | sdd-python-engineer | pending | 0 | - | Wave 1 코어 전체 오프라인 pytest suite |
+| T-3 | 1-B | sdd-python-engineer | complete | 1 | - | d8216e9. REVIEW_PASS P1 0 |
+| T-4 | 1-B | sdd-python-engineer | complete | 1 | - | 25200cd. REVIEW_PASS P1 0 (cadence 300금지 검증) |
+| T-5 | 1-C | sdd-python-engineer | complete | 1 | - | d074c43. 243/243, socket 패치 오프라인 강제, evals 분리 |
 | T-6 | 2 | sdd-implementer | pending | 0 | - | [PROTECTED] pr-converge SKILL.md EXTEND + scripts/ — 사람 검토 하 수동 EXTEND, 자동생성루프 대상 아님 |
 | T-7 | 2 | sdd-implementer | pending | 0 | - | [PROTECTED] self-improve SKILL.md EXTEND + scripts/ — 사람 검토 하 수동 EXTEND, 자동생성루프 대상 아님 |
 | T-8 | 2 | sdd-implementer | pending | 0 | - | [PROTECTED] harness-improvement-critic.md EXTEND — 사람 검토 하 수동 EXTEND, 자동생성루프 대상 아님 |
