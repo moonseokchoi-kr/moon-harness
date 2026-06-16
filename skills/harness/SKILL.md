@@ -61,8 +61,14 @@ docs/
 
 ```
 .harness/
-└── LEARNING.md            # SDD 사이클 중 에이전트가 append하는 교훈 로그
+├── LEARNING.md            # SDD 사이클 중 에이전트가 append하는 raw 교훈 로그 (자가개선 루프의 입력)
+├── retro-log.md           # self-improve 회고 기록 (append-only, 롤백 정보 포함) — 첫 회고 시 생성
+├── retro-state.json       # self-improve 커서 (마지막 처리 엔트리) — 첫 회고 시 생성
+├── harness-proposals/     # 하네스 티어 개선 제안 큐 (사람 승인 대기) — 필요 시 생성
+└── pr-converge-state.json # pr-converge PR별 수렴 상태 (코멘트 재처리 방지·서킷브레이커) — 첫 패스 시 생성
 ```
+
+`retro-*`·`pr-converge-state.json` 파일과 `harness-proposals/`는 미리 만들지 않는다 — 각 스킬(`self-improve`, `pr-converge`)이 처음 실행될 때 생성한다. 초기화 시에는 `LEARNING.md`만 보장한다.
 
 - 디렉터리/파일이 없으면 생성. `.harness/LEARNING.md`는 헤더만 있는 빈 파일로 초기화:
 
@@ -77,7 +83,7 @@ SDD 에이전트(sdd-implementer, sdd-reviewer, sdd-compliance-checker 등)가
 상세 규칙: skills/sdd/SKILL.md — LEARNING 캡처 섹션
 ```
 
-- `docs/lessons-learned.md`와의 관계: LEARNING.md는 **raw append-only 로그**, lessons-learned.md는 **사람이 큐레이팅한 일반화 교훈**. 정기적으로 LEARNING.md를 리뷰해 가치 있는 항목을 lessons-learned.md로 옮기고 LEARNING.md는 archive할 수 있다.
+- `docs/lessons-learned.md`와의 관계: LEARNING.md는 **raw append-only 로그(입력)**, lessons-learned.md는 **검증 게이트를 통과한 일반화 교훈(출력)**. 둘 사이의 승격은 `self-improve` 스킬이 자동으로 수행한다 (SDD Phase 4 종료 시 자동, 또는 `/self-improve` 수동). 사람이 손으로 옮기지 않는다 — 상세는 skills/self-improve/SKILL.md 참조.
 
 ### Step 3: CLAUDE.md 목차화
 

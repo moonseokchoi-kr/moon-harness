@@ -145,12 +145,31 @@ Agent(subagent_type: "sdd-test-automator", prompt: 검증 요청)
 
 ---
 
-## Step 4: 완료 처리
+## Step 4: 완료 처리 (PR 기반 수렴)
+
+main에 직접 머지하지 않는다. PR을 열고 외부 신호가 전부 green이 될 때까지 수렴시킨 뒤, **최종 머지는 사람이 승인**한다.
 
 1. result 문서 생성: `docs/sdd/result/{date}-{feature}.md`
 2. ORCHESTRATOR_STATE.md 상태를 COMPLETED로 변경
-3. 사용자에게 결과 보고
-4. 사용자 승인 후 main 머지 + worktree 정리
+3. head 브랜치 push 후 `Skill(pr-converge)`로 PR을 열고 수렴 루프를 시작한다.
+   - CI/CD·테스트·빌드·린트·**모든 리뷰 코멘트**에 대해 green까지 자동 수정·push.
+   - 분 단위로 걸리는 CI를 블로킹하지 않도록, 사용자에게 **`/loop /pr-converge`로 주기 실행**을 안내한다 (CI 도는 중 ~270s, 사람 코멘트 대기 중 길게).
+4. pr-converge가 **CONVERGED**(전부 green + 코멘트 처리 완료)를 보고하면 → 사용자에게 결과 + 머지 승인 요청. **NEEDS_HUMAN/BLOCKED**면 → 막힌 항목(설계 코멘트·반복 실패)을 사람에게 에스컬레이션.
+5. 사용자 머지 승인 후 worktree 정리.
+
+> 📌 pr-converge는 SDD 밖에서도 독립 사용 가능하다 (`/pr-converge <pr>`). 자세한 분류·서킷브레이커·케이던스 규칙은 skills/pr-converge/SKILL.md 참조.
+
+---
+
+## Step 5: 자가개선 회고 (자동 트리거)
+
+머지·정리 완료 후, 이번 사이클에서 `.harness/LEARNING.md`에 append된 교훈을 반영한다:
+
+1. `.harness/LEARNING.md`에 이번 사이클 신규 엔트리가 있으면 → `Skill(self-improve)`를 호출한다.
+2. 신규 엔트리가 없으면 건너뛴다.
+3. self-improve가 보고한 결과(프로젝트 티어 자동 적용 N건 / 하네스 티어 제안 M건)를 사용자에게 함께 전달한다. 하네스 티어 제안이 있으면 `.harness/harness-proposals/`에 승인 대기 중임을 명시한다.
+
+> 📌 회고가 실패하거나 건너뛰어도 사이클 완료에는 영향 없다. 사용자가 나중에 수동으로 `/self-improve`를 돌릴 수 있다.
 
 ---
 

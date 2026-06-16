@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "moon-harness",
-  "version": "0.5.0",
-  "description": "AI 에이전트 전체 개발 라이프사이클(아이디어 → 구현 → 배포)을 구조화하는 하네스. SDD 파이프라인, 아이디어 워크샵, enforcement 훅, /harness 자동 환경 구성 포함.",
+  "version": "0.7.0",
+  "description": "AI 에이전트 전체 개발 라이프사이클(아이디어 → 구현 → 배포)을 구조화하는 하네스. SDD 파이프라인, 아이디어 워크샵, PR 외부신호 수렴 루프(pr-converge), 자가개선 회고 루프, enforcement 훅, /harness 자동 환경 구성 포함.",
   "author": {
     "name": "moonseokchoi-kr",
     "url": "https://github.com/moonseokchoi-kr"
