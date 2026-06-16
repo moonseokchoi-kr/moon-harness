@@ -512,3 +512,92 @@ class TestEvalsNotInPytestCollection:
         assert not test_funcs, (
             f"run_eval.py에 pytest 수집 대상 함수 발견: {test_funcs}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 9. judge_prompt_template 포맷팅 검증 (KeyError 회귀 테스트)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.offline
+class TestJudgePromptTemplateFormatting:
+    """각 시나리오의 judge_prompt_template이 str.format()으로 KeyError 없이 렌더되는지 확인한다.
+
+    [P1] 버그 #2 회귀 테스트:
+    - 템플릿 내 리터럴 JSON {{ }} 이스케이프 누락 시 str.format()이 KeyError를 발생시킨다.
+    - 네트워크/claude 없이 포맷팅 로직만 검증한다 (오프라인).
+    """
+
+    # 각 시나리오 유형별 더미 포맷 인수 (run_eval._run_judge_live 참조)
+    _FORMAT_KWARGS: dict[str, str] = {
+        "comment": '"테스트 코멘트"',
+        "context": '{}',
+        "comments": '[]',
+        "expected_clusters": '{}',
+        "original_claim": '"테스트 주장"',
+        "rebuttal": '"테스트 반론"',
+        "evidence": '{}',
+    }
+
+    def _render_template(self, template: str) -> str:
+        """템플릿을 더미 인수로 렌더링한다. KeyError가 없어야 한다."""
+        return template.format(**self._FORMAT_KWARGS)
+
+    def test_comment_classification_template_renders_without_error(self):
+        """comment_classification.json 템플릿이 KeyError 없이 렌더된다."""
+        path = _SCENARIOS_DIR / "comment_classification.json"
+        assert path.exists(), "comment_classification.json 없음"
+        scenario = load_scenario(path)
+        template = scenario["judge_prompt_template"]
+        rendered = self._render_template(template)
+        assert rendered  # 빈 문자열이 아닌 결과
+
+    def test_clustering_quality_template_renders_without_error(self):
+        """clustering_quality.json 템플릿이 KeyError 없이 렌더된다."""
+        path = _SCENARIOS_DIR / "clustering_quality.json"
+        assert path.exists(), "clustering_quality.json 없음"
+        scenario = load_scenario(path)
+        template = scenario["judge_prompt_template"]
+        rendered = self._render_template(template)
+        assert rendered
+
+    def test_critic_consistency_template_renders_without_error(self):
+        """critic_consistency.json 템플릿이 KeyError 없이 렌더된다."""
+        path = _SCENARIOS_DIR / "critic_consistency.json"
+        assert path.exists(), "critic_consistency.json 없음"
+        scenario = load_scenario(path)
+        template = scenario["judge_prompt_template"]
+        rendered = self._render_template(template)
+        assert rendered
+
+    def test_all_scenario_templates_render_without_error(self):
+        """evals/scenarios/의 모든 시나리오 템플릿이 KeyError 없이 렌더된다."""
+        files = list_scenarios(_SCENARIOS_DIR)
+        errors: list[str] = []
+        for path in files:
+            try:
+                scenario = load_scenario(path)
+                template = scenario.get("judge_prompt_template", "")
+                self._render_template(template)
+            except KeyError as exc:
+                errors.append(f"{path.name}: str.format() KeyError — 이스케이프 누락: {exc}")
+            except (ScenarioValidationError, json.JSONDecodeError, OSError) as exc:
+                errors.append(f"{path.name}: 로드 실패 — {exc}")
+        assert not errors, "템플릿 포맷팅 오류:\n" + "\n".join(errors)
+
+    def test_rendered_template_contains_substituted_values(self):
+        """렌더된 템플릿에 실제 포맷 값이 삽입된다."""
+        path = _SCENARIOS_DIR / "comment_classification.json"
+        scenario = load_scenario(path)
+        template = scenario["judge_prompt_template"]
+        rendered = self._render_template(template)
+        # {comment} 자리에 더미값이 삽입됐는지 확인
+        assert '"테스트 코멘트"' in rendered
+
+    def test_rendered_template_contains_literal_json_braces(self):
+        """렌더 후 리터럴 JSON 중괄호 {{ }} 가 단일 { } 로 변환된다."""
+        path = _SCENARIOS_DIR / "comment_classification.json"
+        scenario = load_scenario(path)
+        template = scenario["judge_prompt_template"]
+        rendered = self._render_template(template)
+        # 이스케이프된 {{ }} 가 렌더 후 { } 로 복원되어야 함
+        assert '{"label"' in rendered or '"label"' in rendered

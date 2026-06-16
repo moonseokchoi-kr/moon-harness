@@ -62,5 +62,5 @@
     }
   ],
   "judge_model": "claude-3-5-sonnet-20241022",
-  "judge_prompt_template": "다음 PR 코멘트 목록의 클러스터링 품질을 평가하세요.\n\n평가 기준:\n- GOOD_CLUSTERING: 동일 도메인 코멘트가 같은 클러스터에 묶이고 이종 코멘트가 분리됨\n- BAD_CLUSTERING: 이종 코멘트가 혼합되거나 과소/과다 분할됨\n\n코멘트 목록: {comments}\n예상 클러스터: {expected_clusters}\n\n판정 결과를 JSON으로 반환하세요:\n{\"label\": \"GOOD_CLUSTERING\" | \"BAD_CLUSTERING\", \"reason\": \"<판정 근거 1-2문장>\", \"cluster_quality_score\": 0.0-1.0}"
+  "judge_prompt_template": "다음 PR 코멘트 목록의 클러스터링 품질을 평가하세요.\n\n평가 기준:\n- GOOD_CLUSTERING: 동일 도메인 코멘트가 같은 클러스터에 묶이고 이종 코멘트가 분리됨\n- BAD_CLUSTERING: 이종 코멘트가 혼합되거나 과소/과다 분할됨\n\n코멘트 목록: {comments}\n예상 클러스터: {expected_clusters}\n\n판정 결과를 JSON으로 반환하세요:\n{{\"label\": \"GOOD_CLUSTERING\" | \"BAD_CLUSTERING\", \"reason\": \"<판정 근거 1-2문장>\", \"cluster_quality_score\": 0.0-1.0}}"
 }

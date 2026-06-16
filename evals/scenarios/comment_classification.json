@@ -75,5 +75,5 @@
     }
   ],
   "judge_model": "claude-3-5-sonnet-20241022",
-  "judge_prompt_template": "다음 PR 코멘트를 분류하세요.\n\n분류 기준:\n- actionable: 구체적인 수정 지시가 있고 작성자가 단독으로 처리 가능\n- escalation: 의사결정권자나 외부 팀의 승인/조율이 필요\n\nPR 코멘트: {comment}\n\n컨텍스트: {context}\n\n판정 결과를 JSON으로 반환하세요:\n{\"label\": \"actionable\" | \"escalation\", \"reason\": \"<판정 근거 1-2문장>\"}"
+  "judge_prompt_template": "다음 PR 코멘트를 분류하세요.\n\n분류 기준:\n- actionable: 구체적인 수정 지시가 있고 작성자가 단독으로 처리 가능\n- escalation: 의사결정권자나 외부 팀의 승인/조율이 필요\n\nPR 코멘트: {comment}\n\n컨텍스트: {context}\n\n판정 결과를 JSON으로 반환하세요:\n{{\"label\": \"actionable\" | \"escalation\", \"reason\": \"<판정 근거 1-2문장>\"}}"
 }

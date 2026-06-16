@@ -114,6 +114,7 @@ from hooks.lib.self_improve.bench_runner import (
     score_candidate,
     compute_delta,
     is_adoptable,
+    gate_adoption,
 )
 
 train_set = Path("${TRAIN_SET}")
@@ -143,8 +144,8 @@ else:
     delta_train = compute_delta(baseline_train, candidate_train)
     delta_held = compute_delta(baseline_held, candidate_held)
 
-    # held-out 회귀는 delta_held를 기준으로 판정
-    adoptable = is_adoptable(delta_train) and not delta_held.get("held_out_regression", True)
+    # held-out 회귀는 delta_held를 기준으로 판정 (F22/F24: cold_start 포함 검사)
+    adoptable = gate_adoption(delta_train, delta_held)
 
     result = {
         "mode": "candidate",

@@ -79,5 +79,5 @@
     }
   ],
   "judge_model": "claude-3-5-sonnet-20241022",
-  "judge_prompt_template": "다음 주장과 반론을 평가하여 critic 판정을 내리세요.\n\n판정 기준:\n- UPHELD: 반론이 원본 주장을 실증적으로 반박하지 못함 (주장 유지)\n- REFUTED: 반론이 증거와 함께 원본 주장을 완전히 반박함\n- NARROW: 반론이 일부만 반박하거나 조건부로 타당함\n\n원본 주장: {original_claim}\n반론: {rebuttal}\n증거: {evidence}\n\n판정 결과를 JSON으로 반환하세요:\n{\"label\": \"UPHELD\" | \"REFUTED\" | \"NARROW\", \"reason\": \"<판정 근거 1-2문장>\", \"confidence\": 0.0-1.0}"
+  "judge_prompt_template": "다음 주장과 반론을 평가하여 critic 판정을 내리세요.\n\n판정 기준:\n- UPHELD: 반론이 원본 주장을 실증적으로 반박하지 못함 (주장 유지)\n- REFUTED: 반론이 증거와 함께 원본 주장을 완전히 반박함\n- NARROW: 반론이 일부만 반박하거나 조건부로 타당함\n\n원본 주장: {original_claim}\n반론: {rebuttal}\n증거: {evidence}\n\n판정 결과를 JSON으로 반환하세요:\n{{\"label\": \"UPHELD\" | \"REFUTED\" | \"NARROW\", \"reason\": \"<판정 근거 1-2문장>\", \"confidence\": 0.0-1.0}}"
 }

@@ -302,3 +302,43 @@ def is_adoptable(delta: dict[str, Any]) -> bool:
     if delta.get(_HELD_OUT_REGRESSION, True):
         return False
     return True
+
+
+def gate_adoption(
+    delta_train: dict[str, Any],
+    delta_held: dict[str, Any],
+) -> bool:
+    """train + held-out delta를 종합하여 채택 가능 여부를 판정한다 (F22/F24 게이트).
+
+    run_live.sh의 인라인 채택 로직을 결정적 함수로 분리한다.
+
+    채택 가능 조건:
+    1. is_adoptable(delta_train) — train 셋 기준 채택 가능
+    2. delta_held["cold_start"] == False — held-out 데이터 충분 (F24)
+    3. delta_held["held_out_regression"] == False — held-out 회귀 없음 (F22)
+
+    콜드스타트 규칙 (F24):
+    - held-out 셋 케이스 N < 5 이면 cold_start=True → 채택 불가.
+    - compute_delta()가 cold_start 시 held_out_regression=False를 반환하므로
+      cold_start 조건을 반드시 독립적으로 확인해야 한다.
+
+    Args:
+        delta_train: train 셋에 대한 compute_delta() 반환 dict.
+        delta_held: held-out 셋에 대한 compute_delta() 반환 dict.
+
+    Returns:
+        True if adoptable, False otherwise (fail-safe: 예외 시 False).
+    """
+    try:
+        if not is_adoptable(delta_train):
+            return False
+        # held-out cold_start → F24 위반: 데이터 부족 시 채택 불가
+        if delta_held.get(_COLD_START, True):
+            return False
+        # held-out 회귀 → F22 위반
+        if delta_held.get(_HELD_OUT_REGRESSION, True):
+            return False
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("gate_adoption 실패 (fail-safe: False 반환): %s", exc)
+        return False

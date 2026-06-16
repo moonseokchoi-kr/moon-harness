@@ -21,6 +21,7 @@ import pytest
 
 from hooks.lib.self_improve.bench_runner import (
     compute_delta,
+    gate_adoption,
     is_adoptable,
     score_baseline,
     score_candidate,
@@ -378,3 +379,101 @@ class TestIsAdoptable:
         )
         delta = compute_delta(baseline, candidate)
         assert is_adoptable(delta) is True
+
+
+# ---------------------------------------------------------------------------
+# gate_adoption 테스트 — F22/F24 채택 게이트 회귀 검증
+# ---------------------------------------------------------------------------
+
+@pytest.mark.offline
+class TestGateAdoption:
+    """gate_adoption: held-out cold_start 포함 채택 게이트 종합 검증 (F22/F24)."""
+
+    def _make_delta(
+        self,
+        delta_pct: float | None,
+        held_out_regression: bool,
+        cold_start: bool,
+    ) -> dict[str, Any]:
+        """compute_delta 반환 형태의 delta dict를 생성한다."""
+        return {
+            "delta_pct": delta_pct,
+            "held_out_regression": held_out_regression,
+            "cold_start": cold_start,
+        }
+
+    # ── 정상 채택 경로 ───────────────────────────────────────────────────────
+
+    def test_adoptable_when_train_up_held_ok(self):
+        """train 점수 상승 + held-out cold_start 아님 + 회귀 없음 → 채택 가능."""
+        delta_train = self._make_delta(delta_pct=10.0, held_out_regression=False, cold_start=False)
+        delta_held = self._make_delta(delta_pct=5.0, held_out_regression=False, cold_start=False)
+        assert gate_adoption(delta_train, delta_held) is True
+
+    # ── held-out cold_start=True → 채택 불가 (F24 핵심 버그 회귀 테스트) ───
+
+    def test_not_adoptable_when_held_out_cold_start(self):
+        """held-out cold_start=True(데이터 부족) → 채택 불가 (F24 위반 방지).
+
+        이것이 [P1] 버그 #1의 핵심 회귀 테스트다.
+        compute_delta()가 cold_start 시 held_out_regression=False를 반환하므로,
+        held_out_regression만 확인하면 cold_start 상황에서 게이트가 무력화된다.
+        gate_adoption()은 cold_start를 독립적으로 반드시 확인해야 한다.
+        """
+        delta_train = self._make_delta(delta_pct=20.0, held_out_regression=False, cold_start=False)
+        # held-out 데이터 2건 → cold_start=True, held_out_regression=False (compute_delta 실제 동작)
+        delta_held = self._make_delta(delta_pct=None, held_out_regression=False, cold_start=True)
+        assert gate_adoption(delta_train, delta_held) is False
+
+    def test_not_adoptable_held_out_cold_start_regardless_of_train(self):
+        """held-out cold_start=True이면 train 결과에 관계없이 채택 불가."""
+        # train이 완벽한 상승이어도 held-out cold_start가 있으면 불가
+        delta_train = self._make_delta(delta_pct=100.0, held_out_regression=False, cold_start=False)
+        delta_held = self._make_delta(delta_pct=None, held_out_regression=False, cold_start=True)
+        assert gate_adoption(delta_train, delta_held) is False
+
+    # ── train cold_start → 채택 불가 ────────────────────────────────────────
+
+    def test_not_adoptable_when_train_cold_start(self):
+        """train cold_start=True → 채택 불가."""
+        delta_train = self._make_delta(delta_pct=None, held_out_regression=False, cold_start=True)
+        delta_held = self._make_delta(delta_pct=5.0, held_out_regression=False, cold_start=False)
+        assert gate_adoption(delta_train, delta_held) is False
+
+    # ── held-out 회귀 → 채택 불가 ────────────────────────────────────────────
+
+    def test_not_adoptable_when_held_out_regression(self):
+        """held-out 회귀(held_out_regression=True) → 채택 불가."""
+        delta_train = self._make_delta(delta_pct=10.0, held_out_regression=False, cold_start=False)
+        delta_held = self._make_delta(delta_pct=-5.0, held_out_regression=True, cold_start=False)
+        assert gate_adoption(delta_train, delta_held) is False
+
+    # ── train 점수 하락/동일 → 채택 불가 ────────────────────────────────────
+
+    def test_not_adoptable_when_train_score_drops(self):
+        """train 점수 하락 → 채택 불가."""
+        delta_train = self._make_delta(delta_pct=-5.0, held_out_regression=True, cold_start=False)
+        delta_held = self._make_delta(delta_pct=0.0, held_out_regression=False, cold_start=False)
+        assert gate_adoption(delta_train, delta_held) is False
+
+    def test_not_adoptable_when_train_zero_delta(self):
+        """train 점수 동일(0) → 채택 불가."""
+        delta_train = self._make_delta(delta_pct=0.0, held_out_regression=False, cold_start=False)
+        delta_held = self._make_delta(delta_pct=0.0, held_out_regression=False, cold_start=False)
+        assert gate_adoption(delta_train, delta_held) is False
+
+    # ── fail-safe ────────────────────────────────────────────────────────────
+
+    def test_fail_safe_on_malformed_delta_train(self):
+        """잘못된 delta_train 입력에도 False를 반환한다 (fail-safe)."""
+        result = gate_adoption(
+            {"cold_start": "not-a-bool"},   # 오염된 dict
+            {"cold_start": False, "held_out_regression": False},
+        )
+        # is_adoptable이 오류를 처리하거나 False 반환 → gate_adoption도 False
+        assert result is False
+
+    def test_fail_safe_on_empty_dicts(self):
+        """빈 dict 입력에도 False를 반환한다 (fail-safe, 기본값 worst-case)."""
+        # 빈 dict → cold_start 기본값 True → False
+        assert gate_adoption({}, {}) is False
