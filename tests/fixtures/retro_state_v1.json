@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "last_processed_marker": "## 2026-06-15 — pr-converge / T-0",
+  "last_retro_at": "2026-06-16T08:00:00+00:00",
+  "cumulative": {
+    "applied_project": 4,
+    "proposed_harness": 2,
+    "dropped": 7
+  }
+}

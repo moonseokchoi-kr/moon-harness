@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "pr": "42",
+  "branch": "feat/self-improving-harness",
+  "processed_comment_ids": [
+    "IC_kwDOAbc123",
+    "PRRC_kwDOAbc456"
+  ],
+  "fix_attempts": {
+    "ci:build": "2",
+    "lint:ruff": "1"
+  },
+  "iterations": 3,
+  "status": "WORKING",
+  "last_tick_at": "2026-06-16T09:30:00+00:00",
+  "escalations": [
+    "https://github.com/owner/repo/pull/42#discussion_r999"
+  ],
+  "learning_entries_appended": [
+    "## 2026-06-16 — self-improving-harness / T-1"
+  ]
+}
