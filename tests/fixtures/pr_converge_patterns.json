@@ -1,0 +1,115 @@
+{
+  "_comment": "pr_converge_patterns.json — pattern_detector.detect_repeated_ci_fail 골든 픽스처",
+  "cases": [
+    {
+      "name": "single_repeat_ci_fail",
+      "description": "동일 CI 신호 2회 실패 → 패턴 1개 감지",
+      "input": {
+        "fix_attempts": {
+          "ci:unit-tests": 2,
+          "lint:ruff": 1
+        },
+        "provenance_repo": "moon-harness",
+        "detected_at": "2026-06-16"
+      },
+      "expected": {
+        "count": 1,
+        "signal_keys": ["ci:unit-tests"],
+        "all_have_provenance_repo": true,
+        "all_have_stage_pr_converge": true
+      }
+    },
+    {
+      "name": "multiple_repeats",
+      "description": "복수 신호 반복 → 여러 패턴 감지",
+      "input": {
+        "fix_attempts": {
+          "ci:build": 3,
+          "ci:unit-tests": 2,
+          "comment:10293": 1
+        },
+        "provenance_repo": "marvelous",
+        "detected_at": "2026-06-16"
+      },
+      "expected": {
+        "count": 2,
+        "signal_keys": ["ci:build", "ci:unit-tests"],
+        "all_have_provenance_repo": true,
+        "all_have_stage_pr_converge": true
+      }
+    },
+    {
+      "name": "no_repeat",
+      "description": "모든 신호 1회 이하 → 패턴 없음",
+      "input": {
+        "fix_attempts": {
+          "ci:unit-tests": 1,
+          "lint:ruff": 1
+        },
+        "provenance_repo": "moon-harness",
+        "detected_at": "2026-06-16"
+      },
+      "expected": {
+        "count": 0,
+        "signal_keys": []
+      }
+    },
+    {
+      "name": "empty_fix_attempts",
+      "description": "fix_attempts 비어있음 → 패턴 없음",
+      "input": {
+        "fix_attempts": {},
+        "provenance_repo": "moon-harness",
+        "detected_at": "2026-06-16"
+      },
+      "expected": {
+        "count": 0,
+        "signal_keys": []
+      }
+    },
+    {
+      "name": "invalid_fix_attempts",
+      "description": "fix_attempts가 dict가 아님 → fail-safe: 빈 리스트",
+      "input": {
+        "fix_attempts": null,
+        "provenance_repo": "moon-harness",
+        "detected_at": "2026-06-16"
+      },
+      "expected": {
+        "count": 0,
+        "signal_keys": []
+      }
+    },
+    {
+      "name": "string_count_values",
+      "description": "횟수가 str로 저장된 경우 (state.json 직렬화 혼용)",
+      "input": {
+        "fix_attempts": {
+          "ci:type-check": "2",
+          "ci:lint": "1"
+        },
+        "provenance_repo": "moon-harness",
+        "detected_at": "2026-06-16"
+      },
+      "expected": {
+        "count": 1,
+        "signal_keys": ["ci:type-check"]
+      }
+    },
+    {
+      "name": "missing_provenance_repo",
+      "description": "provenance_repo 미지정 → 'unknown' 폴백",
+      "input": {
+        "fix_attempts": {
+          "ci:unit-tests": 2
+        },
+        "provenance_repo": "",
+        "detected_at": "2026-06-16"
+      },
+      "expected": {
+        "count": 1,
+        "provenance_repo_value": "unknown"
+      }
+    }
+  ]
+}
