@@ -32,6 +32,36 @@ from hooks.lib.self_improve.parser import (
     extract_provenance,
     parse_learning_entry,
 )
+from hooks.lib.self_improve.cursor import (
+    get_new_entries,
+)
+from hooks.lib.self_improve.recurrence import (
+    count_signals,
+    has_cross_project,
+)
+from hooks.lib.self_improve.precheck import (
+    run_prechecks,
+)
+from hooks.lib.self_improve.circuit_breaker import (
+    FIX_ATTEMPTS_THRESHOLD,
+    ITERATIONS_THRESHOLD,
+    check_circuit_breaker,
+    compute_cadence,
+)
+from hooks.lib.self_improve.cap import (
+    DEFAULT_CAP,
+    apply_cap,
+    cap_report,
+)
+from hooks.lib.self_improve.memory_router import (
+    DEFAULT_ALWAYS_ON_BUDGET,
+    DEFAULT_ONDEMAND_BUDGET,
+    route_memory,
+)
+from hooks.lib.self_improve.ladder import (
+    LADDER_RUNGS,
+    get_next_ladder_rung,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -53,4 +83,27 @@ __all__ = [
     # T-2: provenance + tag parser
     "parse_learning_entry",
     "extract_provenance",
+    # T-3: cursor engine
+    "get_new_entries",
+    # T-3: recurrence counter
+    "count_signals",
+    "has_cross_project",
+    # T-3: pre-check engine
+    "run_prechecks",
+    # T-4: circuit breaker + cadence
+    "FIX_ATTEMPTS_THRESHOLD",
+    "ITERATIONS_THRESHOLD",
+    "check_circuit_breaker",
+    "compute_cadence",
+    # T-4: cap engine
+    "DEFAULT_CAP",
+    "apply_cap",
+    "cap_report",
+    # T-4: on-demand memory router
+    "DEFAULT_ALWAYS_ON_BUDGET",
+    "DEFAULT_ONDEMAND_BUDGET",
+    "route_memory",
+    # T-4: learning ladder
+    "LADDER_RUNGS",
+    "get_next_ladder_rung",
 ]
