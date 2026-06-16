@@ -7,7 +7,7 @@
 - api 문서: 해당 없음 (HARNESS 모드)
 - 시작 시각: 2026-06-16T00:00:00Z
 - 마지막 갱신: 2026-06-16T00:00:00Z
-- 상태: EXECUTING
+- 상태: COMPLETED
 
 > 단일 오케스트레이터 모드 — Wave 1→2→3이 단일 선형 의존 체인. 독립 클러스터 없음. 팀 배정 생략.
 
@@ -32,8 +32,9 @@
 ---
 
 ## 현재 진행
-- 현재 Wave: 2 (사용자 승인 대기 — protected set EXTEND)
-- 완료 Wave: 1-A, 1-B, 1-C (Wave 1 foundation 완료 — T-1~T-5, 243/243 pytest, P1 0)
+- 현재 Wave: 완료
+- 완료 Wave: 1(T-1~T-5), 2(T-6~T-8), 3(T-9~T-11) — 전체 463/463 pytest, P1 0(수정후), result 생성
+- 통합 검증: 463 통과, 코어 13모듈 stdlib-only, evals/tests 분리(F21), 공개심볼 52
 
 ---
 
@@ -46,12 +47,12 @@
 | T-3 | 1-B | sdd-python-engineer | complete | 1 | - | d8216e9. REVIEW_PASS P1 0 |
 | T-4 | 1-B | sdd-python-engineer | complete | 1 | - | 25200cd. REVIEW_PASS P1 0 (cadence 300금지 검증) |
 | T-5 | 1-C | sdd-python-engineer | complete | 1 | - | d074c43. 243/243, socket 패치 오프라인 강제, evals 분리 |
-| T-6 | 2 | sdd-implementer | pending | 0 | - | [PROTECTED] pr-converge SKILL.md EXTEND + scripts/ — 사람 검토 하 수동 EXTEND, 자동생성루프 대상 아님 |
-| T-7 | 2 | sdd-implementer | pending | 0 | - | [PROTECTED] self-improve SKILL.md EXTEND + scripts/ — 사람 검토 하 수동 EXTEND, 자동생성루프 대상 아님 |
-| T-8 | 2 | sdd-implementer | pending | 0 | - | [PROTECTED] harness-improvement-critic.md EXTEND — 사람 검토 하 수동 EXTEND, 자동생성루프 대상 아님 |
-| T-9 | 3 | sdd-python-engineer | pending | 0 | - | benchmarks/ frozen sets + 러너 |
-| T-10 | 3 | sdd-python-engineer | pending | 0 | - | evals/ 라이브 eval 하네스 |
-| T-11 | 3 | sdd-python-engineer | pending | 0 | - | 핵심 지표 텔레메트리 + retro-log |
+| T-6 | 2 | sdd-implementer | complete | 1 | - | 9d645cf. REVIEW_PASS P1 0 (F15 append·state_machine) |
+| T-7 | 2 | sdd-implementer | complete | 1 | - | beb62f7. REVIEW_PASS P1 0 (apply_writer 오염격리 검증) |
+| T-8 | 2 | sdd-implementer | complete | 1 | - | 111e3ac. REVIEW_PASS P1 0 (F22/F16 critic) |
+| T-9 | 3 | sdd-python-engineer | complete | 2 | - | 2638334+5c3bfc8. gate_adoption 분리, held-out cold_start 차단. REVIEW_PASS |
+| T-10 | 3 | sdd-python-engineer | complete | 2 | - | f1aeb89+5c3bfc8. 템플릿 이스케이프 수정. REVIEW_PASS |
+| T-11 | 3 | sdd-python-engineer | complete | 1 | - | b9ebc39. 재발률 자동추출(F23). REVIEW_PASS |
 
 ### Status 값
 - `pending` — 아직 시작 안 됨
