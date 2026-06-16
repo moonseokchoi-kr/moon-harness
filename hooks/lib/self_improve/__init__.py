@@ -62,6 +62,16 @@ from hooks.lib.self_improve.ladder import (
     LADDER_RUNGS,
     get_next_ladder_rung,
 )
+from hooks.lib.self_improve.metrics import (
+    COLD_START_THRESHOLD,
+    avg_iterations_to_green,
+    compute_metrics,
+    convergence_rate,
+    recurrence_rate,
+    retro_log_parser,
+    skill_reuse_rate,
+    write_metrics,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -106,4 +116,13 @@ __all__ = [
     # T-4: learning ladder
     "LADDER_RUNGS",
     "get_next_ladder_rung",
+    # T-11: metrics telemetry (F23)
+    "COLD_START_THRESHOLD",
+    "retro_log_parser",
+    "convergence_rate",
+    "avg_iterations_to_green",
+    "recurrence_rate",
+    "skill_reuse_rate",
+    "compute_metrics",
+    "write_metrics",
 ]

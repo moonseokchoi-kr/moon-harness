@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "cold_start": false,
+  "convergence_rate": 0.75,
+  "avg_iterations_to_green": 3.0,
+  "recurrence_rate": 0.125,
+  "skill_reuse": {
+    "cold_start": false,
+    "skills": {
+      "sdd-python-engineer": {
+        "calls": 5,
+        "successes": 4,
+        "success_rate": 0.8
+      },
+      "sdd-reviewer": {
+        "calls": 3,
+        "successes": 3,
+        "success_rate": 1.0
+      }
+    }
+  },
+  "comment_classification_accuracy": {
+    "requires_human_label": true,
+    "value": null
+  }
+}
