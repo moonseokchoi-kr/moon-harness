@@ -1,0 +1,18 @@
+{
+  "id": "tc-001",
+  "description": "PR 코멘트 2회 내 수렴 성공 시나리오",
+  "scenario": "pr-converge",
+  "input": {
+    "pr_number": "42",
+    "comments": [
+      {"id": "c1", "body": "함수 이름을 더 명확하게 바꿔주세요", "signal_key": "naming-c1"},
+      {"id": "c2", "body": "테스트 케이스 추가 필요", "signal_key": "test-c2"}
+    ],
+    "iterations": 2,
+    "fix_attempts": {"naming-c1": 1, "test-c2": 1},
+    "status": "CONVERGED"
+  },
+  "expected_outcome": "CONVERGED",
+  "label": "pass",
+  "human_note": "2회 이내 모든 코멘트 처리 완료. 정상 수렴 케이스. 사람 레이블: 2026-06-16"
+}

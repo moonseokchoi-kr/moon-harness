@@ -1,0 +1,8 @@
+{
+  "_comment": "candidate(ON) 골든 픽스처 — score_candidate() 반환 형식. delta_pct=+20.0 (채택 가능 케이스)",
+  "total": 5,
+  "passed": 5,
+  "failed": 0,
+  "score_pct": 100.0,
+  "cold_start": false
+}

@@ -1,0 +1,17 @@
+{
+  "id": "tc-002",
+  "description": "서킷브레이커 발동 후 에스컬레이션 시나리오",
+  "scenario": "pr-converge",
+  "input": {
+    "pr_number": "99",
+    "comments": [
+      {"id": "c3", "body": "타입 불일치 수정 필요", "signal_key": "type-c3"}
+    ],
+    "iterations": 5,
+    "fix_attempts": {"type-c3": 3},
+    "status": "BLOCKED"
+  },
+  "expected_outcome": "BLOCKED",
+  "label": "pass",
+  "human_note": "동일 시그널 3회 이상 시도 → 서킷브레이커 발동 → BLOCKED. 정상 에스컬레이션. 사람 레이블: 2026-06-16"
+}

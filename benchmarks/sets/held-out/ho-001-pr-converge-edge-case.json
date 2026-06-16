@@ -1,0 +1,18 @@
+{
+  "id": "ho-001",
+  "description": "상태 파일 없는 첫 실행 (cold first-run) 시나리오",
+  "scenario": "pr-converge",
+  "input": {
+    "pr_number": "1",
+    "comments": [
+      {"id": "c10", "body": "README 업데이트 필요", "signal_key": "docs-c10"}
+    ],
+    "iterations": 1,
+    "fix_attempts": {"docs-c10": 1},
+    "status": "CONVERGED",
+    "first_run": true
+  },
+  "expected_outcome": "CONVERGED",
+  "label": "pass",
+  "human_note": "상태 파일이 존재하지 않는 첫 실행. 1회 시도 후 수렴. 사람 레이블: 2026-06-16"
+}

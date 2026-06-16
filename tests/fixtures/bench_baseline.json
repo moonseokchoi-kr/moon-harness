@@ -1,0 +1,8 @@
+{
+  "_comment": "baseline(OFF) 골든 픽스처 — score_baseline() 또는 score_candidate() 반환 형식",
+  "total": 5,
+  "passed": 4,
+  "failed": 1,
+  "score_pct": 80.0,
+  "cold_start": false
+}
