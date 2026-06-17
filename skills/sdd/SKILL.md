@@ -268,7 +268,7 @@ sdd는 직접 설계를 작성하지 않는다. [webapp/flutter/native]-architec
 
 Phase 2 프로세스 시작 전에 worktree를 생성한다. 이후 **Phase 2, 3, 4의 모든 작업은 worktree 내에서 수행**한다.
 
-1. `Skill(git-worktree, {feature-name})` 호출 — `./worktrees/{feature-name}` 경로에 worktree + `feat/{feature-name}` 브랜치 생성
+1. `Skill(git-worktree, {feature-name})` 호출 — `./worktrees/{feature-name}` 경로에 worktree + `feature/{feature-name}` 브랜치 생성
 2. 이후 모든 에이전트 디스패치 시 **worktree 절대 경로**를 프롬프트에 반드시 주입한다
 3. `.gitignore`에 `worktrees/` 포함 확인 (없으면 추가)
 4. worktree 경로 예시: `/Users/moon/Workspace/money_track/worktrees/money-track-mvp`

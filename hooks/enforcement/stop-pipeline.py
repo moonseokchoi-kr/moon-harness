@@ -87,7 +87,7 @@ DIRECTIVES = {
     ),
     "PHASE2_START": (
         "[SDD-PIPELINE] Phase 2 시작. Worktree 생성 필요.\n"
-        "Skill(git-worktree) 를 호출하여 feat/{feature} 브랜치와 worktree 를 생성하세요.\n"
+        "Skill(git-worktree) 를 호출하여 feature/{feature} 브랜치와 worktree 를 생성하세요.\n"
         "완료 후 pipeline.json 의 worktree_path 기록 + current_label=PHASE2_WORKTREE_CREATED."
     ),
     "PHASE2_WORKTREE_CREATED": (
