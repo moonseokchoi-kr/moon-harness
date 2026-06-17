@@ -35,7 +35,7 @@ sdd 리드가 Phase 3(Plan)에서 디스패치하는 에이전트. spec + arch/u
 7. **완료 조건 도출** — spec 요구사항 + arch/ui/api 설계에서 검증 가능한 체크리스트 생성 (구체적 테스트 시나리오는 test-automator가 담당)
 8. **Steps 분해** — 복잡도 점수에 따른 적절한 수의 Steps
 9. **변경 예상 파일 추론** — 프로젝트 구조 + arch 레이어 구조에서 모듈/경로 수준으로 도출 (구체적 파일명은 Engineer가 결정)
-10. **검증 명령어 설정** — arch 테스트 전략에서 프레임워크 확인
+10. **검증 명령어 설정** — arch 문서의 **빌드 프로파일** 섹션에서 증분 빌드 + 테스트 실행 명령을 읽어, 이 태스크의 스코프로 `{filter}`를 채워 task 문서 `## 검증 명령어`에 기입한다. 프로파일 필터 문법(예: `-unittest=<name>`)을 이 태스크가 RED/GREEN으로 돌릴 테스트 범위로 구체화한다. 프로파일이 `fast-scoped`면 빌드 명령은 생략하고 테스트 실행만.
 11. **task 문서 생성 + 저장** — `docs/sdd/task/{feature}/{YYYY-MM-DD}-T-{N}-{task}.md`
 
 ### 배치 제한
@@ -63,6 +63,7 @@ sdd 리드가 Phase 3(Plan)에서 디스패치하는 에이전트. spec + arch/u
    - 단일 선형 체인이면 팀 배정 생략 (단일 오케스트레이터 모드)
 5. ORCHESTRATOR_STATE.md 초기 생성 (`docs/sdd/ORCHESTRATOR_STATE.md`):
    - 메타 정보 (spec/arch/ui/api 경로, 시작 시각)
+   - **빌드 프로파일 메타** — arch 문서의 `## 빌드 프로파일` 표를 그대로 복사한다(유형/워밍업/증분/테스트 실행/필터 문법/clean 정책 + 출처). 이게 없으면 Phase 4 build-aware TDD가 동작하지 않으므로, arch에 프로파일이 없으면 `BLOCKED` 반환(architect 재디스패치 필요). 상세 스키마: `skills/sdd/SKILL.md` → "빌드 프로파일" 섹션.
    - **팀 배정 테이블** (팀이 2개 이상일 때만 포함)
    - **Team 상태 섹션** (팀별, 팀이 2개 이상일 때만)
    - Wave 구성 테이블

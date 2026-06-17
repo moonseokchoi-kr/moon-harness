@@ -61,10 +61,38 @@ Always produce:
 9. Risks and trade-offs
 10. Recommended implementation phases
 
+## Build Profile (build-aware TDD) — REQUIRED in SDD Phase 2
+
+To keep RED/GREEN real per task in Phase 4, you MUST discover and record a **build profile**. Do not hardcode repo-specific commands into the harness — discover them:
+
+1. Read `<repo>/CLAUDE.md` for build/test commands.
+2. If absent or incomplete, read `<repo>/CLAUDE.local.md` (repo root).
+3. If still not found, ask the user for the test-run (and, if needed, warmup/incremental build) commands.
+
+Record it in the arch document under a `## 빌드 프로파일` section using this schema:
+
+```markdown
+## 빌드 프로파일
+
+> 출처: <CLAUDE.md | CLAUDE.local.md | 사용자 확인 YYYY-MM-DD>
+
+| 필드 | 값 | 비고 |
+|------|-----|------|
+| 유형 | fast-scoped \| build-required | fast-scoped=테스트 직접 실행 / build-required=산출물+플래그로 테스트 |
+| 워밍업 빌드 | `<cmd>` 또는 — | Phase 4 진입 1회. fast-scoped면 — |
+| 증분 빌드 | `<cmd>` 또는 — | per-task. fast-scoped면 — |
+| 테스트 실행 | `<test cmd ...{filter}>` | 예: `vitest run {filter}` |
+| 테스트 필터 문법 | 예: `vitest run src/foo.test.ts` / `-t "name"` | 태스크별 스코프 지정법 |
+| clean 정책 | no-clean | 태스크 간 clean 금지(캐시 보존) |
+```
+
+Web repos are usually `fast-scoped` (vitest/jest/playwright run directly → warmup 생략). Canonical rules: `skills/sdd/SKILL.md` → "빌드 프로파일" 섹션.
+
 ## Output (SDD Phase 2)
 
 When invoked for SDD Phase 2 arch document generation:
 - **MUST** use the Write tool to save the file at `docs/sdd/design/arch/{YYYY-MM-DD}-{feature}.md`
+- **MUST** include the `## 빌드 프로파일` section (discovered as above)
 - Return only a summary + file path, NOT the full document inline
 - The orchestrator will NOT save documents for you — you MUST write the file yourself
 

@@ -42,6 +42,10 @@
 {{/each}}
 
 ## 검증 명령어
+빌드 프로파일(ORCHESTRATOR_STATE.md)의 증분 빌드 + 테스트 실행을 이 태스크 스코프로 채운 명령.
+- 테스트 스코프: 이 태스크가 RED/GREEN으로 돌릴 테스트 필터 (프로파일 필터 문법 적용, 예: `-unittest=<name>`)
+- build-required면 증분 빌드 + 스코프 테스트 / fast-scoped면 스코프 테스트만. 풀빌드/clean 금지(no-clean).
+
 ```bash
 {{verification_command}}
 ```

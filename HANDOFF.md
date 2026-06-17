@@ -1,150 +1,100 @@
-# HANDOFF: Moon Harness — AI 에이전트 하네스 플러그인
+# HANDOFF: moon-harness 자가개선 시스템 + 후속 프로세스 개선
 
-> 이 문서는 새로운 에이전트가 컨텍스트 없이 이 파일만 읽고 바로 작업을 이어갈 수 있도록 작성되었다.
+> 이 문서는 새 에이전트가 컨텍스트 없이 이 파일만 읽고 바로 이어갈 수 있도록 작성됨.
 
 ## 프로젝트 한줄 요약
 
-아이디어에서 배포까지 AI 에이전트의 전체 개발 라이프사이클을 구조화하는 하네스 플러그인. ECC/gstack 분석을 기반으로 "더 적게, 더 단단하게" 설계. 10개 스킬 + 22개 SDD 에이전트 + 3개 보안 훅.
+moon-harness = AI 에이전트 개발 라이프사이클을 구조화하는 Claude Code 플러그인(마크다운 skills/agents + Python `hooks/lib/` stdlib + bash hooks + pytest). 이번 세션에서 **자가개선 시스템(pr-converge + self-improve + 벤치마크 fitness)**을 SDD로 구현해 `main` 0.8.0으로 머지·push 완료. 이어서 **실사용에서 발견한 프로세스 개선 3건**을 `.harness/LEARNING.md`에 캡처(미구현).
 
 ## 현재 상태
 
 | 항목 | 상태 |
 |------|------|
-| 아이디어 파이프라인 | **완료** — brain-storm → idea-reframe ←→ deep-idea (이터레이션 루프) |
-| idea-reframe 스킬 | **완료** — 신규 생성, eval 1회 실행 완료 (with/without 비교) |
-| deep-idea 구조 변경 | **완료** — 리서치 에이전트 3개(haiku) + 이터레이션 루프 + 졸업/탈출 조건 |
-| idea-workshop 라우팅 | **완료** — 3단계 라우팅 (brain-storm/idea-reframe/deep-idea) |
-| 실수 학습 시스템 | **완료** — 3계층 (CLAUDE.md 포인터 + docs/pitfalls.md + 훅 추출) |
-| 보안 기본선 | **완료** — Hook S1(시크릿), S2(위험명령), S3(민감파일) + security-baseline.md |
-| SDD Phase 4 | **완료** — Review → Ship → Verify (선택적) |
-| SDD develop 평가 | **완료** — architect-reviewer가 develop 문서 품질 검증 (#7-#11) |
-| SDD Stitch 연동 | **완료** — sdd-ui-designer에 Stitch MCP 연동 (ASCII 폴백) |
-| develop 폴더 구조 | **완료** — develop 템플릿에 폴더 구조 섹션 추가 |
-| 모델 최적화 | **완료** — opus 4개, sonnet 14개, haiku 4개 분배 |
-| 패키징 | **완료** — setup.sh (--host claude/codex, --link/--copy) |
-| 멀티 호스트 | **완료** — Claude Code + Codex, host-configs.md |
-| 플러그인 레포 | **완료** — ~/Workspace/moon-harness/, 커밋 6개 |
-| 멀티 에이전트 설계 | **분석 완료, 구현 미시작** — ECC/gstack/CC 네이티브 팀 심층 분석 완료 |
+| 자가개선 시스템 (v0.8.0) | **완료** — 11태스크/5웨이브, 463 pytest 통과, push됨 |
+| plugin.json / marketplace.json | **완료** — 둘 다 0.8.0 동기화 |
+| `feat/` → `feature/` 브랜치 prefix 수정 | **완료** |
+| repo 자체 최소 하네스 (CLAUDE.md + .harness/LEARNING.md) | **완료** |
+| **Build-aware TDD (#1)** | **완료** — 빌드 프로파일 추상화 도입, 22파일 수정, 463 pytest 통과 |
+| **harness CLAUDE.local.md 폴백 (#2)** | **완료** — skills/harness/SKILL.md Step 3 폴백 |
+| **공유 worktree git enforcement 격상 (#3, 선택)** | **미시작** — PreToolUse(Bash) L3 hook 후보. 미구현 |
+| **버전 bump + push** | **미결정** — 0.9.0 bump + 커밋/push 사용자 승인 대기 |
+| SDD 파이프라인 | COMPLETED. `.claude/state/pipeline.json` 잔여 — 무시/삭제 가능 |
 
 ## 핵심 문서 위치
 
 | 문서 | 경로 | 용도 |
 |------|------|------|
-| 플러그인 레포 | `~/Workspace/moon-harness/` | 배포 가능한 플러그인 전체 |
-| README | `~/Workspace/moon-harness/README.md` | 설치 가이드 + 소개 |
-| setup.sh | `~/Workspace/moon-harness/setup.sh` | 30초 설치 스크립트 |
-| SDD SKILL.md | `~/Workspace/moon-harness/skills/sdd/SKILL.md` | Phase 1-4 전체 워크플로우 |
-| harness SKILL.md | `~/Workspace/moon-harness/skills/harness/SKILL.md` | 환경 구성 + 12원칙 + 훅 정의 |
-| 보안 기준 | `~/Workspace/moon-harness/skills/harness/references/security-baseline.md` | 20개 규칙 + 3 훅 |
-| 호스트 설정 | `~/Workspace/moon-harness/skills/harness/references/host-configs.md` | Claude/Codex 변환 규칙 |
-| 프로젝트 메모리 | `~/.claude/projects/-Users-moon--claude-skills/memory/project_harness_plugin.md` | 설계 결정 이력 |
-| 원본 스킬 백업 | `~/.claude/skills-backup/` | setup.sh 전환 전 원본 |
-| 원본 에이전트 백업 | `~/.claude/agents-backup/` | setup.sh 전환 전 원본 |
+| **LEARNING 로그 (다음 작업 SSOT)** | `.harness/LEARNING.md` | 구현할 프로세스 개선 3건이 설계까지 확정돼 보존됨. **반드시 먼저 읽기** |
+| 자가개선 spec | `docs/sdd/spec/2026-06-16-self-improving-harness.md` | 완료 기능의 EARS 스펙 (참고) |
+| 자가개선 arch | `docs/sdd/design/arch/2026-06-16-self-improving-harness.md` | 결정↔판단 분리, 모듈 경계 (참고) |
+| 결과 보고 | `docs/sdd/result/2026-06-17-self-improving-harness.md` | 완료 사이클 요약 |
+| repo 규칙 | `CLAUDE.md` | 빌드/테스트, 핵심 규칙 |
 
-다음 에이전트는 **플러그인 레포(~/Workspace/moon-harness/)와 프로젝트 메모리**를 읽으면 충분하다.
+> 다음 에이전트는 **`.harness/LEARNING.md`만 읽으면 다음 작업에 충분**. docs/sdd/* 는 완료 기능의 참고 자료.
 
 ## 완료된 작업
 
-### 1. ECC/gstack 심층 분석 + 비판적 평가
-- 6개 서브에이전트로 두 레포의 모든 구성요소를 분석
-- 비판가 vs 옹호자 변증법적 분석으로 "진짜 필요한 것" 도출
-- 결론: "8-15개 스킬이 최적, 하드 게이트가 advisory보다 우위"
-- 사용자 기존 강점 확인: SDD 하드 게이트, adversarial-review, Korean-first
+### 1. 자가개선 시스템 구현 (SDD 전체 사이클)
+- 요구사항 합의 → `/sdd` 스펙(SIMPLE) → Phase 1~4 → 11태스크/5웨이브 구현·리뷰 → 머지.
+- 결과물: `hooks/lib/self_improve/`(결정적 코어 13모듈, stdlib-only), `skills/pr-converge/`·`skills/self-improve/`(+scripts), `agents/harness-improvement-critic.md`, `benchmarks/`·`evals/`·`tests/`(463통과).
+- 불변식 전부 리뷰 실측: 오염격리(apply_writer가 protected/하네스 경로 미수정), 단일repo→하네스 승격 차단, 벤치 채택게이트(점수하락/held-out회귀/콜드스타트 거부), 케이던스 300금지.
 
-### 2. 아이디어 파이프라인 재설계
-- idea-reframe 신규 스킬 생성 (7개 렌즈: 역발상, 대상 전환, 인접 전이, 본질 추출, 시장 틈새, 시간축 변경, 관계 재정의)
-- deep-idea에 리서치 에이전트 3개(haiku) 추가 — 사용자가 도메인 전문가가 아니어도 데이터 기반 대화 가능
-- idea-reframe ←→ deep-idea 이터레이션 루프 (니트픽 수렴 = 졸업, 5회 초과 = 탈출)
-- 사용자 결정: "deep-idea에 멀티 에이전트가 필요하다" (도메인 지식 격차 보완)
-- 사용자 결정: "brain-storm은 단일 에이전트 유지" (1:1 대화가 본질)
+### 2. 버전 동기화 + push
+- plugin.json 0.7.0→0.8.0, marketplace.json 0.5.0→0.8.0 + 설명/태그 갱신.
+- push 2장애 해결: (a) gh 활성계정 불일치(403) → 소유자 `moonseokchoi-kr` 임시전환 push 후 `moonchoi-clo` 복구. (b) 원격 분기(`a28cbbf` Windows 수정) → 로컬 20커밋 rebase(충돌 없음) 후 push.
 
-### 3. 실수 학습 시스템
-- ECC(5단계 에스컬레이션), gstack(/learn + /retro), 외부 연구(General Knowledge Command, RLHF Feedback Loop) 분석
-- 사용자 결정: "memory가 아닌 CLAUDE.md/docs/에 기록" (프로젝트 귀속, 자동 로딩, 팀 공유)
-- 사용자 결정: "CLAUDE.md에 다 넣으면 비대해지니 분리" (포인터만 CLAUDE.md에, 본문은 docs/에)
-- 3계층: CLAUDE.md 포인터 → docs/pitfalls.md + docs/lessons-learned.md → 훅(세션종료 추출 + 도메인별 주입)
-- 3회 반복 실수 → CLAUDE.md 핵심 규칙 승격
+### 3. repo 자체 dogfood
+- `CLAUDE.md`(목차형) + `.harness/LEARNING.md` 생성. self-improve 파서로 LEARNING 파싱 검증됨.
 
-### 4. 하네스 플러그인 구성
-- 패키징: setup.sh (--host claude|codex, --link|--copy)
-- 보안: 3개 훅 스크립트 (secret-detect.sh, dangerous-command.sh, sensitive-file.sh)
-- SDD Phase 4: Review → Ship → Verify (선택적, 사용자 명시 요청 시)
-- 멀티 호스트: host-configs.md (경로/도구명/프론트매터 변환 규칙)
-- 모델 최적화: opus(설계) 4개, sonnet(구현) 14개, haiku(경량) 4개
+## 완료된 후속 작업 (이번 세션, 2026-06-17)
 
-### 5. SDD 개선
-- develop 문서 평가 단계 추가 (architect-reviewer 역할 확장, 검증 항목 #7-#11)
-- develop 템플릿에 폴더 구조 섹션 추가 ((NEW)/(MODIFY) 마커)
-- Stitch MCP 연동 (sdd-ui-designer가 실제 시각 디자인 생성)
-- 사용자 결정: "DDD 등 특정 아키텍처를 강제하지 않는다" (기존 프로젝트 컨벤션 따름)
+### 1. Build-aware TDD (`sdd-tdd` 엔트리) — 완료
+**핵심 추상화**: "빌드 프로파일" (유형 build-required/fast-scoped · 워밍업 · 증분 빌드 · 테스트 실행+필터 문법 · no-clean).
+- **발견**(Phase 2, architect): `CLAUDE.md` → `./CLAUDE.local.md` → 사용자 질문. arch 문서 `## 빌드 프로파일` 섹션에 기록.
+- **전파**(Phase 3, taskmaster): arch 표를 `ORCHESTRATOR_STATE.md` 메타로 복사 + task 검증 명령어를 프로파일 스코프로 채움.
+- **소비**(Phase 4): orchestrator가 진입 시 워밍업 1회 + no-clean 강제 + 디스패치 프롬프트에 프로파일 주입. test-automator/engineer는 증분 빌드 + 스코프 테스트로 RED/GREEN.
+- **수정 파일(22)**: `skills/sdd/SKILL.md`(TDD Iron Law·빌드 프로파일 캐노니컬 섹션·Phase 2/3/4 게이트·task 템플릿), `skills/sdd-orchestrator/SKILL.md`(no-clean CRITICAL·Step1 워밍업·디스패치 주입·Step3 통합), `skills/sdd-orchestrator/references/state-schema.md`(프로파일 메타), `agents/{native,flutter,webapp}-architect.md`(발견·기록), `agents/sdd-taskmaster.md`, `agents/sdd-test-automator.md`("전체 실행"→스코프), `agents/sdd-implementer.md` + 11 engineer agents(step6 "전체 테스트 실행"→"GREEN 확인(증분+스코프)"), `skills/sdd-taskrunner/assets/templates/task-document.md`.
 
-### 6. 플러그인 레포 생성 + 배포 테스트
-- ~/Workspace/moon-harness/ 레포 초기화
-- 기존 ~/.claude/skills/ 원본을 백업 후 심링크로 전환
-- setup.sh 실행 테스트 완료 (10 skills + 22 agents + 3 hooks)
+### 2. harness CLAUDE.local.md 폴백 (`harness` 엔트리) — 완료
+- `skills/harness/SKILL.md` Step 3: CLAUDE.md 있으면 타깃, **없으면 committed 강제 생성 대신 `./CLAUDE.local.md` 타깃**(없으면 생성, .gitignore 추가 제안). 목차화·학습 포인터(`@.harness/LEARNING.md`)·import 라인 주입 모두 동일 타깃 규칙.
 
-### 7. 멀티 에이전트 심층 분석 (구현은 미시작)
-- Claude Code 네이티브 팀: 태스크 리스트, 직접 메시지, 팀메이트별 모델, 훅(TeammateIdle/TaskCreated/TaskCompleted)
-- gstack: 파일시스템 JSONL 큐, 탭별 에이전트 격리, worktree 병렬 스프린트, /freeze 범위 잠금
-- ECC: dmux-workflows (tmux pane 병렬), SHARED_TASK_NOTES.md, De-sloppify 패턴, Ralphinho DAG, 루프 오퍼레이터
+## 미완료 — 다음 작업 (선택)
 
-## 미완료 작업
+### 3. 공유 worktree git enforcement 격상 (`sdd-orchestration` 엔트리) — 미시작
+- PreToolUse(Bash)에서 worktree 내 `git add -A` 차단하는 L3 hook 검토. 현재 프롬프트 지시로만 회피.
 
-### 즉시 필요
-1. **멀티 에이전트 모드 설계 + 구현** — 분석 완료, 구현 미시작
-   - SDD Phase 3 태스크를 팀메이트에 분배
-   - worktree 격리 + /freeze 범위 잠금
-   - SHARED_TASK_NOTES.md 패턴 도입
-   - TeammateIdle/TaskCompleted 훅 활용
-   
-2. **실제 프로젝트에서 전체 플로우 테스트** — 아직 미실행
-   - "가계부 앱" 시나리오로 idea-workshop → sdd Phase 1-4 전체 관통 테스트
-   - 실수 학습 훅 동작 확인
-   - 보안 훅 동작 확인
-
-### 후속 작업
-3. **settings.json에 보안 훅 등록** — setup.sh가 안내만 출력, 실제 등록은 수동
-4. **GitHub에 push** — 레포는 로컬에만 존재
-5. **skill description 최적화** — skill-creator의 트리거 최적화 루프 미실행
-6. **ECC 참고 개선** — instincts 시스템(확신도 YAML), continuous learning v2 등 향후 참고
+### 검증/배포
+- `PATH="/opt/homebrew/bin:$PATH" python3 -m pytest tests/ -q` → **463 통과**(회귀 0).
+- **미결정**: 0.9.0 bump(plugin.json + marketplace.json 동기화) + 커밋 + push(소유자 `moonseokchoi-kr` 계정). 사용자 승인 대기.
 
 ## 실패하거나 주의가 필요한 점
 
-### 서브에이전트 파일 쓰기 권한 문제
-- **문제**: idea-reframe eval 시 서브에이전트가 파일 쓰기 거부됨 (mode: auto, bypassPermissions 모두 실패)
-- **원인**: 사용자 settings.json의 permissions가 서브에이전트에 제대로 상속되지 않음
-- **대응**: eval은 직접 작성으로 우회. skill-creator의 eval 프로세스를 사용할 때 이 제약을 인지해야 함
+### 공유 worktree 병렬 에이전트 git 충돌 (재발성)
+- **문제**: 한 Wave에 병렬 engineer를 같은 worktree에 디스패치 → (a) `git add -A`가 다른 태스크 파일 흡수, (b) engineer가 `git checkout -b`로 자기 브랜치 만들어 feature 브랜치 뒤처짐(머지 시 tip 놓침).
+- **대응**: 병렬 프롬프트에 "**소유 파일만 명시적 `git add`** + **브랜치 전환 금지**" 명시. 머지 전 `git branch -vv`로 실제 tip 확인. 근본책 = `isolation: worktree` 또는 오케스트레이터 일괄 커밋.
 
-### 원본 스킬 백업 존재
-- **문제**: ~/.claude/skills-backup/과 ~/.claude/agents-backup/에 원본이 있음
-- **대응**: 플러그인이 안정화되면 백업 삭제 가능. 문제 발생 시 복구용으로 유지.
+### pipeline 헬퍼 PATH 의존
+- `hooks/enforcement/lib/pipeline-utils.sh`가 `date`/`python3`를 PATH에서 못 찾는 경우 있음 → `export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"` 선행. pytest는 homebrew python3(3.14)에만 설치(Xcode python3엔 없음).
 
-### CRLF 경고
-- **문제**: git commit 시 "LF will be replaced by CRLF" 경고 반복
-- **원인**: macOS + git 설정 불일치
-- **대응**: 기능에는 영향 없으나, .gitattributes로 해결 가능
+### 미검증 가정
+- pr-converge/self-improve 스킬의 **라이브 동작(claude -p, gh 실호출)은 미검증** — 결정적 코어는 pytest 통과, 라이브 eval(`evals/`)은 CLI 필요로 미실행.
+- self-improve 루프 자체는 실제 사이클 미실행(코어 함수만 dogfood 파싱 검증).
 
 ## 환경 정보
 
 ```
-OS: macOS Darwin 25.3.0
-Model: Claude Opus 4.6 (1M context)
-Claude Code: v2.1.92
-프로젝트 경로: /Users/moon/Workspace/moon-harness
-스킬 경로: /Users/moon/.claude/skills/ (심링크 → 레포)
-에이전트 경로: /Users/moon/.claude/agents/ (심링크 → 레포)
-훅 경로: /Users/moon/.claude/hooks/moon-harness/ (심링크 → 레포)
-teammateMode: tmux
-CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: 1
+OS: macOS (Darwin 25.5.0)
+Runtime: python3 3.14.4 (homebrew, pytest 9.0.3) — Xcode python3엔 pytest 없음
+pytest: PATH="/opt/homebrew/bin:$PATH" python3 -m pytest tests/ -q
+git remote: origin = github.com/moonseokchoi-kr/moon-harness (push는 moonseokchoi-kr 계정 필요)
+프로젝트 경로: /Users/moon/workspace/moon-harness
+플러그인 캐시: ~/.claude/plugins/cache/moon-harness/moon-harness/0.8.0/ (push 반영됨)
 ```
 
 ## 다음 에이전트가 해야 할 일
 
-1. **이 파일을 읽는다** (지금 하고 있는 것)
-2. **프로젝트 메모리를 읽는다** (`~/.claude/projects/-Users-moon--claude-skills/memory/project_harness_plugin.md`)
-3. **멀티 에이전트 모드를 설계하고 구현한다** — 위 "즉시 필요 #1" 참고
-   - Claude Code 네이티브 팀 기능 활용 (이미 활성화됨)
-   - SDD Phase 3 태스크 병렬 실행
-   - worktree 격리 + SHARED_TASK_NOTES.md 패턴
-4. **실제 프로젝트에서 전체 플로우를 테스트한다**
-5. **커밋하고 GitHub에 push한다**
+1. **이 파일을 읽는다** (지금)
+2. **`.harness/LEARNING.md`를 읽는다** — `sdd-tdd`·`harness`·`sdd-orchestration` 3개 엔트리에 설계 확정
+3. **Build-aware TDD 구현** (미완료 #1) — 위 5파일. 하드코딩 금지, 프로파일 발견 기반
+4. **harness CLAUDE.local.md 폴백 구현** (미완료 #2) — `skills/harness/SKILL.md`
+5. 수정은 harness-tier → 사용자 승인 후 진행. 완료 후 `pytest tests/` 회귀 확인, 필요 시 0.9.0 bump(plugin+marketplace 동기화) + push(소유자 계정)
