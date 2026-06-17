@@ -90,6 +90,7 @@ directive는 라벨별로 "지금 무엇을 할지"를 구체적으로 지시한
      per-task **증분 빌드 + 스코프 테스트**로 RED(실패)→GREEN(통과)를 매 태스크 확인한다. 상세는 "빌드 프로파일" 섹션 참조.
 3. Phase 4 격리: 모든 구현은 worktree 안에서 수행.
    → main 브랜치 직접 커밋/푸시는 branch-gate.sh가 물리적으로 차단한다.
+   → 공유 worktree 병렬 작업 시 광역 stage(`git add -A`/`.`)와 브랜치 전환/생성은 worktree-add-gate.sh가 물리적으로 차단한다(소유 파일만 명시 add).
 4. 의존 태스크 순서: 의존 태스크가 DONE이 아니면 시작 금지.
 5. Phase 3(Plan) 없이 Phase 4(Execute) 진입 금지. task 문서 + DAG/Wave + 사용자 승인 필수.
    → 3회 BLOCKED 시 escalation-tracker.sh가 자동으로 ESCALATED 표시 + adversarial-review 권고한다.

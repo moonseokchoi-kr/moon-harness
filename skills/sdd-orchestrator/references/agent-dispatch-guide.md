@@ -17,10 +17,14 @@ Agent(
 
     위 태스크를 구현해. 소유 파일 범위 안에서만 작업하고,
     완료되면 커밋 메시지에 'feat: T-<ID> <요약>'을 사용해.
+    스테이지는 소유 파일만 명시적으로 add(`git add <경로>`) — `git add -A`/`.` 금지.
+    브랜치 전환/생성 금지(현재 worktree 브랜치에서 그대로 작업).
   ",
   run_in_background: true  // 병렬 실행 시
 )
 ```
+
+> 📌 위 두 규칙(광역 add 금지·브랜치 전환 금지)은 Phase 4(EXECUTING)에서 `hooks/enforcement/worktree-add-gate.sh`가 **물리적으로 차단**한다(PreToolUse Bash, exit 2). 프롬프트 지시는 보조 — 게이트가 SOT.
 
 ### Reviewer 디스패치
 

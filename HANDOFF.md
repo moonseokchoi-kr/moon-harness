@@ -16,8 +16,8 @@ moon-harness = AI 에이전트 개발 라이프사이클을 구조화하는 Clau
 | repo 자체 최소 하네스 (CLAUDE.md + .harness/LEARNING.md) | **완료** |
 | **Build-aware TDD (#1)** | **완료** — 빌드 프로파일 추상화 도입, 22파일 수정, 463 pytest 통과 |
 | **harness CLAUDE.local.md 폴백 (#2)** | **완료** — skills/harness/SKILL.md Step 3 폴백 |
-| **공유 worktree git enforcement 격상 (#3, 선택)** | **미시작** — PreToolUse(Bash) L3 hook 후보. 미구현 |
-| **버전 bump + push** | **미결정** — 0.9.0 bump + 커밋/push 사용자 승인 대기 |
+| **공유 worktree git enforcement 격상 (#3)** | **완료** — `hooks/enforcement/worktree-add-gate.sh` 신설 + hooks.json 등록, 16케이스 수동 검증 |
+| **버전** | 0.9.0(본 과제) → 0.9.1(#3 enforcement) push 완료 |
 | SDD 파이프라인 | COMPLETED. `.claude/state/pipeline.json` 잔여 — 무시/삭제 가능 |
 
 ## 핵심 문서 위치
@@ -58,10 +58,16 @@ moon-harness = AI 에이전트 개발 라이프사이클을 구조화하는 Clau
 ### 2. harness CLAUDE.local.md 폴백 (`harness` 엔트리) — 완료
 - `skills/harness/SKILL.md` Step 3: CLAUDE.md 있으면 타깃, **없으면 committed 강제 생성 대신 `./CLAUDE.local.md` 타깃**(없으면 생성, .gitignore 추가 제안). 목차화·학습 포인터(`@.harness/LEARNING.md`)·import 라인 주입 모두 동일 타깃 규칙.
 
-## 미완료 — 다음 작업 (선택)
+### 3. 공유 worktree git enforcement 격상 (`sdd-orchestration` 엔트리) — 완료
+- **신설**: `hooks/enforcement/worktree-add-gate.sh` (PreToolUse Bash). ORCHESTRATOR_STATE가 EXECUTING/PAUSED_AT_LIMIT일 때만 작동(branch-gate와 동일 스코프).
+  - (a) 광역 stage 차단: `git add -A` / `--all` / 단독 `.` 토큰. 소유 파일 명시 add는 통과.
+  - (b) 워커 브랜치 전환/생성 차단: `git checkout -b/-B`, `git switch -c/-C/--create`. `git checkout/switch <기존브랜치>`는 통과.
+- **등록**: `hooks/hooks.json` PreToolUse/Bash 체인에 branch-gate 뒤 추가.
+- **문서**: `agent-dispatch-guide.md`(프롬프트 지시+게이트 SOT 명시) + `sdd/SKILL.md` HARD-GATE #3.
+- **검증**: 16케이스 수동 통과(위험 7 차단/안전 6 통과/Phase 4 밖 통과). `hooks/enforcement`는 protected set이라 사람 승인 하 작성.
 
-### 3. 공유 worktree git enforcement 격상 (`sdd-orchestration` 엔트리) — 미시작
-- PreToolUse(Bash)에서 worktree 내 `git add -A` 차단하는 L3 hook 검토. 현재 프롬프트 지시로만 회피.
+## 미완료 — 다음 작업 (없음)
+3건 모두 완료. 추가 후보: worktree-add-gate에 pytest 회귀 추가(현재 bash 게이트는 수동 검증만, 코어 Python은 463 통과).
 
 ### 검증/배포
 - `PATH="/opt/homebrew/bin:$PATH" python3 -m pytest tests/ -q` → **463 통과**(회귀 0).
