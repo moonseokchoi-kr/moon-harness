@@ -149,7 +149,9 @@
 
 ### F8: SDD 에이전트 최소 침습 주입
 
-- THE SYSTEM SHALL 주입 타겟을 **`agents/sdd-implementer.md` 단일 파일**로 한정한다. (근거: SDD skill의 "Engineer agents 일반 규칙" — sdd-implementer에 정의된 규칙은 sdd-ts-engineer·sdd-rust-engineer 등 모든 engineer agent에 자동 전파된다. 따라서 14개 파일을 각각 건드릴 필요 없이 1개 주입으로 전파 = 최소 침습 극대화.)
+- THE SYSTEM SHALL 주입 타겟과 도달 범위(reach)를 **`agents/sdd-implementer.md` 단일 파일**로 한정한다.
+- IF "sdd-implementer 주입이 모든 engineer agent로 자동 전파된다"고 가정하려 할 때, THEN THE SYSTEM SHALL 그 가정을 거부한다. (사실: SDD skill "Engineer agents 일반 규칙"(§659)은 **LEARNING 캡처 규칙만** 전파하며, `sdd-ts-engineer` 등 언어별 engineer는 self-contained라 sdd-implementer 본문을 상속하지 않는다. 언어별 engineer 전파는 v1 범위 밖.)
+- 비고: 최고 가치 소비자(버그 수정 워크플로우)는 `/code-mapper`를 직접 호출하므로 이 reach 한정의 영향을 받지 않는다.
 - THE SYSTEM SHALL `agents/sdd-implementer.md`에 다음 내용을 담은 단락 하나만을 추가한다:
   1. codegraph MCP 가용 시 구조적 탐색 우선 사용 안내
   2. 낯선 심볼 편집 전 `/code-mapper`(또는 codegraph 직접 호출)로 실제 호출관계를 **구조적 컨텍스트로 확보 권고** (의무·게이트 아님)
