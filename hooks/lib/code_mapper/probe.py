@@ -23,10 +23,14 @@ UNAVAILABLE: str = "unavailable"
 # --- 의미 단위 신호 패턴 (특정 텍스트 정확매치 아님) ---------------------
 
 # 미초기화 신호: "not initialized" 및 동등 표현 (공백/대소문자 무시).
+# SSOT는 skills/code-mapper/SKILL.md "3-상태 분류 기준" 표 — "not initialized"
+# (또는 동등 미초기화 신호)만 열거한다. 그 표에 없는 외삽 패턴(예: "not indexed")은
+# 추가하지 않는다: 실제 codegraph_status가 쓰지 않는 phrasing이고, "files not
+# indexed: 0" 같은 정상 응답을 오분류할 여지가 있다. SSOT에 없는 미초기화는
+# fail-safe로 unavailable(→ grep 폴백)에 수렴하면 충분하다.
 _NOT_INIT_PATTERNS = (
     re.compile(r"not\s+initiali[sz]ed", re.IGNORECASE),
     re.compile(r"\buninitiali[sz]ed\b", re.IGNORECASE),
-    re.compile(r"\bnot\s+indexed\b", re.IGNORECASE),
 )
 
 # 통계/준비 신호: 노드·엣지 수치 또는 ready/indexed 상태.
