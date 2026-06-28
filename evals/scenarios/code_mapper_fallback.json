@@ -1,0 +1,90 @@
+{
+  "id": "eval-code-mapper-fallback-001",
+  "description": "code-mapper grep 폴백 — codegraph 미초기화(unavailable) 환경에서 /code-mapper <심볼> 호출 시 F6 출력 형태 정합성 검증 레이어 시나리오. 코드맵은 영속 산출물이 아니라 ephemeral 컨텍스트이므로, 코드 자체가 아니라 *출력(컨텍스트)의 형태 정합*만 검사한다.",
+  "scenario_type": "code_mapper_fallback",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "cmf-001",
+      "input": {
+        "comment": "/code-mapper classify_probe_state",
+        "context": {
+          "codegraph_state": "unavailable",
+          "codegraph_status_text": "MCP tool 'codegraph_status' not found — server not registered.",
+          "target_symbol": "classify_probe_state",
+          "expected_probe_label": "grep 근사 (codegraph 미사용)",
+          "fallback_procedure": "skills/code-mapper/SKILL.md Step 3-fallback (grep 근사)",
+          "verification": [
+            "F6 섹션 1~6 + '탐색 방법' 레이블이 모두, 1→6 순서로 존재 (check_format_completeness 의미와 동일 — 누락/순서오류 0)",
+            "Callers/Callees가 1개 이상 행을 가지거나, 비어 있으면 정확히 '(없음)'으로 채워짐 (생략 금지)",
+            "수집된 파일 경로는 모두 실존 파일만 가리킴 (존재하지 않는 경로 0건)",
+            "각 근사 섹션에 '(grep 근사, codegraph 미사용)' 표기 + 산출물 말미에 '근사값 — 개발자 확인 권장' 주의 포함"
+          ]
+        }
+      },
+      "expected_label": "VALID_FALLBACK",
+      "judge_criteria": {
+        "rubric": "codegraph 미가용(unavailable) 환경의 /code-mapper 호출 출력이 (1) F6 섹션 1~6 + '탐색 방법' 레이블 완전성·순서, (2) callers/callees 개수>0 또는 '(없음)' 정합, (3) 수집 파일경로 유효성, (4) 'grep 근사' 레이블·'개발자 확인 권장' 주의를 모두 충족하면 VALID_FALLBACK. 하나라도 위반하면 INVALID_FALLBACK. 코드 정확도(심볼 분석 정밀도)는 채점 대상이 아니다 — 형태 정합만 본다.",
+        "accept_conditions": [
+          "F6 섹션 1.진입점 / 2.Callers / 3.Callees / 4.호출 경로 / 5.Blast Radius / 6.건드릴 파일 + '탐색 방법:' 레이블이 모두 존재하고 1→6 순서가 유지됨",
+          "탐색 방법 레이블이 'grep 근사 (codegraph 미사용)'이고 각 근사 섹션에 '(grep 근사, codegraph 미사용)' 표기가 붙음",
+          "Callers/Callees가 비어 있을 때 섹션을 생략하지 않고 '(없음)'으로 채움",
+          "출력에 언급된 모든 파일 경로가 실존 파일을 가리킴 (없는 경로 0건)",
+          "산출물 말미에 '근사값 — 개발자 확인 권장' 주의가 포함됨"
+        ],
+        "reject_conditions": [
+          "F6 섹션 중 하나라도 누락되거나 1~6 순서가 어긋남",
+          "codegraph 미가용인데 '탐색 방법' 레이블이 'codegraph (MCP healthy)'로 표기됨",
+          "빈 callers/callees 섹션이 '(없음)' 없이 생략됨",
+          "존재하지 않는 파일 경로가 수집 결과에 포함됨",
+          "'(grep 근사, codegraph 미사용)' 표기 또는 '근사값 — 개발자 확인 권장' 주의가 누락됨",
+          "코드맵을 영속 문서로 저장하거나 형태 정합 외의 코드 정확도를 판정 근거로 삼음"
+        ],
+        "reuse_core": "hooks.lib.code_mapper.check_format_completeness(text) — 채점 시 F6 섹션/순서 검사는 이 결정적 코어 함수로 재확인한다 (검증 로직 중복 금지)."
+      },
+      "human_note": "codegraph 미초기화(상태 c) → grep 폴백 경로. 형태 정합만 검사. expected: VALID_FALLBACK. 라이브 실행(claude -p)은 Phase 4 이후 수동. 골든 레이블: 2026-06-29"
+    },
+    {
+      "id": "cmf-002",
+      "input": {
+        "comment": "/code-mapper check_format_completeness",
+        "context": {
+          "codegraph_state": "unavailable",
+          "codegraph_status_text": "",
+          "target_symbol": "check_format_completeness",
+          "note": "빈 status 텍스트 → fail-safe로 unavailable 수렴 (probe.classify_probe_state 규약). callees가 거의 없는 순수 함수 — 빈 섹션 '(없음)' 처리 정합을 본다.",
+          "expected_probe_label": "grep 근사 (codegraph 미사용)",
+          "fallback_procedure": "skills/code-mapper/SKILL.md Step 3-fallback (grep 근사)",
+          "verification": [
+            "F6 섹션 1~6 + '탐색 방법' 레이블 완전성·순서 (check_format_completeness 의미와 동일)",
+            "Callees가 비어 있으면 정확히 '(없음)'으로 채워짐 — 생략 금지",
+            "수집된 파일 경로는 모두 실존 (없는 경로 0건)",
+            "'(grep 근사, codegraph 미사용)' 표기 + '근사값 — 개발자 확인 권장' 주의 포함"
+          ]
+        }
+      },
+      "expected_label": "VALID_FALLBACK",
+      "judge_criteria": {
+        "rubric": "codegraph 미가용(unavailable) 환경의 /code-mapper 호출 출력이 F6 완전성·순서, callers/callees '(없음)' 정합, 파일경로 유효성, 'grep 근사' 레이블·'개발자 확인 권장' 주의를 모두 충족하면 VALID_FALLBACK. 하나라도 위반하면 INVALID_FALLBACK. 형태 정합만 본다.",
+        "accept_conditions": [
+          "F6 섹션 1~6 + '탐색 방법:' 레이블이 모두 존재하고 순서 유지",
+          "빈 callers/callees 섹션이 '(없음)'으로 채워짐 (생략 안 됨)",
+          "탐색 방법 레이블이 'grep 근사 (codegraph 미사용)'",
+          "출력의 모든 파일 경로가 실존 파일",
+          "말미에 '근사값 — 개발자 확인 권장' 주의 포함"
+        ],
+        "reject_conditions": [
+          "F6 섹션 누락 또는 순서 어긋남",
+          "빈 섹션이 '(없음)' 없이 생략됨",
+          "존재하지 않는 파일 경로 포함",
+          "'grep 근사' 표기 또는 '개발자 확인 권장' 주의 누락",
+          "codegraph 미가용인데 'codegraph (MCP healthy)' 레이블 표기"
+        ],
+        "reuse_core": "hooks.lib.code_mapper.check_format_completeness(text) 로 F6 섹션/순서 재확인."
+      },
+      "human_note": "빈 status → fail-safe unavailable. 빈 callees '(없음)' 정합 케이스. expected: VALID_FALLBACK. 골든 레이블: 2026-06-29"
+    }
+  ],
+  "judge_model": "claude-3-5-sonnet-20241022",
+  "judge_prompt_template": "당신은 code-mapper 폴백 출력의 *형태 정합* 채점자입니다.\n\n환경: codegraph가 미가용(unavailable)인 레포에서 아래 명령이 실행되었습니다. 따라서 code-mapper는 grep 근사 폴백 경로(skills/code-mapper/SKILL.md Step 3-fallback)로 동작해야 합니다.\n\n실행 명령: {comment}\n환경/검증컨텍스트: {context}\n\n채점은 코드 분석의 정확도가 아니라 *출력(F6 코드맵)의 형태 정합*만 봅니다. 다음을 모두 만족하면 VALID_FALLBACK, 하나라도 위반하면 INVALID_FALLBACK 입니다:\n1. F6 섹션 1.진입점 / 2.Callers / 3.Callees / 4.호출 경로 / 5.Blast Radius / 6.건드릴 파일 과 '탐색 방법:' 레이블이 모두, 1→6 순서로 존재 (결정적 코어 hooks.lib.code_mapper.check_format_completeness 의 검사와 동일 의미).\n2. Callers/Callees가 1개 이상 행을 갖거나, 비어 있으면 정확히 '(없음)'으로 채워짐 (섹션 생략 금지).\n3. 출력에 언급된 모든 파일 경로가 실존 파일을 가리킴 (존재하지 않는 경로 0건).\n4. 탐색 방법 레이블이 'grep 근사 (codegraph 미사용)' 이고, 각 근사 섹션에 '(grep 근사, codegraph 미사용)' 표기 + 산출물 말미에 '근사값 — 개발자 확인 권장' 주의가 포함됨.\n\n판정 결과를 JSON으로 반환하세요:\n{{\"label\": \"VALID_FALLBACK\" | \"INVALID_FALLBACK\", \"reason\": \"<판정 근거 1-2문장>\", \"violations\": [\"<위반한 기준 번호/설명>\"]}}"
+}
