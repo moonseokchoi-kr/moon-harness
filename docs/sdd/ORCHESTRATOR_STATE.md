@@ -1,40 +1,54 @@
 # Orchestrator State
 
 ## 메타
-- spec 문서: `docs/sdd/spec/2026-06-16-self-improving-harness.md`
-- arch 문서: `docs/sdd/design/arch/2026-06-16-self-improving-harness.md`
-- ui 문서: 해당 없음 (HARNESS 모드)
-- api 문서: 해당 없음 (HARNESS 모드)
-- 시작 시각: 2026-06-16T00:00:00Z
-- 마지막 갱신: 2026-06-16T00:00:00Z
+- feature: `code-mapper`
+- spec 문서: `docs/sdd/spec/2026-06-26-code-mapper.md`
+- arch 문서: `docs/sdd/design/arch/2026-06-26-code-mapper.md`
+- ui 문서: 해당 없음 (SIMPLE 모드)
+- api 문서: 해당 없음 (SIMPLE 모드)
+- 시작 시각: 2026-06-29T00:00:00Z
+- 마지막 갱신: 2026-06-29T00:00:00Z
 - 상태: COMPLETED
+- 워밍업 완료: 미실행(fast-scoped)
 
-> 단일 오케스트레이터 모드 — Wave 1→2→3이 단일 선형 의존 체인. 독립 클러스터 없음. 팀 배정 생략.
+> 단일 오케스트레이터 모드 — Wave 1→2→3이 단일 선형 의존 체인 (T-1/T-2 병렬 → T-3/T-4 직렬 의존). 독립 클러스터 2개 이상 없음. 팀 배정 생략.
+
+---
+
+## 빌드 프로파일
+
+> 출처: `docs/sdd/design/arch/2026-06-26-code-mapper.md` § 빌드 프로파일 (2026-06-26 확인)
+
+| 필드 | 값 | 비고 |
+|------|-----|------|
+| 유형 | fast-scoped | 컴파일 산출물 없음(마크다운 + stdlib python). 빌드 단계 없이 테스트 직접 실행. |
+| 워밍업 빌드 | (생략) | fast-scoped — 콜드 빌드 비용 없음 |
+| 증분 빌드 | (생략) | 빌드 산출물 없음 |
+| 테스트 실행 | `PATH="/opt/homebrew/bin:$PATH" python3 -m pytest tests/ -q` | pytest는 homebrew python(3.14)에 설치, Xcode python3엔 없음 |
+| 테스트 필터 문법 | `... pytest tests/test_code_mapper_*.py -q` 또는 `-k <name>` | 태스크별 스코프 지정 |
+| clean 정책 | no-clean | 캐시(`.pytest_cache`) 보존 |
 
 ---
 
 ## Wave 구성
 
-| Wave | Phase | 태스크 | 의존성 | 동시 실행 최대 |
-|------|-------|--------|--------|--------------|
-| 1-A | Phase 1 foundation | T-1, T-2 | 없음 | 2 |
-| 1-B | Phase 1 foundation | T-3, T-4 | T-2 (T-3), T-1+T-2 (T-4) | 2 |
-| 1-C | Phase 1 foundation | T-5 | T-1, T-2, T-3, T-4 | 1 |
-| 2   | Phase 1 skill EXTEND | T-6, T-7, T-8 | T-1+T-2+T-4 (T-6), T-1+T-2+T-3+T-4 (T-7), 없음→Wave 2 배치 (T-8) | 3 |
-| 3   | Phase 2 substrate | T-9, T-10, T-11 | T-5+T-7+T-8 (T-9), T-5+T-9 (T-10), T-1+T-6+T-7 (T-11) | 2 (T-9·T-11 병렬, T-10은 T-9 완료 후) |
+| Wave | 태스크 | 구현자 | 의존성 | 동시 실행 최대 |
+|------|--------|--------|--------|--------------|
+| 1 | T-1, T-2 | sdd-python-engineer (T-1), sdd-implementer (T-2) | 없음 | 2 |
+| 2 | T-3 | sdd-implementer | T-2 | 1 |
+| 3 | T-4 | sdd-implementer | T-1, T-2 | 1 |
 
-> **NFR-3 Phase 경계 정렬**
-> - Wave 1 (1-A·1-B·1-C) = Phase 1 foundation: 결정적 코어 패키지 + 오프라인 pytest suite
-> - Wave 2 = Phase 1 skill EXTEND: protected set (SKILL.md, agent.md) 수동 EXTEND
-> - Wave 3 = Phase 2 측정 substrate: 벤치마크 러너 + 라이브 eval 하네스 + 텔레메트리
-> - **Phase 3 harness-tier 자동 승격은 이 STATE.md 범위 밖.** Phase 2 벤치마크 측정 기반 확보 후 별도 게이트 통과 필요.
+**DAG 단순 표현:**
+```
+Wave 1: T-1 (코어+pytest)     T-2 (SKILL.md)    ← 병렬 가능
+Wave 2: T-3 (agent inject)    ← T-2 완료 후
+Wave 3: T-4 (evals)           ← T-1, T-2 완료 후
+```
 
----
-
-## 현재 진행
-- 현재 Wave: 완료
-- 완료 Wave: 1(T-1~T-5), 2(T-6~T-8), 3(T-9~T-11) — 전체 463/463 pytest, P1 0(수정후), result 생성
-- 통합 검증: 463 통과, 코어 13모듈 stdlib-only, evals/tests 분리(F21), 공개심볼 52
+> **Wave 배치 근거:**
+> - T-1, T-2: 상호 독립 (코어는 SKILL.md를 런타임 의존하지 않음). 단 분류 기준은 T-2 SKILL.md를 SSOT로 정의하고 T-1이 그것을 따르는 방향으로 구현자 간 조율 필요.
+> - T-3: T-2(SKILL.md)가 존재해야 포인터 타겟이 유효함 → T-2 이후.
+> - T-4: T-1(코어 패키지)과 T-2(SKILL.md) 모두 필요 → Wave 3. T-3와는 독립이나 T-1·T-2가 공통 전제라 Wave 3에 묶음.
 
 ---
 
@@ -42,17 +56,10 @@
 
 | ID | Wave | 구현자 | Status | Iteration | Agent | 비고 |
 |----|------|--------|--------|-----------|-------|------|
-| T-1 | 1-A | sdd-python-engineer | complete | 1 | - | cb8c411. 103/103, REVIEW_PASS P1 0 |
-| T-2 | 1-A | sdd-python-engineer | complete | 1 | - | a265023. 103/103, REVIEW_PASS P1 0 |
-| T-3 | 1-B | sdd-python-engineer | complete | 1 | - | d8216e9. REVIEW_PASS P1 0 |
-| T-4 | 1-B | sdd-python-engineer | complete | 1 | - | 25200cd. REVIEW_PASS P1 0 (cadence 300금지 검증) |
-| T-5 | 1-C | sdd-python-engineer | complete | 1 | - | d074c43. 243/243, socket 패치 오프라인 강제, evals 분리 |
-| T-6 | 2 | sdd-implementer | complete | 1 | - | 9d645cf. REVIEW_PASS P1 0 (F15 append·state_machine) |
-| T-7 | 2 | sdd-implementer | complete | 1 | - | beb62f7. REVIEW_PASS P1 0 (apply_writer 오염격리 검증) |
-| T-8 | 2 | sdd-implementer | complete | 1 | - | 111e3ac. REVIEW_PASS P1 0 (F22/F16 critic) |
-| T-9 | 3 | sdd-python-engineer | complete | 2 | - | 2638334+5c3bfc8. gate_adoption 분리, held-out cold_start 차단. REVIEW_PASS |
-| T-10 | 3 | sdd-python-engineer | complete | 2 | - | f1aeb89+5c3bfc8. 템플릿 이스케이프 수정. REVIEW_PASS |
-| T-11 | 3 | sdd-python-engineer | complete | 1 | - | b9ebc39. 재발률 자동추출(F23). REVIEW_PASS |
+| T-1 | 1 | sdd-python-engineer | complete | 1 | 03a2195 | 코어+pytest. compliance PASS, review PASS. SSOT 정합 수정 |
+| T-2 | 1 | sdd-implementer | complete | 0 | 0d60e12 | SKILL.md SSOT. compliance PASS, review PASS |
+| T-3 | 2 | sdd-implementer | complete | 0 | 7838759 | 단락 주입 +8/-0, 위치·문구 검증 |
+| T-4 | 3 | sdd-implementer | complete | 0 | e73f20d | evals 폴백 시나리오 (2 cases, 코어 재사용) |
 
 ### Status 값
 - `pending` — 아직 시작 안 됨
@@ -70,73 +77,47 @@
 - 오케스트레이터: 메인 세션
 - Engineer 슬롯 1: idle
 - Engineer 슬롯 2: idle
-- Engineer 슬롯 3: idle
-- Engineer 슬롯 4: idle
 - Reviewer: idle
 - Test Automator: idle
 
 ---
 
-## Protected Set 비고
+## 파일 소유권
 
-Wave 2의 T-6, T-7, T-8은 **protected set** 파일을 직접 수정한다:
-- T-6: `skills/pr-converge/SKILL.md` (protected set 멤버)
-- T-7: `skills/self-improve/SKILL.md` (protected set 멤버)
-- T-8: `agents/harness-improvement-critic.md` (protected set 멤버)
+| 태스크 | 소유 파일/디렉토리 | git add 규칙 |
+|--------|-------------------|-------------|
+| T-1 | `hooks/lib/code_mapper/` (전체), `tests/test_code_mapper_core.py` | 이 경로만 명시적 add (`git add -A` 금지) |
+| T-2 | `skills/code-mapper/SKILL.md` | 이 파일만 명시적 add |
+| T-3 | `agents/sdd-implementer.md` | 이 파일만 명시적 add (단락 추가 1건만) |
+| T-4 | `evals/scenarios/` 아래 신규 code-mapper 시나리오 파일 | 해당 파일만 명시적 add |
 
-이 세 태스크는 **사람 검토 하의 수동 EXTEND**만 허용된다. 자동생성루프(Engineer Agent 자율 실행) 대상이 아니다. 오케스트레이터는 이 태스크 실행 전 사용자 승인 게이트를 거쳐야 한다.
+> **병렬 git 규율**: 공유 worktree이므로 각 에이전트는 위 소유 파일만 `git add <경로>` 로 명시 스테이징. `git add -A` / `git add .` 금지. 브랜치 전환 금지.
 
 ---
 
-## 파일 소유권
+## 중요 제약 (Engineer에게 전달)
 
-| 태스크 | 소유 파일/디렉토리 |
-|--------|-------------------|
-| T-1 | `hooks/lib/self_improve/__init__.py`, `hooks/lib/self_improve/state_io.py`, `tests/test_state_io.py`, `tests/fixtures/pr_converge_state_v1.json`, `tests/fixtures/retro_state_v1.json` |
-| T-2 | `hooks/lib/self_improve/tier.py`, `hooks/lib/self_improve/guard.py`, `hooks/lib/self_improve/parser.py`, `tests/test_tier_classifier.py`, `tests/test_protected_guard.py`, `tests/test_tag_parser.py`, `tests/fixtures/sample_learning.md` |
-| T-3 | `hooks/lib/self_improve/cursor.py`, `hooks/lib/self_improve/recurrence.py`, `hooks/lib/self_improve/precheck.py`, `tests/test_cursor.py`, `tests/test_recurrence.py`, `tests/test_precheck.py`, `tests/fixtures/sample_learning_with_markers.md`, `tests/fixtures/target_file_with_duplicate.md` |
-| T-4 | `hooks/lib/self_improve/circuit_breaker.py`, `hooks/lib/self_improve/cap.py`, `hooks/lib/self_improve/memory_router.py`, `hooks/lib/self_improve/ladder.py`, `tests/test_cap_cadence.py`, `tests/test_memory_router.py`, `tests/test_ladder.py` |
-| T-5 | `tests/conftest.py`, `pytest.ini` (또는 `pyproject.toml`) |
-| T-6 | `skills/pr-converge/SKILL.md`, `skills/pr-converge/scripts/`, `tests/test_pr_converge_scripts.py`, `tests/fixtures/pr_converge_patterns.json` |
-| T-7 | `skills/self-improve/SKILL.md`, `skills/self-improve/scripts/`, `tests/test_self_improve_scripts.py`, `tests/fixtures/harness_proposal_template.md` |
-| T-8 | `agents/harness-improvement-critic.md` |
-| T-9 | `hooks/lib/self_improve/bench_runner.py`, `benchmarks/sets/train/`, `benchmarks/sets/held-out/`, `benchmarks/run_live.sh`, `tests/test_bench_runner.py`, `tests/fixtures/bench_baseline.json`, `tests/fixtures/bench_candidate.json` |
-| T-10 | `evals/`, `tests/test_eval_harness_structure.py` |
-| T-11 | `hooks/lib/self_improve/metrics.py`, `tests/test_metrics.py`, `tests/fixtures/retro_log_sample.md`, `tests/fixtures/metrics_expected.json`, `.harness/metrics.json` (런타임 출력) |
+1. **결정↔판단 분리**: `hooks/lib/code_mapper/` 코어는 stdlib-only 순수함수만. MCP 호출·의미 판단 코드 삽입 금지.
+2. **정체성 불변**: ephemeral. 어떤 코드도 코드맵을 디스크에 저장/파일에 쓰면 안 됨. 계약/검증/종속/하드게이트 금지.
+3. **sdd-implementer 준-protected**: T-3는 단락 1개 추가만. 기존 섹션 0 변경. diff 최소.
+4. **하네스 범용**: 레포 특화 경로·명령 하드코딩 금지.
+5. **오프라인/라이브 비혼합**: `pytest tests/`는 `evals/`를 수집하지 않음.
 
 ---
 
 ## DAG 의존 그래프
 
 ```
-T-1 ────────────────────────────────────────────────────────────────────► T-4 ──► T-6
-  │                                                                         │       │
-  └─────────────────────────────────────────────────────────► T-4           │       │
-                                                                             │       │
-T-2 ──► T-3 ──────────────────────────────────────────────────────────────► T-7    │
-  │       │                                                                   │       │
-  │       └──────────────────────────────────────────────────► T-7            │       │
-  │                                                                             │       │
-  └─────────────────────────────────────────────────────────► T-4 ─────────► T-6    │
-                                                                                       │
-T-1,T-2,T-3,T-4 ──────────────────────────────────────────────────────────► T-5 ──► T-9 ──► T-10
-                                                                                       │
-T-8 (Wave 2, 독립) ────────────────────────────────────────────────────────────────► T-9
-
-T-1,T-6,T-7 ──────────────────────────────────────────────────────────────────────► T-11
-```
-
-**단순 표현:**
-```
-Wave 1-A: T-1  T-2
-Wave 1-B: T-3(←T-2)  T-4(←T-1,T-2)
-Wave 1-C: T-5(←T-1,T-2,T-3,T-4)
-Wave 2:   T-6(←T-1,T-2,T-4)  T-7(←T-1,T-2,T-3,T-4)  T-8(←없음)
-Wave 3:   T-9(←T-5,T-7,T-8)  T-11(←T-1,T-6,T-7)  [동시 가능]
-          T-10(←T-5,T-9)     [T-9 완료 후]
+T-1 (코어+pytest) ─────────────────────────► T-4 (evals)
+                                               ▲
+T-2 (SKILL.md) ────────────────────────────────┤
+         │                                      │
+         └──► T-3 (agent inject)                │
+              (T-2 완료 후)               (T-1+T-2 완료 후)
 ```
 
 ---
 
 ## 이력
-- [2026-06-16] ORCHESTRATOR_STATE.md 초기 생성 — DAG/Wave 구성 완료, 상태 PLANNING
+- [2026-06-29] ORCHESTRATOR_STATE.md 초기 생성 — code-mapper DAG/Wave 구성 완료, 상태 PLANNING
+- [2026-06-29] Wave1 T-1·T-2 complete (compliance/review PASS, SSOT 정합 수정) → Wave2 T-3 complete (+8/-0) → Wave3 T-4 complete → 통합검증 512 passed → result 생성 → COMPLETED
