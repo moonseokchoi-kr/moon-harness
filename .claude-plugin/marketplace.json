@@ -7,13 +7,13 @@
   },
   "metadata": {
     "description": "Moon Harness — AI 에이전트 개발 라이프사이클 하네스. SDD 4단계 파이프라인, 아이디어 워크샵, 자가개선 시스템(pr-converge 외부신호 수렴 + self-improve 학습 루프 + 벤치마크 fitness), enforcement 훅 시스템.",
-    "version": "0.9.1"
+    "version": "0.10.0"
   },
   "plugins": [
     {
       "name": "moon-harness",
       "source": "./",
-      "description": "아이디어에서 배포까지 AI 에이전트의 전체 개발 라이프사이클을 구조화. /sdd 자동 파이프라인, /harness 환경 구성, /pr-converge 외부신호 수렴 루프, /self-improve 자가개선 루프, enforcement 훅(role-gate, tdd-gate, branch-gate, e2e-gate, phase-gate, stop-pipeline 등).",
+      "description": "아이디어에서 배포까지 AI 에이전트의 전체 개발 라이프사이클을 구조화. /sdd 자동 파이프라인, /harness 환경 구성, /code-mapper 구조적 컨텍스트 제공(편집 전 실제 호출관계 파악), /pr-converge 외부신호 수렴 루프, /self-improve 자가개선 루프, enforcement 훅(role-gate, tdd-gate, branch-gate, e2e-gate, phase-gate, stop-pipeline 등).",
       "category": "workflow",
       "tags": [
         "sdd",
