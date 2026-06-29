@@ -23,3 +23,6 @@ detect-claude-deps.csv
 __pycache__/
 *.pyc
 evals/results/*.json
+
+# git worktrees (isolated feature workspaces)
+worktrees/
