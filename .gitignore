@@ -16,6 +16,9 @@ node_modules/
 .claude/state/
 **/.claude/state/
 
+# Local CLAUDE overrides (per-clone, not committed; self-improve auto-pointer target)
+CLAUDE.local.md
+
 # Stray analysis artifacts
 compatibility-report.md
 detect-claude-deps.csv
