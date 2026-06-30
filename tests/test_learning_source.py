@@ -458,3 +458,159 @@ class TestImportSideEffectsAndFailSafe:
             f"Store entries must be in filename-sorted order (a before b). "
             f"got={store_repos}"
         )
+
+
+# ── T-2 보강: 실제 harness-learning 포맷 다중 도메인 회귀 ────────────────────
+
+
+class TestMultiDomainHarnessLearningFormat:
+    """실제 harness-learning 포맷: 여러 도메인 중 test-adequacy만 교차(2 repo),
+    나머지 도메인은 단일 repo인 케이스에서 F16 가드가 정확히 동작하는지 검증한다.
+
+    시나리오: T-2 완료 조건 §1 — 현황 인지 "여러 도메인 중 test-adequacy만 교차·나머지 단일"
+    """
+
+    @pytest.mark.offline
+    def test_cross_project_true_only_for_cross_domain(self, tmp_path: Path) -> None:
+        """test-adequacy는 2 repo(moon-harness + Marvelous) → True.
+        single-domain 은 1 repo(moon-harness only) → False.
+        F16 가드가 도메인별로 정확히 가르는지 확인한다."""
+        # 로컬 LEARNING.md: test-adequacy(moon-harness) + single-domain(moon-harness)
+        local_file = tmp_path / "LEARNING.md"
+        local_file.write_text(
+            _make_learning_md("test-adequacy", "moon-harness", "2026-01-01 — local / cross")
+            + _make_learning_md("single-domain", "moon-harness", "2026-01-02 — local / single"),
+            encoding="utf-8",
+        )
+
+        # store: test-adequacy(Marvelous) — 교차 증거 1건만 추가
+        store_dir = tmp_path / "store"
+        store_dir.mkdir()
+        (store_dir / "marvelous.md").write_text(
+            _make_learning_md("test-adequacy", "Marvelous", "2026-02-01 — store / cross"),
+            encoding="utf-8",
+        )
+
+        merged = load_and_merge(local_file, store_dir)
+        counter = count_signals(merged)
+
+        # test-adequacy: 2 distinct repos → True
+        assert has_cross_project(counter, "test-adequacy") is True, (
+            f"test-adequacy with moon-harness+Marvelous must yield True. counter={counter}"
+        )
+
+        # single-domain: 1 repo(moon-harness) only → False
+        assert has_cross_project(counter, "single-domain") is False, (
+            f"single-domain with only moon-harness must yield False. counter={counter}"
+        )
+
+    @pytest.mark.offline
+    def test_multiple_domains_only_cross_domain_is_true(self, tmp_path: Path) -> None:
+        """N개 도메인 중 1개만 교차인 경우 has_cross_project 정확도 확인.
+
+        로컬: domain-A(repo1), domain-B(repo1), domain-C(repo1)
+        store: domain-A(repo2) 만
+        → domain-A만 True, domain-B·C는 False.
+        """
+        local_file = tmp_path / "LEARNING.md"
+        local_file.write_text(
+            _make_learning_md("domain-A", "repo1", "2026-01-01 — A / local")
+            + _make_learning_md("domain-B", "repo1", "2026-01-02 — B / local")
+            + _make_learning_md("domain-C", "repo1", "2026-01-03 — C / local"),
+            encoding="utf-8",
+        )
+
+        store_dir = tmp_path / "store"
+        store_dir.mkdir()
+        (store_dir / "repo2.md").write_text(
+            _make_learning_md("domain-A", "repo2", "2026-02-01 — A / store"),
+            encoding="utf-8",
+        )
+
+        merged = load_and_merge(local_file, store_dir)
+        assert len(merged) == 4, f"Expected 4 entries (3 local + 1 store), got {len(merged)}"
+
+        counter = count_signals(merged)
+        assert has_cross_project(counter, "domain-A") is True, (
+            "domain-A: repo1+repo2 → must be True"
+        )
+        assert has_cross_project(counter, "domain-B") is False, (
+            "domain-B: repo1 only → must be False"
+        )
+        assert has_cross_project(counter, "domain-C") is False, (
+            "domain-C: repo1 only → must be False"
+        )
+
+
+# ── T-2 보강: local 1 + store 2 → 엔트리 수 = 세 파일 파싱 합 ────────────────
+
+
+class TestEntryCountMultipleStoreFiles:
+    """로컬 1건 + store *.md 2건 → 반환 entries 수가 세 파일 파싱 결과 합과 같음.
+    (T-2 완료 조건 §6)
+    """
+
+    @pytest.mark.offline
+    def test_local_one_store_two_total_entry_count(self, tmp_path: Path) -> None:
+        """로컬 1 파일(N개 엔트리) + store 2 파일(각 M, K개) → 합계 N+M+K."""
+        local_file = tmp_path / "LEARNING.md"
+        local_content = (
+            _make_learning_md("domain-p", "moon-harness", "2026-01-01 — p1 / local")
+            + _make_learning_md("domain-q", "moon-harness", "2026-01-02 — q1 / local")
+        )
+        local_file.write_text(local_content, encoding="utf-8")
+
+        store_dir = tmp_path / "store"
+        store_dir.mkdir()
+
+        store1_content = _make_learning_md("domain-p", "Marvelous", "2026-02-01 — p1 / store1")
+        store2_content = (
+            _make_learning_md("domain-q", "OtherRepo", "2026-03-01 — q1 / store2")
+            + _make_learning_md("domain-r", "OtherRepo", "2026-03-02 — r1 / store2")
+        )
+        (store_dir / "store1.md").write_text(store1_content, encoding="utf-8")
+        (store_dir / "store2.md").write_text(store2_content, encoding="utf-8")
+
+        merged = load_and_merge(local_file, store_dir)
+
+        # 각 파일 독립 파싱 결과와 합계가 일치해야 함
+        expected_count = (
+            len(parse_learning_entry(local_content))
+            + len(parse_learning_entry(store1_content))
+            + len(parse_learning_entry(store2_content))
+        )
+        assert len(merged) == expected_count, (
+            f"Merged entry count must equal sum of individual parse results. "
+            f"got={len(merged)}, expected={expected_count}"
+        )
+
+    @pytest.mark.offline
+    def test_store_two_files_varied_provenance_cross_project_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        """store 2 파일에서 동일 domain 엔트리가 오고 로컬과 합치면 3-way 결선이 올바름.
+        도메인별 has_cross_project 판정이 store 파일 수와 무관하게 정확해야 한다."""
+        local_file = tmp_path / "LEARNING.md"
+        local_file.write_text(
+            _make_learning_md("test-adequacy", "moon-harness", "2026-01-01 — local"),
+            encoding="utf-8",
+        )
+
+        store_dir = tmp_path / "store"
+        store_dir.mkdir()
+        (store_dir / "a_marvelous.md").write_text(
+            _make_learning_md("test-adequacy", "Marvelous", "2026-02-01 — store-a"),
+            encoding="utf-8",
+        )
+        (store_dir / "b_other.md").write_text(
+            _make_learning_md("test-adequacy", "AnotherRepo", "2026-03-01 — store-b"),
+            encoding="utf-8",
+        )
+
+        merged = load_and_merge(local_file, store_dir)
+        assert len(merged) == 3, f"Expected 3 entries (1 local + 2 store), got {len(merged)}"
+
+        counter = count_signals(merged)
+        assert has_cross_project(counter, "test-adequacy") is True, (
+            f"3 distinct repos must yield True. counter={counter}"
+        )
