@@ -1,32 +1,38 @@
 # Orchestrator State
 
 ## 메타
-- feature: `code-mapper`
-- spec 문서: `docs/sdd/spec/2026-06-26-code-mapper.md`
-- arch 문서: `docs/sdd/design/arch/2026-06-26-code-mapper.md`
+- feature: `cross-project-learning-aggregation`
+- spec 문서: `docs/sdd/spec/2026-06-30-cross-project-learning-aggregation.md`
+- arch 문서: `docs/sdd/design/arch/2026-06-30-cross-project-learning-aggregation.md`
 - ui 문서: 해당 없음 (SIMPLE 모드)
 - api 문서: 해당 없음 (SIMPLE 모드)
-- 시작 시각: 2026-06-29T00:00:00Z
-- 마지막 갱신: 2026-06-29T00:00:00Z
-- 상태: COMPLETED
+- task 디렉터리: `docs/sdd/task/cross-project-learning-aggregation/`
+- 시작 시각: 2026-06-30T00:00:00+09:00
+- 마지막 갱신: 2026-06-30T00:00:00+09:00
+- 상태: PLANNING
 - 워밍업 완료: 미실행(fast-scoped)
 
-> 단일 오케스트레이터 모드 — Wave 1→2→3이 단일 선형 의존 체인 (T-1/T-2 병렬 → T-3/T-4 직렬 의존). 독립 클러스터 2개 이상 없음. 팀 배정 생략.
+> 단일 오케스트레이터 모드 — 태스크 3개, 단일 선형 체인(Wave 1 병렬 → Wave 2 순차). 독립 클러스터 2개 미만. 팀 배정 생략.
 
 ---
 
 ## 빌드 프로파일
 
-> 출처: `docs/sdd/design/arch/2026-06-26-code-mapper.md` § 빌드 프로파일 (2026-06-26 확인)
+> arch 문서의 `## 빌드 프로파일` 표를 taskmaster가 복사. Phase 4 build-aware TDD가 소비.
+> 출처: `docs/sdd/design/arch/2026-06-30-cross-project-learning-aggregation.md` — 2026-06-30 확인
 
 | 필드 | 값 | 비고 |
 |------|-----|------|
-| 유형 | fast-scoped | 컴파일 산출물 없음(마크다운 + stdlib python). 빌드 단계 없이 테스트 직접 실행. |
-| 워밍업 빌드 | (생략) | fast-scoped — 콜드 빌드 비용 없음 |
-| 증분 빌드 | (생략) | 빌드 산출물 없음 |
-| 테스트 실행 | `PATH="/opt/homebrew/bin:$PATH" python3 -m pytest tests/ -q` | pytest는 homebrew python(3.14)에 설치, Xcode python3엔 없음 |
-| 테스트 필터 문법 | `... pytest tests/test_code_mapper_*.py -q` 또는 `-k <name>` | 태스크별 스코프 지정 |
-| clean 정책 | no-clean | 캐시(`.pytest_cache`) 보존 |
+| 유형 | fast-scoped | pytest 직접 실행. 빌드 산출물 없음(순수 Python). 워밍업 빌드 불필요. |
+| 워밍업 빌드 | — | fast-scoped — Phase 4 진입 워밍업 생략 |
+| 증분 빌드 | — | 컴파일 단계 없음 |
+| 테스트 실행 | `python3 -m pytest tests/ -q` | 전량 실행. 태스크 스코프: `python3 -m pytest tests/test_learning_source.py -q` |
+| 테스트 필터 문법 | `python3 -m pytest tests/test_learning_source.py::TestClass::test_method` | 노드 ID로 태스크 스코프 지정 |
+| clean 정책 | no-clean | `__pycache__` 보존 — 태스크 간 clean 불필요 |
+
+> 워밍업 실행 여부 기록: `워밍업 완료: 미실행(fast-scoped)`
+
+> 📌 **인터프리터 주의 (Phase 4 진입 시 1회 확인 권장)**: 이 머신은 homebrew가 `/usr/local`에 있어 **`python3 -m pytest tests/ -q`(= `/usr/local/bin/python3.14`, pytest 9.0.3)로 동작 확인됨**. `CLAUDE.md`가 문서화한 `PATH="/opt/homebrew/bin:$PATH" ...`는 이 머신 기준 경로가 상이(`/opt/homebrew`가 아닌 `/usr/local` Cellar). 환경이 다를 수 있으니 Phase 4 진입 시 **`python3 -m pytest --version`**(또는 `which -a python3 python3.14`)으로 pytest 가능한 실제 인터프리터를 확정한 뒤 위 표의 명령을 사용하라(pyenv/uv/venv 가능성).
 
 ---
 
@@ -34,21 +40,24 @@
 
 | Wave | 태스크 | 구현자 | 의존성 | 동시 실행 최대 |
 |------|--------|--------|--------|--------------|
-| 1 | T-1, T-2 | sdd-python-engineer (T-1), sdd-implementer (T-2) | 없음 | 2 |
-| 2 | T-3 | sdd-implementer | T-2 | 1 |
-| 3 | T-4 | sdd-implementer | T-1, T-2 | 1 |
+| 1 | T-1, T-3 | sdd-python-engineer (T-1), sdd-implementer (T-3) | 없음 | 2 |
+| 2 | T-2 | sdd-test-automator | T-1 GREEN 완료 후 | 1 |
 
-**DAG 단순 표현:**
+**DAG 표현:**
 ```
-Wave 1: T-1 (코어+pytest)     T-2 (SKILL.md)    ← 병렬 가능
-Wave 2: T-3 (agent inject)    ← T-2 완료 후
-Wave 3: T-4 (evals)           ← T-1, T-2 완료 후
+Wave 1: T-1 (learning_source.py 신규 구현)   T-3 (SKILL.md Phase B 텍스트)   ← 병렬 가능
+Wave 2: T-2 (통합/회귀 테스트)               ← T-1 GREEN 완료 후
 ```
 
 > **Wave 배치 근거:**
-> - T-1, T-2: 상호 독립 (코어는 SKILL.md를 런타임 의존하지 않음). 단 분류 기준은 T-2 SKILL.md를 SSOT로 정의하고 T-1이 그것을 따르는 방향으로 구현자 간 조율 필요.
-> - T-3: T-2(SKILL.md)가 존재해야 포인터 타겟이 유효함 → T-2 이후.
-> - T-4: T-1(코어 패키지)과 T-2(SKILL.md) 모두 필요 → Wave 3. T-3와는 독립이나 T-1·T-2가 공통 전제라 Wave 3에 묶음.
+> - T-1, T-3: 상호 독립 — `learning_source.py` 코드와 `SKILL.md` 텍스트는 런타임 의존 없음. 병렬 실행 가능.
+> - T-2: T-1 GREEN(모듈 구현 완료) 후에야 `load_and_merge` 함수를 import하여 통합 테스트 작성/실행 가능 → Wave 2.
+
+---
+
+## 현재 진행
+- 현재 Wave: -
+- 완료 Wave: -
 
 ---
 
@@ -56,10 +65,9 @@ Wave 3: T-4 (evals)           ← T-1, T-2 완료 후
 
 | ID | Wave | 구현자 | Status | Iteration | Agent | 비고 |
 |----|------|--------|--------|-----------|-------|------|
-| T-1 | 1 | sdd-python-engineer | complete | 1 | 03a2195 | 코어+pytest. compliance PASS, review PASS. SSOT 정합 수정 |
-| T-2 | 1 | sdd-implementer | complete | 0 | 0d60e12 | SKILL.md SSOT. compliance PASS, review PASS |
-| T-3 | 2 | sdd-implementer | complete | 0 | 7838759 | 단락 주입 +8/-0, 위치·문구 검증 |
-| T-4 | 3 | sdd-implementer | complete | 0 | e73f20d | evals 폴백 시나리오 (2 cases, 코어 재사용) |
+| T-1 | 1 | sdd-python-engineer | pending | 0 | - | learning_source.py 신규 구현 (RED→GREEN) |
+| T-3 | 1 | sdd-implementer | pending | 0 | - | SKILL.md Phase B 배선 텍스트 갱신 (T-1과 병렬) |
+| T-2 | 2 | sdd-test-automator | pending | 0 | - | 코어 합류 통합/회귀 테스트 (T-1 GREEN 후) |
 
 ### Status 값
 - `pending` — 아직 시작 안 됨
@@ -84,40 +92,35 @@ Wave 3: T-4 (evals)           ← T-1, T-2 완료 후
 
 ## 파일 소유권
 
-| 태스크 | 소유 파일/디렉토리 | git add 규칙 |
+| 태스크 | 소유 파일/디렉터리 | git add 규칙 |
 |--------|-------------------|-------------|
-| T-1 | `hooks/lib/code_mapper/` (전체), `tests/test_code_mapper_core.py` | 이 경로만 명시적 add (`git add -A` 금지) |
-| T-2 | `skills/code-mapper/SKILL.md` | 이 파일만 명시적 add |
-| T-3 | `agents/sdd-implementer.md` | 이 파일만 명시적 add (단락 추가 1건만) |
-| T-4 | `evals/scenarios/` 아래 신규 code-mapper 시나리오 파일 | 해당 파일만 명시적 add |
+| T-1 | `hooks/lib/self_improve/learning_source.py`, `tests/test_learning_source.py` (RED 테스트 스텁 포함) | 이 경로만 명시적 add (`git add -A` 금지) |
+| T-3 | `skills/self-improve/SKILL.md` | 이 파일만 명시적 add |
+| T-2 | `tests/test_learning_source.py` (통합/회귀 시나리오 추가분), `tests/fixtures/` (신규 store *.md fixture) | 해당 경로만 명시적 add |
 
-> **병렬 git 규율**: 공유 worktree이므로 각 에이전트는 위 소유 파일만 `git add <경로>` 로 명시 스테이징. `git add -A` / `git add .` 금지. 브랜치 전환 금지.
+> **병렬 git 규율**: 공유 worktree이므로 각 에이전트는 위 소유 파일만 `git add <경로>`로 명시 스테이징. `git add -A` / `git add .` 금지. 브랜치 전환 금지.
 
 ---
 
 ## 중요 제약 (Engineer에게 전달)
 
-1. **결정↔판단 분리**: `hooks/lib/code_mapper/` 코어는 stdlib-only 순수함수만. MCP 호출·의미 판단 코드 삽입 금지.
-2. **정체성 불변**: ephemeral. 어떤 코드도 코드맵을 디스크에 저장/파일에 쓰면 안 됨. 계약/검증/종속/하드게이트 금지.
-3. **sdd-implementer 준-protected**: T-3는 단락 1개 추가만. 기존 섹션 0 변경. diff 최소.
-4. **하네스 범용**: 레포 특화 경로·명령 하드코딩 금지.
-5. **오프라인/라이브 비혼합**: `pytest tests/`는 `evals/`를 수집하지 않음.
+1. **NFR-1 무수정 불변식**: `hooks/lib/self_improve/recurrence.py`, `parser.py`, `state_io.py`, `__init__.py` 및 기타 기존 파일 git diff 0. 신규 `learning_source.py` + `SKILL.md` Phase B 텍스트만 변경.
+2. **export 보수안**: `__init__.py` 무수정. 호출부는 `from hooks.lib.self_improve.learning_source import load_and_merge` 직접 import.
+3. **fail-safe 에러 계약**: (A) I/O 실패=catch&skip / (B) 파싱 0건=정상. raise 0, import 부작용 0.
+4. **TDD 순서**: test-automator가 RED 먼저 작성 → engineer가 GREEN 달성.
+5. **fast-scoped**: 워밍업 빌드 없음. 태스크당 `python3 -m pytest tests/test_learning_source.py -q`만 실행. no-clean.
 
 ---
 
 ## DAG 의존 그래프
 
 ```
-T-1 (코어+pytest) ─────────────────────────► T-4 (evals)
-                                               ▲
-T-2 (SKILL.md) ────────────────────────────────┤
-         │                                      │
-         └──► T-3 (agent inject)                │
-              (T-2 완료 후)               (T-1+T-2 완료 후)
+T-1 (learning_source.py 구현) ──► T-2 (통합/회귀 테스트)
+T-3 (SKILL.md 텍스트)             (T-1 GREEN 후)
+(T-1과 독립, Wave 1 병렬)
 ```
 
 ---
 
 ## 이력
-- [2026-06-29] ORCHESTRATOR_STATE.md 초기 생성 — code-mapper DAG/Wave 구성 완료, 상태 PLANNING
-- [2026-06-29] Wave1 T-1·T-2 complete (compliance/review PASS, SSOT 정합 수정) → Wave2 T-3 complete (+8/-0) → Wave3 T-4 complete → 통합검증 512 passed → result 생성 → COMPLETED
+- [2026-06-30] ORCHESTRATOR_STATE.md 초기 생성 — cross-project-learning-aggregation DAG/Wave 구성 완료, 상태 PLANNING
