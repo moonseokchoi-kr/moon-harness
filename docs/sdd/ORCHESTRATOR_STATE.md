@@ -8,9 +8,10 @@
 - api 문서: 해당 없음 (SIMPLE 모드)
 - task 디렉터리: `docs/sdd/task/cross-project-learning-aggregation/`
 - 시작 시각: 2026-06-30T00:00:00+09:00
-- 마지막 갱신: 2026-06-30T00:00:00+09:00
-- 상태: PLANNING
+- 마지막 갱신: 2026-06-30 (Phase 4 COMPLETED — 통합검증 통과)
+- 상태: COMPLETED
 - 워밍업 완료: 미실행(fast-scoped)
+- 통합 검증: 전체 533 passed / 0 failed · NFR-1 무수정(learning_source.py만 신규) 확인 · result 문서 생성
 
 > 단일 오케스트레이터 모드 — 태스크 3개, 단일 선형 체인(Wave 1 병렬 → Wave 2 순차). 독립 클러스터 2개 미만. 팀 배정 생략.
 
@@ -56,8 +57,8 @@ Wave 2: T-2 (통합/회귀 테스트)               ← T-1 GREEN 완료 후
 ---
 
 ## 현재 진행
-- 현재 Wave: -
-- 완료 Wave: -
+- 현재 Wave: 통합 검증 (Step 3)
+- 완료 Wave: 1 (T-1 ✅, T-3 ✅), 2 (T-2 ✅)
 
 ---
 
@@ -65,9 +66,9 @@ Wave 2: T-2 (통합/회귀 테스트)               ← T-1 GREEN 완료 후
 
 | ID | Wave | 구현자 | Status | Iteration | Agent | 비고 |
 |----|------|--------|--------|-----------|-------|------|
-| T-1 | 1 | sdd-python-engineer | pending | 0 | - | learning_source.py 신규 구현 (RED→GREEN) |
-| T-3 | 1 | sdd-implementer | pending | 0 | - | SKILL.md Phase B 배선 텍스트 갱신 (T-1과 병렬) |
-| T-2 | 2 | sdd-test-automator | pending | 0 | - | 코어 합류 통합/회귀 테스트 (T-1 GREEN 후) |
+| T-1 | 1 | sdd-python-engineer | complete | 0 | - | GREEN 커밋 f999203 (17/17, 회귀 529). compliance PASS(20/20) + REVIEW_PASS(P1 0). 기존파일 diff 0. ✅ |
+| T-3 | 1 | sdd-implementer | complete | 0 | - | DONE 커밋 fdd1701. REVIEW_PASS(P1 0, F4 충족, Phase C/D·F17-19 무변경). 회귀 28 passed=verify. ✅ |
+| T-2 | 2 | sdd-test-automator | testing | 0 | test-automator | 통합/회귀 테스트 — T-1 GREEN 완료, Wave 2 진입 |
 
 ### Status 값
 - `pending` — 아직 시작 안 됨
