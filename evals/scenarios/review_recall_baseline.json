@@ -1,0 +1,114 @@
+{
+  "id": "review_recall_baseline",
+  "description": "sdd-reviewer recall 측정 (review_recall_baseline) — planted P1 정답셋 대비 DETECTED 율",
+  "scenario_type": "review_recall",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "pos-logic-clear",
+      "input": {
+        "context": "def average(nums):\n-    return sum(nums) / len(nums)\n+    return sum(nums) / len(nums)  # nums 가 빈 리스트면 ZeroDivisionError\n",
+        "comment": "빈 리스트 입력 시 ZeroDivisionError 로 크래시하는 미처리 엣지 케이스가 있다 (사용자에게 보이는 잘못된 동작/크래시)."
+      },
+      "expected_label": "DETECTED",
+      "judge_criteria": {
+        "category": "P1-logic",
+        "difficulty": "clear",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    },
+    {
+      "id": "pos-security-clear",
+      "input": {
+        "context": "-    cur.execute(\"SELECT * FROM users WHERE id = ?\", (uid,))\n+    cur.execute(\"SELECT * FROM users WHERE id = '\" + uid + \"'\")\n",
+        "comment": "사용자 입력 uid 를 문자열 연결로 SQL 에 삽입 — SQL 인젝션 취약점."
+      },
+      "expected_label": "DETECTED",
+      "judge_criteria": {
+        "category": "P1-security",
+        "difficulty": "clear",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    },
+    {
+      "id": "pos-security-borderline",
+      "input": {
+        "context": "     def login(user, pw):\n+        logger.info(f\"login attempt user={user} pw={pw}\")\n         return auth(user, pw)\n",
+        "comment": "평문 비밀번호가 info 로그에 기록됨 — 민감 정보가 로그에 노출 (리뷰어 규칙상 [P1] 보안, 단 저심각도)."
+      },
+      "expected_label": "DETECTED",
+      "judge_criteria": {
+        "category": "P1-security",
+        "difficulty": "borderline",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    },
+    {
+      "id": "pos-tdd-borderline",
+      "input": {
+        "context": "     # tests/test_parser.py\n-    assert parse(\"a=1\") == {\"a\": 1}\n+    assert parse(\"a=1\") is not None  # 구현 통과시키려 단언 약화\n",
+        "comment": "implementer 가 테스트 파일의 단언을 약화시켜 통과시킴 — TDD 무결성 위반 (테스트 파일 무단 수정)."
+      },
+      "expected_label": "DETECTED",
+      "judge_criteria": {
+        "category": "P1-tdd",
+        "difficulty": "borderline",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    },
+    {
+      "id": "pos-logic-borderline",
+      "input": {
+        "context": "     def find_user(users, name):\n         for u in users:\n             if u.name == name:\n                 return u\n-        raise NotFound(name)\n+        # 못 찾으면 None 반환 (호출부는 .id 접근 → AttributeError)\n+        return None\n",
+        "comment": "미발견 시 None 반환으로 바뀌었고 호출부가 .id 접근 시 AttributeError — 조건부 크래시."
+      },
+      "expected_label": "DETECTED",
+      "judge_criteria": {
+        "category": "P1-logic",
+        "difficulty": "borderline",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    },
+    {
+      "id": "neg-style",
+      "input": {
+        "context": "-    def calc_total(items):\n+    def calcTotal(items):  # 네이밍만 변경, 동작 동일\n         return sum(i.price for i in items)\n",
+        "comment": "함수명이 snake_case 규약을 벗어남 (calcTotal) — 네이밍 스타일 문제."
+      },
+      "expected_label": "MISSED",
+      "judge_criteria": {
+        "category": "not-P1-style",
+        "difficulty": "clear",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    },
+    {
+      "id": "neg-perf-is-p2",
+      "input": {
+        "context": "+    for a in list_a:\n+        for b in list_b:\n+            if a.key == b.key: link(a, b)\n",
+        "comment": "O(n²) 이중 루프로 성능 병목 가능 — 성능 최적화가 필요하다 (P2 성능 이슈)."
+      },
+      "expected_label": "MISSED",
+      "judge_criteria": {
+        "category": "not-P1-scope(P2)",
+        "difficulty": "clear",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    },
+    {
+      "id": "neg-absent",
+      "input": {
+        "context": "     def clamp(x, lo, hi):\n-        return x\n+        return max(lo, min(x, hi))\n",
+        "comment": "경계값 처리에 off-by-one 이 있어 hi 를 초과하는 값이 반환된다."
+      },
+      "expected_label": "MISSED",
+      "judge_criteria": {
+        "category": "not-P1-absent",
+        "difficulty": "clear",
+        "rubric": "리뷰어 프롬프트 변형이 planted P1 을 [P1]로 보고하면 DETECTED. 음성 case 는 MISSED 여야 정답."
+      }
+    }
+  ],
+  "judge_model": "claude-sonnet-5",
+  "judge_prompt_template": "당신은 SDD 코드 품질 리뷰어(Verification, '올바르게 만들었는가')입니다.\n역할: 코드에 버그를 유발할 오류를 검토합니다 — 로직 버그, 아키텍처 위반, 보안 이슈, TDD 무결성.\n[P1] 판정 경계:\n  해당: 사용자에게 보이는 잘못된 동작 / 데이터 손실·크래시·보안 취약점 / 다른 모듈을 깨뜨리는 인터페이스 변경 / 테스트 파일 무단 수정.\n  해당 안 됨: 타이포·로그 문자열, 내부 변수명, 스타일·주석, 테스트 커버리지 부족. 성능은 P2(별도 담당), 스타일은 P3(린터).\n\n리뷰어는 [P1]만 판정합니다. P2(성능)·P3(스타일)는 보고하지 않습니다.\n\n아래 diff 를 위 기준으로 리뷰하십시오.\n\ndiff:\n{context}\n\n질문: 당신의 리뷰가 다음에 해당하는 [P1] 이슈를 보고합니까?\n{comment}\n\n판정을 JSON 으로만 반환하십시오:\n{{\"label\": \"DETECTED\" | \"MISSED\", \"reason\": \"<1-2문장 근거>\", \"confidence\": 0.0-1.0}}\nDETECTED = 당신의 리뷰가 이 이슈를 [P1]로 보고함. MISSED = 보고하지 않음(P1 아님 포함)."
+}

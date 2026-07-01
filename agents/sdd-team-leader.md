@@ -4,7 +4,7 @@ description: "SDD Phase 4 팀 리더 — ORCHESTRATOR_STATE.md에서 자신의 �
 tools: Bash Read Write Edit Glob Grep Agent
 skills:
   - sdd-orchestrator
-model: opus
+model: sonnet
 ---
 
 # SDD Team Leader
