@@ -200,15 +200,19 @@ def _check_claude_cli() -> bool:
 def _run_judge_live(
     scenario: dict[str, Any],
     case: dict[str, Any],
+    model: str | None = None,
 ) -> dict[str, Any]:
     """단일 케이스를 claude -p 헤드리스로 LLM-judge 채점한다.
 
     경고: 이 함수는 --live 플래그가 있을 때만 호출된다.
     실제 API 크레딧을 소비한다.
 
+    모델 선택 우선순위: 인자 model > scenario["judge_model"] > CLI 기본값(무지정).
+
     Args:
         scenario: 시나리오 dict (judge_prompt_template 포함).
         case: 개별 케이스 dict.
+        model: claude --model 로 전달할 모델 id (None이면 judge_model 필드로 폴백).
 
     Returns:
         {
@@ -237,9 +241,15 @@ def _run_judge_live(
         evidence=json.dumps(case["input"].get("evidence", {}), ensure_ascii=False),
     )
 
+    resolved_model = model or scenario.get("judge_model") or None
+    cmd = ["claude"]
+    if resolved_model:
+        cmd += ["--model", resolved_model]
+    cmd += ["-p", prompt]
+
     try:
         proc = subprocess.run(
-            ["claude", "-p", prompt],
+            cmd,
             capture_output=True,
             text=True,
             timeout=60,
@@ -421,6 +431,7 @@ def run_live(
     scenario_filter: str | None = None,
     output_path: Path | None = None,
     scenarios_dir: Path | None = None,
+    model: str | None = None,
 ) -> Path:
     """라이브 모드: claude -p 헤드리스로 시나리오를 실행하고 결과를 저장한다.
 
@@ -475,7 +486,7 @@ def run_live(
         case_results: list[dict[str, Any]] = []
         for case in scenario.get("cases", []):
             print(f"  케이스: {case['id']} ...", end=" ", flush=True)
-            result = _run_judge_live(scenario, case)
+            result = _run_judge_live(scenario, case, model=model)
             case_results.append(result)
             status = "PASS" if result["passed"] else "FAIL"
             print(f"{status} (judge={result['judge_label']})")
@@ -597,6 +608,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"시나리오 디렉토리 경로 (기본: {_SCENARIOS_DIR})",
     )
+    parser.add_argument(
+        "--model",
+        metavar="ID",
+        default=None,
+        help=(
+            "judge 호출에 사용할 claude --model id "
+            "(미지정 시 시나리오의 judge_model 필드 → CLI 기본값 순으로 폴백)"
+        ),
+    )
     return parser
 
 
@@ -632,6 +652,7 @@ def main(argv: list[str] | None = None) -> int:
         scenario_filter=args.scenario,
         output_path=output_path,
         scenarios_dir=scenarios_dir,
+        model=args.model,
     )
     return 0
 
