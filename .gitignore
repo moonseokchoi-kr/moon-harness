@@ -23,6 +23,10 @@ CLAUDE.local.md
 compatibility-report.md
 detect-claude-deps.csv
 
+# Local-only worklog / handoff (per-clone, not committed)
+HANDOFF.md
+.harness/LEARNING.md
+
 __pycache__/
 *.pyc
 evals/results/*.json
