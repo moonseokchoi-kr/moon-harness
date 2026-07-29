@@ -687,6 +687,45 @@ def test_zero_new_docs_returns_unchanged_text_byte_identical(fake_kompound_env):
     assert result["columns_added"] == []
 
 
+def test_new_docs_accepts_f6_unchanged_document_still_missing_from_registry(fake_kompound_env):
+    """오케스트레이터 결정 D-impl-1(it.2) — `new_docs` 계약 재정의 회귀 테스트.
+
+    `new_docs`의 의미는 "F6상 신규 분류"가 아니라 "카탈로그 링크가 아직
+    없는 raw 문서 전체"다. 재현 시나리오: 어떤 raw 문서가 지난 라운드에
+    이미 커밋됐고(raw 존재, 내용도 이번 스캔과 동일 → F6은 `unchanged`로
+    재분류) 그런데 (ii) 카탈로그 갱신이 그때 실패해(`CATALOG_PENDING`)
+    registry에는 아직 링크가 없다. 호출자가 F6 분류만 보고 필터링했다면
+    이 문서는 영원히 `new_docs`에 못 들어가 registry가 영구 미링크로
+    남는다 — 이 테스트는 registry.py의 로직 자체는 F6 상태를 전혀 모르고
+    "행 유무·셀 유무"만 보고 동작하므로, 그런 문서를 `new_docs`로 그대로
+    넘기기만 하면 정상적으로 행이 추가됨을 고정한다(로직 결함이 아니라
+    계약 공백이었음을 증명).
+    """
+    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+        encoding="utf-8"
+    )
+    # 이 문서는 F6 관점에서 "unchanged"(raw는 이미 존재·내용 동일)이지만
+    # registry에는 아직 링크가 없는 상태를 흉내낸다 — 호출자가 F6이 아니라
+    # snapshot_population - snapshot_registry_links로 도출했다고 가정한다.
+    new_docs = [
+        _entry(
+            repo_dir="acme-widget",
+            project="acme",
+            feature="widget-recovered",
+            kind="spec",
+            raw_name="acme-widget-recovered-spec.md",
+        )
+    ]
+
+    result = update_registry(registry_text, new_docs, prefix_map=_MINI_PREFIX_MAP)
+
+    assert result["ok"] is True
+    assert result["rows_added"] == 1
+    assert (
+        "| widget-recovered | [✓](../raw/acme-widget-recovered-spec.md) | — | — | — | — | acme-widget |"
+    ) in result["text"]
+
+
 def test_unrecognized_kind_fails_catalog_unparsed(fake_kompound_env):
     registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
         encoding="utf-8"

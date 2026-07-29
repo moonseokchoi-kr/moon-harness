@@ -76,6 +76,43 @@ def test_update_index_preserves_other_entries_and_contradictions_section():
     assert "- 2026-06-01 [ingest] 기존 항목" in text  # 기존 최근 변경 줄 보존
 
 
+def test_update_index_does_not_replace_unrelated_entry_that_mentions_hook_target_in_prose():
+    """리뷰 [P1] 재현 케이스(it.2) — 회귀 방지.
+
+    알파벳순으로 `sdd-spec-registry`보다 앞서는 Entries 줄이 그 이름을
+    **산문으로만 언급**해도(실제 `wiki/index.md`에 흔한 스타일), 그 줄이
+    아니라 진짜 링크 앵커(`[sdd-spec-registry](`)를 가진 줄만 교체돼야
+    한다. 수정 전에는 `related-topic` 줄이 치환되어 사람이 쓴 설명이
+    사라지고 진짜 훅 줄은 옛 카운트로 남아 링크가 중복됐다.
+    """
+    index_text = (
+        "# Wiki Index\n"
+        "\n"
+        "## Entries\n"
+        "\n"
+        "- [related-topic](related-topic.md) — 이 페이지는 sdd-spec-registry 관련 배경을 설명한다\n"
+        "- [sdd-spec-registry](sdd-spec-registry.md) — 3 feature · raw 6개 (옛 카운트)\n"
+        "\n"
+        "## 최근 변경\n"
+        "\n"
+        "- 2026-07-01 [bulk-ingest] 원본 시드\n"
+    )
+    unrelated_line = "- [related-topic](related-topic.md) — 이 페이지는 sdd-spec-registry 관련 배경을 설명한다"
+    new_hook = "- [sdd-spec-registry](sdd-spec-registry.md) — 4 feature · raw 7개 (새 카운트)"
+
+    result = update_index(index_text, hook_line=new_hook, recent_change_line="- 2026-07-02 [snapshot] 항목")
+
+    assert result["ok"] is True
+    text = result["text"]
+    # ① 관계없는 Entries 줄은 바이트 단위 불변
+    assert unrelated_line in text
+    # ② 진짜 훅 줄만 갱신됨
+    assert new_hook in text
+    assert "- [sdd-spec-registry](sdd-spec-registry.md) — 3 feature · raw 6개 (옛 카운트)" not in text
+    # ③ 링크 중복 없음 — sdd-spec-registry 링크 앵커는 정확히 1회만 등장
+    assert text.count("[sdd-spec-registry](sdd-spec-registry.md)") == 1
+
+
 def test_update_index_missing_hook_line_fails():
     index_text = "# Wiki Index\n\n## Entries\n\n- [alpha](alpha.md) — 알파\n\n## 최근 변경\n\n- old\n"
 

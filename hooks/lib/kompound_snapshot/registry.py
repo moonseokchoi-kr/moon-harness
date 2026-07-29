@@ -16,11 +16,36 @@ docstring).
 
 ## 설계 결정 (arch에 없어 이 태스크가 직접 결정 — T-10이 참고할 것)
 
-1. **입력 단위 = "신규(new)" raw 문서만.** F6 멱등에 의해 "갱신(updated)"된
-   raw는 파일명이 이전과 동일하므로 registry 링크는 이미 올바르게 그 파일을
-   가리키고 있다 — 구조적으로 손댈 것이 없다. 따라서 ``new_docs``에는
-   **새로 생성된** raw 문서만 담는다(호출자가 F6 "신규"/"갱신" 카운트를
-   이미 구분하고 있으므로 필터링 비용이 없다).
+1. **``new_docs``의 의미 = "카탈로그 링크가 아직 없는 raw 문서 전체"**
+   (오케스트레이터 결정 D-impl-1, it.2에서 재정의 — 최초 구현은 "F6상
+   신규(new)로 분류된 문서만"이었으나 다음 재시도 함정 때문에 폐기했다).
+
+   **F6 분류를 그대로 쓰면 안 되는 이유(재시도 경로, CATALOG_PENDING)**:
+   ①1차 실행에서 어떤 문서가 F6상 ``new`` → raw 커밋 성공 → (ii) 카탈로그
+   갱신 실패(``CATALOG_PENDING``, arch §6.3.0). ②다음 실행(재시도)에서 그
+   raw는 이미 존재하고 내용도 동일하므로 F6이 이번엔 ``unchanged``로
+   재분류한다. ③호출자가 "F6상 new인 것만" ``new_docs``로 넘기는 계약을
+   쓰면, 이 문서는 **어떤 재시도 라운드에서도** ``new_docs``에 들어갈 수
+   없다 — raw는 보존됐지만 registry에는 **영구히 미링크**되고, 경고조차
+   나지 않는다(F8 게이트도 이 문서를 이미 "성공적으로 보존된 것"으로 보고
+   지나칠 뿐, "링크가 빠졌다"를 능동적으로 알리지 않는 경로가 있을 수
+   있다).
+
+   **재정의**: 호출자(T-10 ``apply.py``)는 F6 분류가 아니라
+   ``verify.snapshot_population(raw_dir, prefixes) -
+   verify.snapshot_registry_links(registry_text, prefixes)``(T-9가
+   F8 게이트(2)에서 이미 계산하는 ``missing_links``와 동일한 집합)로
+   ``new_docs``를 도출해야 한다. 이 정의는 **자기 치유적**이다 — raw는
+   있는데 registry에 링크가 없는 문서라면 그 원인이 이번 배치의 신규
+   생성이든, 지난 라운드의 ``CATALOG_PENDING`` 잔존이든, 심지어 사람이
+   수동으로 넣은 raw든 상관없이 다음 (ii) 실행에서 전부 회수된다. 별도
+   상태 영속화(재시도 카운터 등)가 필요 없다.
+
+   이 모듈의 로직 자체는 바뀌지 않는다 — ``update_registry``는 여전히
+   "행이 없으면 추가, 있으면 빈 칸만 채운다"만 하므로 "F6 unchanged지만
+   registry 미링크"인 입력도 그대로 정상 동작한다(계약이 그것을
+   **허용**하는지가 문제였다 — 로직 결함이 아니었다). 회귀 방지 테스트:
+   ``test_new_docs_accepts_f6_unchanged_document_still_missing_from_registry``.
 2. **엔트리 스키마** — 각 ``new_docs`` 원소는 다음 키를 갖는 매핑이다:
    ``{"repo_dir": str, "project": str, "feature": str, "kind": str,
    "raw_name": str, "worktree": Optional[str]}``.
@@ -586,8 +611,10 @@ def update_registry(
 
     Args:
         registry_text: 현재 ``wiki/sdd-spec-registry.md`` 전체 텍스트.
-        new_docs: 이번 배치에서 **신규로** raw에 복사된 문서 목록(모듈
-            docstring "설계 결정" #2 스키마). 빈 시퀀스면 무변경으로
+        new_docs: **카탈로그 링크가 아직 없는** raw 문서 목록(모듈 docstring
+            "설계 결정" #1 재정의 — F6 "신규(new)" 분류가 아니라
+            ``verify.snapshot_population - verify.snapshot_registry_links``
+            로 도출한다, 스키마는 "설계 결정" #2). 빈 시퀀스면 무변경으로
             즉시 반환한다(F7 "0건 스킵"과 일관).
         prefix_map: 현재 호출에서는 사용하지 않는다(각 엔트리가 이미
             해석된 ``project``를 담고 있어 재조회가 불필요) — arch §3.2

@@ -38,14 +38,46 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 __all__ = ["update_index", "append_log", "build_snapshot_log_line"]
 
+_ENTRIES_HEADING = "## Entries"
 _RECENT_CHANGES_HEADING = "## 최근 변경"
 _HOOK_TARGET = "sdd-spec-registry"
+_HOOK_LINK_ANCHOR = f"[{_HOOK_TARGET}]("
 
 
 def _find_hook_line(lines: Sequence[str]) -> Optional[int]:
+    """Entries 섹션 안에서 ``sdd-spec-registry`` 항목의 **링크 앵커** 줄만 찾는다.
+
+    두 조건을 함께 적용해야 arch §6.3 "Entries의 다른 줄은 건드리지 않는다"가
+    실제로 보장된다(리뷰 [P1], it.2):
+
+    1. **섹션 경계** — ``## Entries``와 다음 ``## `` 헤딩 사이만 스캔한다.
+       Entries 밖(예: 다른 섹션이 산문으로 이 이름을 언급하는 줄)은 애초에
+       후보가 아니다.
+    2. **링크 앵커 매칭** — 줄 전체의 부분 문자열이 아니라
+       ``- [sdd-spec-registry](`` 형태의 실제 마크다운 링크 앵커만 매칭한다.
+       "이 줄이 sdd-spec-registry를 산문으로 언급"하는 다른 Entries 항목(실제
+       ``wiki/index.md``에 흔한 스타일 — Entries 항목끼리 서로를 참조하는
+       설명)과 진짜 훅 항목을 구별하지 못하면, 알파벳순으로 앞서는 그런 줄이
+       대신 치환돼 사람이 쓴 설명이 사라지고 진짜 훅 줄은 옛 카운트로 남아
+       링크가 중복되는 결함이 생긴다(리뷰어 재현 케이스).
+    """
+    entries_idx = None
     for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("-") and _HOOK_TARGET in stripped:
+        if line.strip() == _ENTRIES_HEADING:
+            entries_idx = i
+            break
+    if entries_idx is None:
+        return None
+
+    end = len(lines)
+    for i in range(entries_idx + 1, len(lines)):
+        if lines[i].startswith("## "):
+            end = i
+            break
+
+    for i in range(entries_idx + 1, end):
+        stripped = lines[i].strip()
+        if stripped.startswith("-") and _HOOK_LINK_ANCHOR in stripped:
             return i
     return None
 
@@ -69,12 +101,16 @@ def update_index(
         index_text: 현재 ``wiki/index.md`` 전체 텍스트.
         hook_line: Entries의 ``sdd-spec-registry`` 훅 문장을 교체할 완성된
             한 줄(개행 없이). 이 모듈은 내용을 검사하지 않고 그대로 그
-            줄을 치환한다.
+            줄을 치환한다. 교체 대상은 ``## Entries`` 섹션 **안에서**
+            ``[sdd-spec-registry](`` 링크 앵커를 가진 줄 하나로 좁혀 찾는다
+            (섹션 밖 또는 다른 항목이 이 이름을 산문으로만 언급하는 줄은
+            대상이 아니다 — 리뷰 [P1] 수정, it.2).
         recent_change_line: 최근 변경 섹션 맨 위에 prepend할 완성된 한 줄.
 
     Returns:
         성공: ``{"ok": True, "text": str}``.
-        실패(Entries 훅 문장 또는 ``## 최근 변경`` 헤딩을 찾지 못함):
+        실패(``## Entries`` 섹션 안에서 ``sdd-spec-registry`` 링크 앵커 줄
+        또는 ``## 최근 변경`` 헤딩을 찾지 못함):
         ``{"ok": False, "reason": "catalog_unparsed", "detail": str}``.
         예외를 던지지 않는다(F13 fail-safe).
     """
