@@ -368,6 +368,57 @@ class TestCommits:
         ).stdout.strip()
         assert staged == ""
 
+    def test_diff_check_launch_failure_unstages_index(
+        self, fake_kompound_env: Dict[str, Any], monkeypatch: Any
+    ) -> None:
+        """review P1 (it.3): `git add`가 이미 성공해 인덱스에 스테이징이
+        남은 뒤 `git diff --cached --quiet` 호출만 subprocess 기동 자체가
+        실패(`_run_git`의 ``{"ok": False, ...}`` 경로 — fork 실패·`cwd`
+        소실 등)하는 형제 분기도 commit 실패와 동일하게 unstage를 거쳐야
+        한다.
+
+        몽키패치 방법: ``git_state._run_git``을 래핑해 인자가 정확히
+        ``["diff", "--cached", "--quiet"]``일 때만 ``{"ok": False, ...}``를
+        돌려주고, 그 외 모든 호출(add·reset·commit 등)은 원본 `_run_git`에
+        그대로 위임한다 — 그래야 `git add`가 실제로 정상 실행되어 인덱스에
+        진짜 스테이징이 남고, unstage(`git reset`)도 실제 git으로 검증
+        된다. 다른 `_run_git` 호출까지 같이 실패시키면(예: add도 함께
+        막으면) "인덱스에 스테이징이 남은 상태에서 diff-check만 실패"라는
+        의도한 경로를 재현하지 못한다.
+        """
+        kompound: Path = fake_kompound_env["kompound"]
+        (kompound / "raw" / "diff-check-fail-spec.md").write_text(
+            "diff check fail\n", encoding="utf-8"
+        )
+        status_before_add = _git("status", "--porcelain", cwd=kompound).stdout
+
+        original_run_git = git_state._run_git
+
+        def _fake_run_git(args: Any, cwd: Any) -> Dict[str, Any]:
+            if list(args) == ["diff", "--cached", "--quiet"]:
+                return {
+                    "ok": False,
+                    "reason": "SimulatedLaunchFailure: fork failed",
+                }
+            return original_run_git(args, cwd)
+
+        monkeypatch.setattr(git_state, "_run_git", _fake_run_git)
+
+        result = git_state.commit_raw(kompound, new_count=1, updated_count=0)
+
+        assert result["ok"] is False
+        assert result["committed"] is False
+        assert result["commit"] is None
+        assert result["reason"]
+
+        status_after_failure = _git("status", "--porcelain", cwd=kompound).stdout
+        assert status_after_failure == status_before_add
+
+        staged = _git(
+            "diff", "--cached", "--name-only", cwd=kompound
+        ).stdout.strip()
+        assert staged == ""
+
     def test_commit_catalog_creates_independent_commit(
         self, fake_kompound_env: Dict[str, Any]
     ) -> None:

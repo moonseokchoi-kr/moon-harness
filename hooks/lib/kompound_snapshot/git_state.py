@@ -408,14 +408,14 @@ def _commit_paths(
         return {"ok": False, "committed": False, "commit": None, "reason": reason}
 
     # 스테이징된 변경이 없으면(멱등 무동작) 에러가 아니라 정상 무동작이다.
+    # 이 지점은 위 git add가 이미 성공해 인덱스에 스테이징이 남아 있으므로,
+    # 여기서 subprocess 기동 자체가 실패해도(fork 실패·`cwd` 소실 등) commit
+    # 실패와 동일하게 unstage를 거쳐야 한다(review P1, it.3 — 자기 오염 방지).
     diff_result = _run_git(["diff", "--cached", "--quiet"], cwd=kompound_repo)
     if not diff_result["ok"]:
-        return {
-            "ok": False,
-            "committed": False,
-            "commit": None,
-            "reason": diff_result["reason"],
-        }
+        return _unstage_after_commit_failure(
+            kompound_repo, paths, diff_result["reason"]
+        )
     if diff_result["returncode"] == 0:
         return {
             "ok": True,
