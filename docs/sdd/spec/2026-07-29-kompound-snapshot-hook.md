@@ -46,41 +46,50 @@
 
 > 근거: 이 feature의 동기 자체가 "사람/에이전트의 성실성에 의존하지 않는다"이므로, SKILL.md 산문 지시만으로는 에이전트가 건너뛸 수 있어 동기와 상충한다. T1(정상 경로)과 T2(안전망)를 **모두 결정적으로 강제**해 이중화한다.
 
-- WHEN Phase 4 라벨이 `PHASE4_ALL_TASKS_DONE` 이후의 완료 처리 단계로 전이하여 `ORCHESTRATOR_STATE.md` 상태가 `COMPLETED`가 되었을 때 THE SYSTEM SHALL Stop 훅이 kompound 박제를 지시하는 directive를 주입하고, 박제 완료가 확인될 때까지 다음 라벨(push/pr-converge)로 전진시키지 않는다.
+> (정정, architect-reviewer 2026-07-29) D2의 의도(결정적 강제)는 유지된다. 다만 실현 수단은 **라벨 전진 차단이 아니라 Stop 차단**이다 — `advance_label`(`hooks/enforcement/lib/pipeline-utils.sh:81`)은 bash 함수이며 `stop-pipeline.py`에 존재하지 않고, `DIRECTIVES`의 마지막 키가 `PHASE4_WORKTREE_CREATED`라 Phase 4 시점에는 "다음 라벨" 자체가 구조적으로 없다. 강제는 Stop 훅에서 `decide()`가 박제 미완 시 `{"decision": "block"}`을 반환하는 방식으로 구현된다.
+
+- WHEN `ORCHESTRATOR_STATE.md` 상태가 `COMPLETED`가 되었을 때 THE SYSTEM SHALL Stop 훅이 kompound 박제를 지시하는 directive를 주입하고, 박제 완료가 확인될 때까지 **Stop을 차단한다(다음 턴 진행 차단)**.
 - THE SYSTEM SHALL 박제 완료 여부를 파이프라인 상태(신규 라벨 또는 그에 준하는 상태 필드)로 기록하여, 재진입 시 중복 실행 없이 멱등하게 판정한다.
 - WHEN 동일 사이클에서 `Skill(self-improve)` 호출(Step 5)이 예정되어 있을 때 THE SYSTEM SHALL 박제 실행을 self-improve 호출보다 먼저 완료한다.
 - THE SYSTEM SHALL 박제 단계를 self-improve 호출 조건(`.harness/LEARNING.md` 신규 엔트리 유무)과 **독립적으로** 실행한다(self-improve를 건너뛰어도 박제는 실행됨).
 - IF 박제가 실패하면 THEN THE SYSTEM SHALL 실패를 사용자에게 보고하되 SDD 사이클 완료 자체를 영구 차단하지 않는다(재시도 안내 후 사용자 판단 — 소실 방어는 T2가 이중으로 담당한다).
 - Acceptance:
   - `hooks/enforcement/stop-pipeline.py`에 4-2 완료 시점에 대응하는 라벨/상태 분기와 박제 directive 문자열이 존재하고, 해당 분기를 커버하는 오프라인 pytest 케이스가 `tests/` 아래에 존재한다.
-  - 박제 미완 상태에서 다음 라벨로 `advance_label`이 호출되어도 전진하지 않음을 검증하는 테스트가 존재한다.
+  - 박제 미완(`pending ≥ 1`) 상태에서 Stop 훅이 발화하면 `decide()`가 `{"continue": true}`를 반환하지 않고 `{"decision": "block"}` + 박제 directive를 반환함을 검증하는 테스트가 존재한다. 박제 완료(`pending == 0`) 또는 kompound 미설정 시에는 즉시 통과함을 검증하는 대칭 테스트도 존재한다.
+    - (주) `advance_label`(`hooks/enforcement/lib/pipeline-utils.sh:81`)은 이 게이트의 대상이 아니다 — Phase 4 시점의 `current_label`은 이미 터미널 `PHASE4_WORKTREE_CREATED`이며 그 이후 라벨 전이가 존재하지 않는다. 강제는 라벨 전진 차단이 아니라 **Stop 차단**으로 구현된다.
   - `skills/sdd-orchestrator/SKILL.md` Step 4에 박제 스텝이 4-2와 4-3 **사이**에 문서화되어 있고, 그 텍스트가 Step 5 self-improve 호출 텍스트보다 앞선 줄 번호에 위치한다.
   - 동일 사이클에서 훅을 2회 실행했을 때 두 번째 실행이 "이미 박제됨"으로 무동작 판정됨을 검증하는 테스트가 존재한다.
-  - kompound 저장소 경로가 F16의 해석 순서 어디서도 해석되지 않는 환경을 시뮬레이션했을 때, T1이 "무동작 통과"로 종료되어 SDD 사이클 완료(라벨 전진)를 차단하지 않음을 검증하는 테스트가 존재한다(F16과 연동).
+  - kompound 저장소 경로가 F16의 해석 순서 어디서도 해석되지 않는 환경을 시뮬레이션했을 때, T1이 "무동작 통과"로 종료되어 SDD 사이클 완료를 영구 차단하지 않음을 검증하는 테스트가 존재한다(F16과 연동).
   - `hooks/enforcement/stop-pipeline.py`에 대한 위 라벨/directive 분기 수정은 F17의 회귀 안전망이 GREEN으로 확인된 뒤에만 시작한다(F17 참조).
+  - 카탈로그 갱신만 실패하고 raw 복사는 성공한 상태에서, 다음 Stop 훅 발화가 **재차 차단하지 않고 블록 예산도 소모하지 않음**을 검증하는 테스트가 존재한다(차단 전후의 예산 값 비교로 단정). 카탈로그 재시도는 T1이 아니라 다음 사이클의 카탈로그 단계·T2 자동박제·수동 실행이 담당한다.
 
 ### F2: T2 — 워크트리 삭제 직전 안전망 게이트
 
 **차단 정책 (사용자 확정 2026-07-29)**: **자동 박제 시도 → 성공 시 경고 후 통과 / 실패 시에만 차단.**
 
-> 근거: T2가 막으려는 것은 "박제 실패"가 아니라 "박제가 아예 시도되지 않은 문서의 존재"다. T1이 결정적으로 강제되므로 완주한 사이클은 이미 커버되고, T2에 남는 것은 중단된 사이클 · SDD 밖에서 만든 문서 · 프리픽스 미등록 repo · T1 이후 추가된 문서다. 이때 자동 박제가 성공하면 흐름을 끊을 이유가 없고, 실패하는 경우(F9 dirty/diverge — 2026-07-28 실측 · F8 검증 게이트 실패 · F12 프리픽스 미등록 · kompound 경로 부재)에만 차단하면 "조용한 통과 금지"를 지키면서 정상 경로를 방해하지 않는다. 즉 실사용상 **평소엔 항상 통과, 실측된 예외에서만 차단**으로 동작한다.
+> 근거: T2가 막으려는 것은 "박제 실패"가 아니라 "박제가 아예 시도되지 않은 문서의 존재"다. T1이 결정적으로 강제되므로 완주한 사이클은 이미 커버되고, T2에 남는 것은 중단된 사이클 · SDD 밖에서 만든 문서 · 프리픽스 미등록 repo · T1 이후 추가된 문서다. 이때 자동 박제가 성공하면 흐름을 끊을 이유가 없고, 실패하는 경우(F9 dirty/diverge — 2026-07-28 실측 · F12 프리픽스 미등록)에만 차단하면 "조용한 통과 금지"를 지키면서 정상 경로를 방해하지 않는다. 즉 실사용상 **평소엔 항상 통과, 실측된 예외에서만 차단**으로 동작한다.
+
+> (정정, architect-reviewer 3차 2026-07-29 — A-5 채택) 박제(`apply`)는 **(i) raw 복사**와 **(ii) 카탈로그 갱신**(registry+index+log, F7·F8)의 2단으로 분리된다. **T2 차단 = (i) 실패만.** 차단 사유 집합: `scan_error` · F9 `precondition_failed`(dirty/diverge) · F12 `unmapped_blocking`(프리픽스 미등록) · **raw 복사 실패(`write_failed`)** · `busy`. **F8 검증 게이트 실패**와 **카탈로그 파싱 실패(`catalog_unparsed`)**는 더 이상 차단 사유가 아니며 **경고 후 통과**한다 — registry 파싱/게이트 실패는 "문서가 위험하다"가 아니라 "카탈로그 갱신 방법을 모른다"이고, T2의 목적(raw 보존)은 (i)의 성공으로 이미 달성되었기 때문이다. **커밋 경계**: (i) 성공 시 raw를 즉시 커밋해 워킹트리를 clean하게 유지한다(F9 dirty 판정과의 자기오염 회피). (ii) 실패 시 카탈로그 변경만 롤백하고 **raw는 유지**한다 — 다음 실행은 (ii)만 재시도한다.
 
 - WHEN Bash 명령이 `git worktree remove <path>` 패턴에 매칭될 때 THE SYSTEM SHALL 해당 워크트리의 `docs/sdd`(및 `Docs/sdd`) 하위 박제 대상 문서를 스캔한다.
 - WHEN Bash 명령이 워크트리 디렉토리를 대상으로 하는 재귀 삭제(`rm -rf <worktree-path>` 등)에 매칭될 때 THE SYSTEM SHALL 동일한 스캔 로직을 적용한다.
 - IF kompound 저장소 경로가 F16의 해석 순서로 해석되지 않으면 THEN THE SYSTEM SHALL 스캔·박제 시도를 건너뛰고 명령을 통과시킨다(`gate_pass`) — 기능 비활성화이지 차단 대상이 아니다.
 - IF 스캔 결과 미박제 문서가 0건이면 THEN THE SYSTEM SHALL 명령을 통과시키고 통과 사유를 로그에 남긴다(`gate_pass` 패턴).
-- IF 미박제 문서가 1건 이상이면 THEN THE SYSTEM SHALL **먼저 F9(kompound dirty/diverge 상태)를 확인**한 뒤에만 박제 시도로 진행한다. kompound가 dirty이거나 diverge 상태이면 그 자체로 박제 시도를 실패로 간주하고, 아래 "박제 시도가 실패하면" 분기로 즉시 넘어간다(박제를 실행조차 하지 않는다).
-- IF (F9 확인 통과 후) 박제를 시도해 성공하면 THEN THE SYSTEM SHALL 박제된 문서 목록을 **경고로 출력한 뒤 명령을 통과**시킨다.
-- IF 박제 시도가 실패하면 THEN THE SYSTEM SHALL `exit 2`로 명령을 차단하고 실패 사유(F9 dirty/diverge 파일 목록 / F8 실패한 검증 게이트명 / F12 미등록 프리픽스 repo 경로)와 수동 박제 방법을 안내한다.
+- IF 미박제 문서가 1건 이상이면 THEN THE SYSTEM SHALL **먼저 F9(kompound dirty/diverge 상태)를 확인**한 뒤에만 apply의 **(i) raw 복사** 단계로 진행한다. kompound가 dirty이거나 diverge 상태이면 그 자체로 (i) 단계를 실패(`precondition_failed`)로 간주하고, 아래 "(i) raw 복사 단계 자체가 실패하면" 분기로 즉시 넘어간다((i)를 실행조차 하지 않는다).
+- IF (F9 확인 통과 후) apply의 **(i) raw 복사**가 성공하면 THEN THE SYSTEM SHALL raw를 **즉시 커밋**해 워킹트리를 clean하게 유지한 뒤, 이어서 **(ii) 카탈로그 갱신**(registry+index+log, F7·F8) 단계로 진행한다.
+- IF (ii) 카탈로그 갱신이 성공하면 THEN THE SYSTEM SHALL 박제된 문서 목록을 **경고로 출력한 뒤 명령을 통과**시킨다.
+- IF (ii) 카탈로그 갱신이 실패하면(F8 검증 게이트 실패 또는 카탈로그 파싱 실패 `catalog_unparsed`) THEN THE SYSTEM SHALL 카탈로그 변경만 롤백하고(이미 커밋된 raw는 그대로 유지한다), 그 사실을 **경고로 출력한 뒤 명령을 통과**시킨다 — (i)에서 raw 보존이라는 T2의 목적이 이미 달성되었으므로 카탈로그 실패가 워크트리 삭제를 막지 않는다. 다음 실행은 (ii) 카탈로그 갱신만 재시도한다.
+- IF (i) raw 복사 단계 자체가 실패하면(`precondition_failed` 또는 `write_failed`) THEN THE SYSTEM SHALL `exit 2`로 명령을 차단하고 실패 사유(F9 dirty/diverge 파일 목록 / raw 복사 실패(`write_failed`) 상세 / F12 미등록 프리픽스 repo 경로(`unmapped_blocking`))와 수동 박제 방법을 안내한다.
 - Acceptance:
   - `hooks/enforcement/<신규-게이트-스크립트>.sh`가 `hooks/enforcement/worktree-add-gate.sh`와 동일한 골격(INPUT 파싱 → tool_name 확인 → command 확인 → 관련 명령만 처리 → 차단/통과)을 따른다.
   - `hooks/hooks.json`의 `PreToolUse`/`matcher: "Bash"` 배열에 신규 게이트가 `worktree-add-gate.sh`와 같은 블록 내 항목으로 등록되어 있다.
   - 차단 시 종료 코드가 기존 게이트와 동일하게 `exit 2`이고 `gate_block`을 호출한다.
   - "조용한 통과"가 없다 — 통과 경로도 반드시 `gate_pass` 로그 호출을 거친다(미박제 0건이든, 자동 박제 성공 후든, kompound 미설정이든).
-  - 게이트는 미박제 판정 및 박제 실행을 **F13의 Python 결정적 코어를 서브프로세스로 호출**해 수행한다(스캔·네이밍·dedup 로직을 bash에 중복 구현하지 않는다). 판정 전용 호출은 부작용이 없는 확인 모드(`--check`)를 사용한다.
-  - kompound dirty 상태를 fixture로 주입했을 때, 게이트가 박제를 시도하지 않고(부작용 없음) 바로 `exit 2` 실패 분기로 진입함을 검증하는 테스트가 존재한다(F9 선행 확인).
+  - 게이트는 미박제 판정 및 박제 실행을 **F13의 Python 결정적 코어를 서브프로세스로 호출**해 수행한다(스캔·네이밍·dedup 로직을 bash에 중복 구현하지 않는다). 판정 전용 호출은 부작용이 없는 확인 모드(예: `check` 서브커맨드)를 사용한다 — 구체 인터페이스(플래그 vs 서브커맨드)는 architect 결정 사항이며, spec은 "부작용 없는 판정 전용 호출 경로가 존재해야 한다"만 요구한다.
+  - kompound dirty 상태를 fixture로 주입했을 때, 게이트가 (i) raw 복사를 시도하지 않고(부작용 없음) 바로 `exit 2` 실패 분기(`precondition_failed`)로 진입함을 검증하는 테스트가 존재한다(F9 선행 확인).
   - kompound 경로 미설정 환경에서 게이트가 `gate_pass`로 종료됨을 검증하는 테스트가 존재한다(F16 연동).
-  - 위 5개 분기(kompound 미설정 통과 / 0건 통과 / 자동박제 성공 통과 / 자동박제 실패(F9/F8/F12) 차단 / 무관한 Bash 명령 무개입) 각각을 커버하는 테스트가 존재한다.
+  - **자동박제 성공 통과 분기의 하위 경로 — "raw만 성공(카탈로그 뒤처짐)"**: (i) raw 복사는 성공해 즉시 커밋되지만 (ii) 카탈로그 갱신이 F8 검증 게이트 실패 또는 `catalog_unparsed`로 실패하는 fixture에서, raw 커밋은 유지되고 카탈로그 변경만 롤백되며 명령이 **차단되지 않고 경고 후 통과**함을 검증하는 테스트가 존재한다(A-5 커밋 경계).
+  - 위 5개 분기 — **kompound 미설정 통과 / 0건 통과 / 자동박제 성공 통과(하위: (i)(ii) 모두 성공 · **raw만 성공·카탈로그 뒤처짐**(F8·`catalog_unparsed`) — 둘 다 경고 후 통과) / (i) raw 복사 실패 차단(F9 `precondition_failed` · `write_failed` · F12 `unmapped_blocking`) / 무관한 Bash 명령 무개입** — 각각을 커버하는 테스트가 존재한다. **F8 검증 게이트 실패는 이 분기 집합에서 차단 사유가 아니다**(성공 통과 분기의 하위 경로로만 등장).
 
 ### F3: 수집 스코프 — 포함/제외 디렉토리 및 워크트리 스캔
 - THE SYSTEM SHALL F16으로 주입된 **스캔 루트** 하위를 전수 스캔하되, `docs/sdd/` 또는 `Docs/sdd/` 경로 아래 `spec/` `specs/` `design/arch/` `design/ui/` `design/api/` `context/` `result/` `development/` 디렉토리만 대상으로 삼는다. 스캔 루트 값은 코드에 하드코딩하지 않는다(현재 사용자 환경의 실제 값은 "결정 기록 — 현재 환경 기준값" 참조).
@@ -112,16 +121,22 @@
 ### F7: registry / index / log 갱신 — 범위 고정
 - WHEN 박제 스캔 결과 신규 또는 갱신된 raw가 1건 이상일 때 THE SYSTEM SHALL `wiki/sdd-spec-registry.md`, `wiki/index.md`, `wiki/log.md` 세 파일만 갱신한다.
 - THE SYSTEM SHALL `sdd-spec-registry.md`에서: 신규 feature는 해당 프로젝트 표에 행 추가(프로젝트 표 자체가 없으면 표 신설), 기존 feature의 새 kind는 해당 열의 `—`를 링크로 교체, 헤더의 "N feature · raw M개" 카운트를 갱신한다.
+  - **표 신설 예외(architect-reviewer 실측)**: 단, 해당 프로젝트가 `프로젝트` 열을 가진 통합 표(예: "그 외 프로젝트")에 이미 행으로 존재하면, 새 프로젝트 전용 표를 신설하지 않고 그 통합 표에 행을 추가한다. 예: `moon-harness`는 자기 전용 표가 없고 "그 외 프로젝트" 통합 표의 행으로 존재하므로, moon-harness의 신규 feature도 그 통합 표에 행을 추가해야 한다(새 표를 만들면 기존 3개 moon-harness 행과 분열된다).
+  - **열 추가 정책(사용자 승인, ③ 반전 — architect-reviewer 3차)**: 대상 표에 신규 kind에 해당하는 열 자체가 없으면(기존 문구는 "열이 있고 그 칸이 `—`인 경우"만 다뤘다), THE SYSTEM SHALL **열을 추가하고 기존 행의 그 칸을 `—`로 채운다**. 안전 조건 2개를 모두 만족해야 한다: (a) 추가할 kind가 6종(`spec`/`arch`/`ui`/`api`/`context`/`result`) 이내일 것 (b) 대상 표가 "인지된 형상"(기존 열 구성이 파서가 이해하는 패턴) 이내일 것. IF 안전 조건을 충족하지 못하면 THEN THE SYSTEM SHALL 카탈로그 갱신 실패(`catalog_unparsed`)로 보고하되, **raw 보존과 명령 통과에는 영향을 주지 않는다**(F2의 커밋 경계 참조 — (i) raw 복사는 이미 커밋되어 있고 (ii)만 실패한다).
+  - **카운트 갱신 대상의 구체화**: 갱신 대상은 (a) "현재 상태" 문장의 총 feature/raw 수 및 kind별 분해(`spec N · arch N · result N · api N · ui N · context N`), (b) 헤더의 "N feature · raw M개" 문장이다. **다음은 갱신하지 않는다(불변)**: 날짜가 박힌 과거 스냅샷 서술(예: `**2026-07-28 재스냅샷**: 40 feature · raw 117개` — 역사 서술이므로 갱신하면 사실 왜곡), 그리고 각 프로젝트 섹션 내 개별 서술 카운트(예: "8 feature 전부 spec·arch·result 완비"). 스캔 중 위 두 범주(갱신 대상 vs 불변) 어디에도 속하지 않는 카운트 문장을 발견하면, 임의로 판단해 고치지 않고 실패로 보고한다.
 - THE SYSTEM SHALL `wiki/index.md`의 Entries 중 `sdd-spec-registry` 훅 문장과 최근 변경 섹션에 이번 배치를 prepend한다.
 - THE SYSTEM SHALL `wiki/log.md`에 이번 배치 전체를 요약한 한 줄만 append한다(배치 1건 = 로그 1줄, AGENTS.md Bulk Ingest Brief 규칙).
 - IF 이번 실행에서 박제된 raw가 0건이면 THEN THE SYSTEM SHALL registry/index/log 갱신과 F8의 검증 게이트 3종 실행을 **모두 스킵**하고, "변경 없음"으로 보고한다(F11의 "무동작"과 일관 — 단 F11이 요구하는 "변경 없음" vs "스캔 실패" 구분 보고는 반드시 수행한다. 스킵은 정상 종료이지 실패가 아니다).
-- Acceptance: 위 4개 파일(registry, index, log, 그리고 raw 자신) 외에 kompound 저장소의 `wiki/*.md`가 diff에 나타나면 실패로 판정하는 검증 스텝이 존재한다(`git diff --name-only -- wiki/` 결과가 이 3개 파일 집합의 부분집합인지 확인, kompound 저장소 경로는 F16으로 주입). 박제 0건 케이스에서 registry/index/log 어느 것도 diff에 나타나지 않고 F8의 3종 게이트 호출 자체가 스킵됨(호출 로그 0건)을 검증하는 테스트가 존재한다.
+- Acceptance: 위 4개 파일(registry, index, log, 그리고 raw 자신) 외에 kompound 저장소의 `wiki/*.md`가 diff에 나타나면 실패로 판정하는 검증 스텝이 존재한다(`git diff --name-only -- wiki/` 결과가 이 3개 파일 집합의 부분집합인지 확인, kompound 저장소 경로는 F16으로 주입). 박제 0건 케이스에서 registry/index/log 어느 것도 diff에 나타나지 않고 F8의 3종 게이트 호출 자체가 스킵됨(호출 로그 0건)을 검증하는 테스트가 존재한다. moon-harness처럼 통합 표에 행으로만 존재하는 프로젝트에 신규 feature를 주입했을 때, 신규 전용 표가 생성되지 않고 기존 통합 표에 행이 추가됨을 검증하는 테스트가 존재한다. 날짜가 박힌 과거 스냅샷 서술 문자열이 갱신 전/후 바이트 동일함을 검증하는 테스트가 존재한다. **6열 표에 `ui` 열을 추가할 때 기존 행의 그 칸이 `—`로 채워지고 다른 열·다른 줄은 바이트 불변임을 검증하는 테스트가 존재한다.** 안전 조건(6종 이내 / 인지된 표 형상 이내)을 벗어난 fixture에서 `catalog_unparsed`로 실패 보고되지만 raw 커밋과 명령 통과(F2)에는 영향이 없음을 검증하는 테스트가 존재한다.
 
 ### F8: 검증 게이트 3종 — 커밋 전 필수 통과
-- THE SYSTEM SHALL 박제 실행 후 커밋 전에 다음 3개 게이트를 순서대로 실행한다: (1) 링크 무결성 — registry가 가리키는 모든 `../raw/*.md` 링크가 실재 파일을 가리킴, (2) 양방향 카운트 일치 — registry가 가리키는 raw 링크 수 == `raw/` 아래 SDD 문서(spec/arch/ui/api/context/result) 파일 수, (3) flat 유지 — `raw/` 하위에 `assets/` 외 디렉토리가 생성되지 않음.
+- THE SYSTEM SHALL 박제 실행 후 커밋 전에 다음 3개 게이트를 순서대로 실행한다: (1) 링크 무결성 — registry가 가리키는 **스냅샷 집합(아래 모집단 한정 참조) 링크**가 실재 파일을 가리킴, (2) 양방향 카운트 일치 — registry가 가리키는 스냅샷 집합 링크 집합과 `raw/` 중 **`prefix_map`의 값**(설정 병합 후 유효 프리픽스 집합, `null` 제거)과 kind 접미사(spec/arch/ui/api/context/result)를 모두 만족하는 파일 집합 사이의 **양방향 차집합이 0**(단순 개수 비교가 아니다 — 누락 1건과 유령 링크 1건이 상쇄되어 통과하는 것을 막는다), (3) flat 유지 — `raw/` 하위에 `assets/` 외 디렉토리가 생성되지 않음.
+  - **게이트 (2) — "양방향 카운트 일치"는 설계 SSOT 용어라 항목명은 유지하되 정의를 차집합으로 강화한 근거(architect-reviewer 2차)**: "링크 수 == 파일 수"라는 단순 개수 비교는 **상쇄 오류를 통과시킨다** — registry에서 실재 링크 A가 빠지고 동시에 존재하지 않는 유령 링크 B가 생기면 개수는 같지만 집합은 다르다. 게이트 (1)은 "링크 → 파일 존재" 방향만 검사하므로 "raw에는 있지만 registry에 링크되지 않은 파일"(=이 훅의 존재 이유인 "빠짐")을 잡지 못한다. 따라서 게이트 (2)는 registry 링크 집합과 raw 스냅샷 파일 집합의 **양방향 차집합이 정확히 0**임을 요구한다.
+  - **모집단 한정 근거(architect-reviewer 실측, `/Users/moon/workspace/marvelous_kompound`)**: 단순히 "kind 접미사로 끝나는 raw 파일"을 모집단으로 삼으면 registry 링크 117건 vs 122건으로 **항상 불일치**한다. 초과 5건(`clocv-wasm-api-expansion-spec` / `fabric-creator-web-api-spec` / `gps-html-to-ui` / `mvcv-refactor-lock-fixture-spec` / `pattern-api-json-external-spec`)은 SDD 스냅샷이 아니라 독립적으로 `/ingest`된 주제 문서가 우연히 kind 접미사로 끝난 것이다. 모집단을 `prefix_map`의 값(설정 병합 후 유효 프리픽스 집합, `null` 제거) ∩ kind 접미사로 한정하면 117건이 되어 registry 링크와 양방향 차집합 0으로 정확히 일치한다. 이 한정은 F12(프리픽스 미등록 repo는 애초에 박제되지 않음)와 정의가 일관된다 — 미등록 프리픽스 문서는 이 훅이 만든 raw가 아니므로 모집단에 들어갈 이유가 없다.
+  - **게이트 (1) 검사 범위 한정 근거(architect-reviewer 2차 — C-1과 동일 구조 함정)**: "registry가 가리키는 모든 `../raw/*.md` 링크"를 검사 범위로 두면, 사람이 `/ingest`한 주제 문서(이 훅이 만들지 않은 raw)를 삭제하고 registry 링크만 남기는 순간 게이트 (1)이 실패해 T2가 `exit 2`로 **모든** `git worktree remove`를 차단하게 된다 — 우리가 만들지 않은 링크의 결함이 워크트리 삭제를 막는 것과 동일한 함정 구조다. 따라서 게이트 (1)의 검사 범위도 게이트 (2)와 같은 **스냅샷 집합(모집단 한정)** 링크로 한정한다. 오늘 기준으로는 registry 링크가 모두 실재해 즉시 게이트 실패로 이어지지는 않으나, 위는 구조적 함정이므로 지금 한정해둔다.
 - WHERE 박제된 raw가 0건일 때(F7 참조) THE SYSTEM SHALL 위 3개 게이트를 실행하지 않는다 — 갱신 대상이 없으므로 게이트 스킵은 실패가 아니라 정상 종료다.
-- IF 3개 게이트 중 하나라도 실패하면 THEN THE SYSTEM SHALL kompound에 커밋하지 않고 실패 게이트명과 사유를 보고한다.
-- Acceptance: 게이트 (1)(2)(3) 각각을 독립적으로 실패시키는 3개의 fixture(끊긴 링크 1건 주입 / 카운트 불일치 1건 주입 / `raw/` 하위 서브디렉토리 1건 주입)에 대해 실행 결과가 "커밋 안 함 + 실패 게이트명 보고"임을 검증하는 pytest가 존재한다. 박제 0건 케이스에서 3개 게이트 함수가 호출되지 않음(mock call count 0)을 검증하는 테스트가 존재한다.
+- IF 3개 게이트 중 하나라도 실패하면 THEN THE SYSTEM SHALL **카탈로그 커밋을 하지 않고**(이미 커밋된 raw는 그대로 유지한다 — apply의 (i)/(ii) 커밋 경계, F2 참조) 실패 게이트명과 사유를 보고한다. F8 실패는 F2의 T2 차단 사유가 아니다 — raw가 이미 (i)에서 커밋되어 워크트리 삭제를 막을 이유가 없으므로, F8 실패는 T2를 차단하지 않고 경고 후 통과로 이어진다(F2 참조).
+- Acceptance: 게이트 (1)(2)(3) 각각을 독립적으로 실패시키는 3개의 fixture(끊긴 링크 1건 주입 / 카운트 불일치 1건 주입 / `raw/` 하위 서브디렉토리 1건 주입)에 대해 실행 결과가 "카탈로그 커밋 안 함 + raw 커밋은 유지 + 실패 게이트명 보고"임을 검증하는 pytest가 존재한다. 박제 0건 케이스에서 3개 게이트 함수가 호출되지 않음(mock call count 0)을 검증하는 테스트가 존재한다. **게이트 (2)에 프리픽스 미등록 repo에서 유래한(kind 접미사만 우연히 일치하는) raw 파일을 fixture로 섞어 넣었을 때 모집단 집계에서 제외되어 게이트가 여전히 통과함을 검증하는 테스트가 존재한다**(모집단 한정 로직 검증). **게이트 (2)에 "개수는 같고 집합은 어긋나는" 교차 케이스(누락 링크 1건 + 유령 링크 1건을 동시에 주입해 카운트는 동일하지만 양방향 차집합은 비지 않는 fixture)를 추가해, 단순 개수 비교로는 놓치는 실패를 차집합 검사가 정확히 잡음을 검증하는 테스트가 존재한다.** 게이트 (1)의 검사 범위가 스냅샷 집합으로 한정되어, 프리픽스 미등록 repo 유래 raw나 사람이 `/ingest`한 주제 문서를 가리키는 registry 외부 링크가 깨져도 게이트 (1)이 실패하지 않음을 검증하는 테스트가 존재한다.
 
 ### F9: 실패 모드 — kompound dirty/diverge
 - IF kompound 워킹트리에 커밋되지 않은 변경(`git status --porcelain` non-empty)이 있으면 THEN THE SYSTEM SHALL 박제를 실행하지 않고(또는 실행 후 커밋하지 않고) 중단하며, 어떤 파일이 dirty한지 보고한다.
@@ -139,7 +154,10 @@
 
 ### F12: 프리픽스 미등록 repo — 경고만, 박제 금지
 - IF 스캔된 문서의 repo 경로가 F4/F16의 프리픽스 매핑(기본값 또는 설정으로 교체된 값)에 없으면 THEN THE SYSTEM SHALL 해당 문서를 박제하지 않고 경고 메시지(repo 경로 포함)만 출력한다.
-- Acceptance: 매핑표에 없는 가상 repo 경로(예: `pptx-template/Docs/sdd guide/`)를 입력한 fixture에서 raw 파일이 생성되지 않고 경고 리스트에 해당 경로가 포함됨을 검증하는 pytest가 존재한다.
+- **`pending`/`unmapped` 카운터 분리(architect-reviewer 지적)**: THE SYSTEM SHALL 미박제 문서 카운트를 두 개로 분리해 집계한다 — `pending`(프리픽스가 **매핑된** 미박제 문서 수)과 `unmapped`(프리픽스 **미등록** 문서 수, 별도 카운터). 프리픽스 미등록 문서를 `pending`에 합산하지 않는다.
+  - 근거: 미등록 프리픽스 문서는 F12 규칙상 영원히 박제될 수 없다. 이를 `pending`에 포함시키면 F1(T1)의 Stop 차단 조건이 이 문서 때문에 매 사이클 반복 발화하지만 F12가 박제를 금지하므로 영구 미해소 상태(무한 directive 반복)가 된다.
+  - THE SYSTEM SHALL F1의 Stop 차단(directive 발화) 조건을 **`pending`만으로 판정**한다(`pending ≥ 1`일 때만 차단). `unmapped ≥ 1`은 directive 반복 대상이 아니며, F16의 1회성 안내 메시지 경로로 처리한다(반복 스팸 없음).
+- Acceptance: 매핑표에 없는 가상 repo 경로(예: `pptx-template/Docs/sdd guide/`)를 입력한 fixture에서 raw 파일이 생성되지 않고 경고 리스트에 해당 경로가 포함됨을 검증하는 pytest가 존재한다. `unmapped ≥ 1`이고 `pending == 0`인 상태를 fixture로 구성했을 때 F1의 Stop 훅이 차단하지 않고(`{"continue": true}`) `unmapped` 안내만 1회 출력됨을 검증하는 테스트가 존재한다.
 
 ### F13: 결정적 코어 — Python stdlib-only 패키지
 - THE SYSTEM SHALL 스캔·해시 dedup·네이밍 변환·멱등 판정·카운트 검증 로직을 `hooks/lib/` 아래 신규 Python 패키지(예: `hooks/lib/kompound_snapshot/`)에 구현한다.
@@ -179,7 +197,7 @@ moon-harness는 범용 Claude Code 플러그인이다(CLAUDE.md "레포 특화 �
 - 환경변수/설정 키의 구체 이름과 설정 파일의 위치는 이 spec에서 확정하지 않는다 — Phase 2(architect)의 결정 사항이다. spec은 "주입 가능해야 하고 위 순서로 해석되며 단일 진실 지점(single point of resolution)에서 처리된다"까지만 요구한다.
 - IF 위 4단계 어디에서도 kompound 저장소 경로가 해석되지 않으면 THEN THE SYSTEM SHALL 이를 오류로 취급하지 않고 박제 기능을 **비활성화**한다 — 실행당(또는 세션당) 1회만 안내 메시지를 남기고, SDD 사이클 완료 처리(T1)와 Bash 명령(T2)을 정상 통과시킨다.
   - 근거: 범용 플러그인이 kompound를 쓰지 않는 사용자의 SDD 사이클이나 `git worktree remove`를 막아서는 안 된다(CLAUDE.md fail-safe 원칙). 이 규칙은 T1(F1)·T2(F2) 양쪽에 동일하게 적용된다.
-- THE SYSTEM SHALL 프리픽스 매핑표(F4)를 코드 리터럴이 아닌 **설정 데이터**로 보유하며, F4에 열거된 10종을 기본값으로 제공한다. 매핑에 없는 repo는 기존 F12(경고만, 박제 안 함) 경로를 그대로 따른다.
+- THE SYSTEM SHALL 프리픽스 매핑표(F4)를 코드 리터럴이 아닌 **설정 데이터**로 보유하며, F4에 열거된 10종을 기본값으로 제공한다. 매핑에 없는 repo는 기존 F12(경고만, 박제 안 함) 경로를 그대로 따르며, 그 문서는 F12의 `unmapped` 카운터로만 집계된다(`pending`에는 합산하지 않는다 — F12 참조). kompound 경로 미설정 시의 "1회 안내"(이 절)와 프리픽스 미등록 시의 "1회 안내"(F12의 `unmapped` 경로)는 서로 독립된 별개의 안내이며 조건을 합치지 않는다.
 - Acceptance:
   - `hooks/lib/kompound_snapshot/` 아래 어떤 `.py` 파일에도 스캔 루트·kompound 저장소를 가리키는 사용자 고유 절대경로 리터럴(예: `/Users/<user>/...` 패턴)이 존재하지 않음을 정적 검사하는 테스트가 `tests/`에 존재하고 통과한다(리터럴 카운트 0).
   - 경로·매핑 해석이 단일 함수(예: `resolve_config()`)로 캡슐화되어 있고, 그 함수를 테스트에서 임의의 스캔 루트/kompound 경로/프리픽스 매핑으로 오버라이드해 F3~F14 전 파이프라인을 실행할 수 있음을 검증하는 테스트가 존재한다.
@@ -241,7 +259,8 @@ moon-harness는 범용 Claude Code 플러그인이다(CLAUDE.md "레포 특화 �
 |---|------|------|------|------|
 | D1 | **T1 삽입 지점** — 설계 SSOT L46-52는 "self-improve 호출부 옆"(= 현행 Step 5)을 지정하지만, `skills/sdd-orchestrator/SKILL.md:170`의 Step 4-5(worktree 정리)가 Step 5보다 앞이라 "워크트리가 아직 살아 있다"는 전제(L50)를 위반한다 | **Step 4-2(`ORCHESTRATOR_STATE.md` = COMPLETED) 직후**, 4-3(push+pr-converge) 이전 | 사용자: "4-3은 대부분 의도를 바꾸는 게 아니라 코드단의 수정이야. 보통 4-2가 끝나면 의도가 잘못되어서 수정하는 경우는 없어." → 박제 대상 문서의 의도가 4-2에서 확정된다. 설계 전제 3개(result 이후·워크트리 생존·self-improve보다 먼저)를 모두 만족 | F1 |
 | D2 | **T1 강제 수준** — 설계 SSOT는 트리거가 프롬프트 지시인지 코드 강제인지 명시하지 않음 | **`hooks/enforcement/stop-pipeline.py`의 라벨 directive로 결정적 강제** (프롬프트 지시만으로 두지 않음) | 이 feature의 동기가 "사람/에이전트의 성실성에 의존하지 않는다"이므로 산문 지시는 동기와 상충. T1·T2를 모두 결정적으로 강제해 이중화 | F1 |
-| D3 | **T2 차단 정책** — 설계 SSOT L64-65는 "차단이 과하면 완화 가능, 단 조용한 통과는 금지"까지만 정함 | **자동 박제 시도 → 성공 시 경고 후 통과 / 실패 시에만 `exit 2` 차단** | T2가 막는 것은 "박제 실패"가 아니라 "미시도 문서의 존재". 실패 원인은 소수지만 실재(F9 dirty는 2026-07-28 실측·F8 게이트 실패·F12 미등록 프리픽스·경로 부재) → 그 경우만 차단하면 "조용한 통과 금지"를 지키면서 정상 흐름을 끊지 않는다 | F2 |
+| D3 | **T2 차단 정책** — 설계 SSOT L64-65는 "차단이 과하면 완화 가능, 단 조용한 통과는 금지"까지만 정함 | **자동 박제 시도 → 성공 시 경고 후 통과 / 실패 시에만 `exit 2` 차단**<br>**→ D5로 차단 범위 축소됨(아래 참조)** | T2가 막는 것은 "박제 실패"가 아니라 "미시도 문서의 존재". 실패 원인은 소수지만 실재(F9 dirty는 2026-07-28 실측·F12 미등록 프리픽스) → 그 경우만 차단하면 "조용한 통과 금지"를 지키면서 정상 흐름을 끊지 않는다 | F2 |
+| D5 | **T2 차단 범위** — D3은 "박제 시도 실패"를 단일 사건으로 보고 차단했다. arch 리뷰가 이것이 C-1과 동일한 함정임을 지적했다: registry 파싱이나 검증 게이트가 어긋나면 **우리가 만들지 않은 카탈로그 결함으로 워크트리 삭제가 계속 막힌다** | **`apply`를 (i) raw 복사 / (ii) 카탈로그 갱신 2단으로 분리하고, T2 차단은 (i) 실패만.** (ii) 실패(F8 게이트 · `catalog_unparsed`)는 경고 후 통과. kompound 경로 부재도 통과(F16 `disabled`) | 사용자 선택(2026-07-29). registry 파싱 실패는 "박제 대상 문서가 위험하다"가 아니라 "카탈로그 갱신 방법을 모른다"다. **T2의 목적은 "워크트리를 지워도 문서가 kompound에 남아 있는가"이며 raw 복사가 성공했다면 이미 달성됐다.** 대가는 "카탈로그가 한 사이클 뒤처짐"으로, "사용자가 워크트리에 갇힘"보다 작다 | F2, F7, F8 |
 | D4 | **T2 미박제 판정 방식** — 설계 SSOT에 구체화 없음 | **F13 Python 결정적 코어를 서브프로세스로 호출**(부작용 없는 `--check` 확인 모드). bash에 스캔·네이밍·dedup 로직 중복 구현 금지 | CLAUDE.md 결정↔판단 분리 원칙 + 단일 구현 유지(두 곳에 규칙이 갈라지면 T1/T2 판정이 어긋난다) | F2, F13 |
 
 ### 현재 환경 기준값 (참고용 — 코드에 리터럴로 넣지 않는다)
@@ -313,3 +332,11 @@ F16에 따라 스캔 루트·kompound 저장소 경로·프리픽스 매핑은 �
 **잔여 WARN 사항**: 없음
 
 **다음 단계**: Phase 3(taskmaster) — F17 Wave 0 배치 + F1·F14 의존 관계 구성 가능
+
+---
+
+**arch 리뷰 반영(2026-07-29): S-1~S-6 — 재검사 필요**
+
+**arch 리뷰 2차 반영(2026-07-29): S-7~S-10**
+
+**arch 리뷰 3차 반영(2026-07-29): S-11~S-14 (A-5 · ③ 전파)**
