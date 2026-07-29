@@ -29,10 +29,14 @@ spec: docs/sdd/spec/2026-07-29-kompound-snapshot-hook.md F9.
   여도 ``ok`` 자체는 ``True``다). ``ok=False``면 git 바이너리 부재·비-git
   디렉토리 등으로 판정 자체가 실패한 것이며, 이때 bool 필드들은 신뢰할 수
   없는 기본값(``False``/``0``)이다.
-  **호출자(T-10 `apply.py`)는 "진행해도 되는가"를 판단할 때
-  ``not ok or dirty or diverged`` 셋 중 하나라도 참이면 F9
-  ``precondition_failed``로 취급해야 한다** — ``ok`` 하나만으로는 판단할
-  수 없다.
+  **호출자(T-10 `apply.py`)는 ``ok``/``dirty``/``diverged``를 직접 조립하지
+  말고, ``check_preconditions``가 반환하는 ``precondition_failed`` 필드
+  (정확히 ``not ok or dirty or diverged``)를 그대로 써서 "진행해도
+  되는가"를 판단해야 한다** — 판단식을 호출자가 손으로 재구현하면 오조립
+  위험이 생긴다(review P1 #1, `.harness/LEARNING.md` 2026-07-30).
+  ``precondition_failed is True``이면 (i) raw 복사로 진행하지 않는다.
+  (``check_dirty``/``check_divergence`` 각각은 이 결합 필드를 갖지 않는다
+  — 결합 판정은 ``check_preconditions``의 책임이다.)
 - ``commit_raw`` / ``commit_catalog``: ``ok=True``면 커밋 시도 자체(git
   add/commit/rev-parse 호출)가 정상 수행됐다는 뜻이다. 커밋할 변경이
   없었던 경우도 ``ok=True``, ``committed=False``, ``reason="no_changes"``로
@@ -271,14 +275,21 @@ def check_preconditions(kompound_repo: PathLike) -> Dict[str, Any]:
     반환 (최소 필드 — task 문서 계약):
       {"ok": bool, "dirty": bool, "dirty_files": [str, ...],
        "diverged": bool, "ahead": int, "behind": int,
-       "upstream": <bool|None>, "reason": <str|None>}
+       "upstream": <bool|None>, "reason": <str|None>,
+       "precondition_failed": bool}
 
     ``ok`` 의미는 모듈 docstring 참조 — "판정 자체가 기술적으로 성공했는가"
-    이지 "선행 조건을 통과했는가"가 아니다. **호출자는
-    ``not ok or dirty or diverged`` 가 참이면 (i) raw 복사 단계로 진행하지
-    않아야 한다.** ``reason``은 진단 문자열이다 — ``ok=False``면 오류
-    메시지, ``ok=True``이고 ``dirty``/``diverged`` 중 하나라도 참이면
-    ``"dirty"``/``"diverged"``(둘 다면 ``"dirty"`` 우선), 아니면 ``None``.
+    이지 "선행 조건을 통과했는가"가 아니다. ``ok``/``dirty``/``diverged``를
+    호출자가 직접 조립(``not ok or dirty or diverged``)하게 두면 오조립
+    위험이 있으므로(review P1 #1, `.harness/LEARNING.md` 2026-07-30),
+    **이 결합 판정을 ``precondition_failed`` 필드로 미리 계산해 제공한다.**
+    ``precondition_failed is True``이면 (i) raw 복사 단계로 진행하지 않고
+    F9 ``precondition_failed``로 취급해야 한다. 계산식은 정확히
+    ``not ok or dirty or diverged``이며, ``ok=False`` 조기 반환 경로
+    (dirty_result 실패 · divergence_result 실패) 모두 ``True``로 고정된다.
+    ``reason``은 진단 문자열이다 — ``ok=False``면 오류 메시지, ``ok=True``
+    이고 ``dirty``/``diverged`` 중 하나라도 참이면 ``"dirty"``/``"diverged"``
+    (둘 다면 ``"dirty"`` 우선), 아니면 ``None``.
     """
     dirty_result = check_dirty(kompound_repo)
     if not dirty_result["ok"]:
@@ -291,6 +302,7 @@ def check_preconditions(kompound_repo: PathLike) -> Dict[str, Any]:
             "behind": 0,
             "upstream": None,
             "reason": dirty_result["reason"],
+            "precondition_failed": True,
         }
 
     divergence_result = check_divergence(kompound_repo)
@@ -304,6 +316,7 @@ def check_preconditions(kompound_repo: PathLike) -> Dict[str, Any]:
             "behind": 0,
             "upstream": None,
             "reason": divergence_result["reason"],
+            "precondition_failed": True,
         }
 
     reason: Optional[str]
@@ -323,10 +336,49 @@ def check_preconditions(kompound_repo: PathLike) -> Dict[str, Any]:
         "behind": divergence_result["behind"],
         "upstream": divergence_result["upstream"],
         "reason": reason,
+        "precondition_failed": dirty_result["dirty"] or divergence_result["diverged"],
     }
 
 
 # ─── F6/§6.3.0: raw 전용 / 카탈로그 전용 커밋 (독립 2단 커밋 경계) ──────
+
+
+def _unstage_after_commit_failure(
+    kompound_repo: PathLike, paths: Sequence[str], commit_reason: str
+) -> Dict[str, Any]:
+    """커밋 실패 후 인덱스를 add 이전 상태로 되돌린다(자기 오염 방지).
+
+    arch §6.3.0의 2단 커밋 분리는 "실패해도 워킹트리는 항상 clean"을
+    전제한다 — commit이 실패했는데 스테이징만 남으면 다음 실행의
+    ``check_dirty``가 그 스테이징을 dirty로 잡아 F9가 영구 차단된다
+    (review P1 #2, `.harness/LEARNING.md` 2026-07-30). ``git reset --
+    <paths>``로 add를 되돌리며, reset 자체가 실패해도 예외를 던지지 않고
+    원래 실패 사유에 unstage 실패 사유를 병기해 보고한다(fail-safe).
+    """
+    reset_result = _run_git(["reset", "--", *paths], cwd=kompound_repo)
+    if not reset_result["ok"]:
+        return {
+            "ok": False,
+            "committed": False,
+            "commit": None,
+            "reason": f"{commit_reason} (unstage 실패: {reset_result['reason']})",
+        }
+    if reset_result["returncode"] != 0:
+        unstage_reason = reset_result["stderr"].strip() or (
+            f"git reset exited {reset_result['returncode']}"
+        )
+        return {
+            "ok": False,
+            "committed": False,
+            "commit": None,
+            "reason": f"{commit_reason} (unstage 실패: {unstage_reason})",
+        }
+    return {
+        "ok": False,
+        "committed": False,
+        "commit": None,
+        "reason": commit_reason,
+    }
 
 
 def _commit_paths(
@@ -337,7 +389,9 @@ def _commit_paths(
     반환: {"ok": bool, "committed": bool, "commit": <sha|None>,
            "reason": <str|None>}
     커밋할 변경이 없으면 에러가 아니라 ``committed=False,
-    reason="no_changes"``로 정상 보고한다.
+    reason="no_changes"``로 정상 보고한다. **commit 자체가 실패하면 add로
+    스테이징된 변경을 되돌려 워킹트리를 add 이전 상태로 복원한다**
+    (`_unstage_after_commit_failure` — F9 자기 오염 방지).
     """
     add_result = _run_git(["add", "--", *paths], cwd=kompound_repo)
     if not add_result["ok"]:
@@ -374,19 +428,16 @@ def _commit_paths(
         [*_COMMIT_IDENTITY_ARGS, "commit", "-q", "-m", message], cwd=kompound_repo
     )
     if not commit_result["ok"]:
-        return {
-            "ok": False,
-            "committed": False,
-            "commit": None,
-            "reason": commit_result["reason"],
-        }
+        return _unstage_after_commit_failure(
+            kompound_repo, paths, commit_result["reason"]
+        )
     if commit_result["returncode"] != 0:
         reason = (
             commit_result["stderr"].strip()
             or commit_result["stdout"].strip()
             or f"git commit exited {commit_result['returncode']}"
         )
-        return {"ok": False, "committed": False, "commit": None, "reason": reason}
+        return _unstage_after_commit_failure(kompound_repo, paths, reason)
 
     sha_result = _run_git(["rev-parse", "HEAD"], cwd=kompound_repo)
     if not sha_result["ok"] or sha_result["returncode"] != 0:

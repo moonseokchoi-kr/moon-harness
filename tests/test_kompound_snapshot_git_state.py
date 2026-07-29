@@ -243,6 +243,8 @@ class TestCheckPreconditions:
         assert result["dirty"] is False
         assert result["diverged"] is False
         assert result["reason"] is None
+        # review P1 #1: 결합 판정 필드 — 안전 경로에서는 False.
+        assert result["precondition_failed"] is False
 
     def test_dirty_precondition_failed_with_file_list(
         self, fake_kompound_env: Dict[str, Any]
@@ -258,6 +260,8 @@ class TestCheckPreconditions:
         assert result["dirty"] is True
         assert result["dirty_files"]
         assert result["reason"] == "dirty"
+        # review P1 #1: dirty만으로도 결합 필드가 True여야 한다(ok=True인데도).
+        assert result["precondition_failed"] is True
 
     def test_diverged_behind_precondition_failed(
         self, fake_kompound_env: Dict[str, Any], tmp_path: Path
@@ -274,12 +278,16 @@ class TestCheckPreconditions:
         assert result["diverged"] is True
         assert result["behind"] == 1
         assert result["reason"] == "diverged"
+        # review P1 #1: diverged(behind>0)만으로도 결합 필드가 True여야 한다.
+        assert result["precondition_failed"] is True
 
     def test_nonexistent_path_returns_dict_no_exception(
         self, tmp_path: Path
     ) -> None:
         result = git_state.check_preconditions(tmp_path / "does-not-exist")
         assert result["ok"] is False
+        # review P1 #1: ok=False 조기 반환 경로도 결합 필드는 True로 고정.
+        assert result["precondition_failed"] is True
         assert result["reason"]
 
 
@@ -316,6 +324,49 @@ class TestCommits:
         assert result["committed"] is False
         assert result["commit"] is None
         assert result["reason"] == "no_changes"
+
+    def test_commit_failure_unstages_index(
+        self, fake_kompound_env: Dict[str, Any]
+    ) -> None:
+        """review P1 #2: commit 실패(예: pre-commit 훅 거부) 시 인덱스가
+        add 이전 상태로 되돌아가야 한다 — 그렇지 않으면 다음 실행의
+        `check_dirty`가 남은 스테이징을 dirty로 잡아 F9가 영구 차단된다.
+
+        실패 유도 방식: kompound 저장소에 항상 실패하는 `pre-commit` 훅을
+        심는다(``--no-verify``를 쓰지 않으므로 실제로 이 경로를 탄다).
+        "인덱스가 되돌아갔음"은 (a) 실패 직전(= add 이전, 파일을 만든
+        직후)의 ``git status --porcelain`` 스냅샷과 실패 직후의 스냅샷이
+        바이트 동일함 (b) ``git diff --cached --name-only``가 비어 있어
+        인덱스에 아무 것도 스테이징돼 있지 않음, 두 가지로 단정한다.
+        """
+        kompound: Path = fake_kompound_env["kompound"]
+        hooks_dir = kompound / ".git" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        pre_commit = hooks_dir / "pre-commit"
+        pre_commit.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        pre_commit.chmod(0o755)
+
+        (kompound / "raw" / "reject-me-spec.md").write_text(
+            "reject\n", encoding="utf-8"
+        )
+        status_before_add = _git("status", "--porcelain", cwd=kompound).stdout
+
+        result = git_state.commit_raw(kompound, new_count=1, updated_count=0)
+
+        assert result["ok"] is False
+        assert result["committed"] is False
+        assert result["commit"] is None
+        assert result["reason"]
+
+        status_after_failed_commit = _git(
+            "status", "--porcelain", cwd=kompound
+        ).stdout
+        assert status_after_failed_commit == status_before_add
+
+        staged = _git(
+            "diff", "--cached", "--name-only", cwd=kompound
+        ).stdout.strip()
+        assert staged == ""
 
     def test_commit_catalog_creates_independent_commit(
         self, fake_kompound_env: Dict[str, Any]
