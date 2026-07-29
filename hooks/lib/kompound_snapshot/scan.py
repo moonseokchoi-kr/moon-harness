@@ -236,9 +236,24 @@ def _walk_anchor(
         yield current, file_names
 
 
-def _is_excluded_dir(directory: Path) -> bool:
-    """``/task`` 세그먼트 제외 규칙(``task/``·``tasks/`` 동시 커버)."""
-    return "/task" in directory.as_posix()
+def _is_excluded_dir(directory: Path, anchor: Path) -> bool:
+    """``task``/``tasks`` **세그먼트** 제외 규칙(arch §5.4.1 절차4 — 부분 문자열이
+    아니라 정확한 경로 세그먼트 매칭이어야 한다).
+
+    ``anchor``(``docs/sdd``) 기준 상대 세그먼트만 검사한다 — 절대경로 전체를
+    보면 스코프 루트 상위 어딘가에 우연히 ``task``라는 디렉토리가 있어도
+    오탐하기 때문이다(``_kind_for_dir``와 동일하게 앵커 상대 기준을 쓴다).
+
+    ``task-notes``/``tasklog``/``taskforce-v2``처럼 ``task``로 시작하지만
+    세그먼트 전체가 ``task``/``tasks``가 아닌 디렉토리는 제외하지 않는다 —
+    이전 구현(``"/task" in directory.as_posix()``)의 부분 문자열 오탐을
+    회귀 테스트로 고정한다([P1] 리뷰 반영, it.2).
+    """
+    try:
+        rel_parts = directory.relative_to(anchor).parts
+    except ValueError:
+        rel_parts = directory.parts
+    return bool({"task", "tasks"} & set(rel_parts))
 
 
 def _is_excluded_name(name: str) -> bool:
@@ -298,7 +313,7 @@ def scan(
                 kind = _kind_for_dir(anchor, directory)
                 if kind is None:
                     continue
-                if _is_excluded_dir(directory):
+                if _is_excluded_dir(directory, anchor):
                     continue
 
                 for name in file_names:

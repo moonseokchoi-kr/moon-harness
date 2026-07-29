@@ -123,6 +123,34 @@ def test_scan_excludes_task_and_special_names(tmp_path: Path) -> None:
     assert str(included) in paths
 
 
+def test_scan_does_not_false_positive_on_task_prefixed_dir_names(tmp_path: Path) -> None:
+    """[P1] 회귀 테스트 (it.2) — ``task``/``tasks``는 세그먼트 매칭으로 제외되지만,
+    그 이름으로 *시작만* 하는 근접 디렉토리는 정상 스캔되어야 한다. 이전 구현
+    (``"/task" in directory.as_posix()``)은 부분 문자열 검사라 아래 전부를
+    조용히(``errors[]`` 신호 없이) 소실시켰다.
+    """
+    repo = tmp_path / "acme-widget"
+    sdd = repo / "docs" / "sdd"
+
+    survivors = [
+        sdd / "spec" / "task-notes" / "keep1-spec.md",
+        sdd / "spec" / "tasklog" / "keep2-spec.md",
+        sdd / "spec" / "taskforce-v2" / "keep3-spec.md",
+        sdd / "spec" / "task-oriented-design" / "keep4-spec.md",
+    ]
+    for path in survivors:
+        _write(path)
+
+    result = scan([tmp_path])
+    paths = {r["path"] for r in result["records"]}
+
+    for path in survivors:
+        assert str(path) in paths, (
+            f"근접 이름 디렉토리가 부분 문자열 오탐으로 소실됨: {path}"
+        )
+    assert result["errors"] == [], "정상 문서 스캔에 errors[]가 발생해서는 안 된다"
+
+
 def test_scan_excludes_non_md_files(tmp_path: Path) -> None:
     repo = tmp_path / "acme-widget"
     sdd = repo / "docs" / "sdd"
