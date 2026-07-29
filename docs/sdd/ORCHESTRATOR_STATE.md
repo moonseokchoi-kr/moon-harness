@@ -9,8 +9,13 @@
 - task 디렉터리: `docs/sdd/task/kompound-snapshot-hook/` (T-1 ~ T-13, 13개)
 - 시작 시각: 2026-07-29T00:00:00+09:00
 - 마지막 갱신: 2026-07-29 (Phase 3 dag 모드 — STATE 초기 생성)
-- 상태: PLANNING
+- 상태: EXECUTING
 - 워밍업 완료: 미실행(fast-scoped)
+
+### 사용자 승인 기록 (protected set — spec F15)
+- **2026-07-29 Phase 4 실행 승인**: 사용자가 "진행해줘, 내가 개입해야하는 문제가 발생하지 않는다면 모든 웨이브를 진행해"로 **Wave 0~5 전체 실행을 승인**했다.
+- 이 승인은 **Wave 5의 protected set 수정(T-12 `hooks/enforcement/stop-pipeline.py` / T-13 `hooks/enforcement/kompound-snapshot-gate.sh` 신규 + `hooks/hooks.json`)을 포함**한다. CLAUDE.md의 "게이트 스크립트는 사람만 수정" 조건은 이 명시적 지시로 충족됐다.
+- 단 **사용자 개입이 필요한 사건**(3회 재시도 소진 · 설계 재결정 필요 · spec 변경 필요 · Wave 0 게이트 미충족 · 그 밖의 에스컬레이션)이 발생하면 즉시 중단하고 보고한다. 그 외에는 Wave 사이에서 멈추지 않는다.
 
 > 단일 오케스트레이터 모드 — **팀 배정 섹션 생략**(사용자 지시). Wave 0의 T-1/T-2 병렬은 곧바로 Wave 1으로 수렴하는 단일 체인이며, 독립 클러스터가 2개 이상 존재하지 않는다.
 
