@@ -7,11 +7,17 @@ T-2 (SDD Phase 4, kompound-snapshot-hook) 정적 검사 뼈대 + 공용 fixture
 (T-2 owned files 3개 한정) 한 파일에 담는다:
 
 1. **정적 검사 (F13·F16 acceptance)** — `hooks/lib/kompound_snapshot/` 아래
-   모든 `.py`가 stdlib(+ 이 플러그인의 `hooks.*` 네임스페이스, arch §4가 허용한
-   `hooks.lib.self_improve` 단방향 재사용 포함) 외 모듈을 import하지 않고,
-   사용자 고유 절대경로 리터럴(`/Users/...`, `/home/...`)을 담고 있지 않음을
-   검사한다. **모듈이 존재하는 개수를 단정하지 않는다** — T-3~T-11이 파일을
-   추가할 때마다 이 테스트가 자동으로 그 파일까지 스캔 범위를 넓힌다.
+   모든 `.py`가 stdlib 외 모듈을 import하지 않고, 사용자 고유 절대경로
+   리터럴(`/Users/...`, `/home/...`)을 담고 있지 않음을 검사한다. 허용되는
+   유일한 non-stdlib import는 **전체 dotted path** 기준 두 prefix뿐이다 —
+   `hooks.lib.kompound_snapshot`(자기 참조)과
+   `hooks.lib.self_improve.state_io`(arch §4가 명시적으로 허용한 단 하나의
+   단방향 재사용). `hooks.lib.self_improve`의 다른 하위 모듈(`tier`/`guard`
+   등)은 최상위 세그먼트("hooks")만 같을 뿐 이 두 prefix 밖이므로 위반으로
+   판정된다 — 회귀 테스트(`test_import_checker_flags_disallowed_self_improve_submodule`)가
+   이 판정이 실제로 동작함을 고정한다. **모듈이 존재하는 개수를 단정하지
+   않는다** — T-3~T-11이 파일을 추가할 때마다 이 테스트가 자동으로 그
+   파일까지 스캔 범위를 넓힌다.
 2. **`fake_kompound_env` fixture 계약 스모크 (arch §9.3, spec F13)** — fixture가
    반환하는 구조가 spec/arch가 고정한 스키마와 정확히 일치하고, kompound가
    커밋 직후 clean 상태(F9/F8 케이스를 그 위에 시뮬레이션할 수 있는 전제)이며,
@@ -46,12 +52,37 @@ def _iter_package_py_files() -> List[Path]:
 
 
 # ── F13 acceptance: stdlib-only import 정적 검사 ────────────────────────────
+#
+# 허용되는 non-stdlib import는 정확히 두 **전체 dotted-path prefix**뿐이다
+# (arch §4 의존 방향):
+#   1. `hooks.lib.kompound_snapshot` — 이 패키지 자기 참조(하위 모듈끼리의
+#      내부 import, `hooks.lib.kompound_snapshot.config` 등).
+#   2. `hooks.lib.self_improve.state_io` — arch §4가 명시적으로 허용한
+#      **단 하나의** 단방향 재사용. `hooks.lib.self_improve`의 다른 하위
+#      모듈(`tier`, `guard`, `cursor`, …)은 이 prefix에 포함되지 않으므로
+#      **위반**이다 — `self_improve`의 다른 유닛을 끌어오면 두 패키지의
+#      경계가 흐려지고 "역방향 의존 금지" 규칙을 우회하는 뒷문이 된다.
+#
+# 최상위 세그먼트("hooks")만 비교하면 이 경계가 전혀 강제되지 않는다
+# (`hooks.lib.self_improve.tier`도 top-level은 "hooks"라 통과해버림) —
+# 그래서 아래 검사는 항상 **전체 dotted path**로 prefix 매칭한다.
+_ALLOWED_HOOKS_IMPORT_PREFIXES: tuple = (
+    "hooks.lib.kompound_snapshot",
+    "hooks.lib.self_improve.state_io",
+)
 
-# 이 플러그인 자신의 네임스페이스(`hooks.*`) — kompound_snapshot의 자기 참조
-# import(`hooks.lib.kompound_snapshot.config` 등)와 arch §4가 명시적으로 허용한
-# `hooks.lib.self_improve.state_io` 단방향 재사용을 함께 허용한다.
-_ALLOWED_NON_STDLIB_ROOTS: Set[str] = {"hooks"}
-_ALLOWED_ROOTS: Set[str] = {"__future__"} | _ALLOWED_NON_STDLIB_ROOTS
+
+def _is_allowed_hooks_import(dotted: str) -> bool:
+    """`dotted`(전체 import 경로)가 위 두 허용 prefix 중 하나이거나 그 하위인가.
+
+    경계는 '.' 세그먼트 단위다 — 문자열 접두사만 비교하면
+    `hooks.lib.self_improve.state_io_extra` 같은 우연한 이웃 이름까지
+    통과시키는 함정이 생긴다.
+    """
+    return any(
+        dotted == prefix or dotted.startswith(prefix + ".")
+        for prefix in _ALLOWED_HOOKS_IMPORT_PREFIXES
+    )
 
 
 def _stdlib_roots() -> Set[str]:
@@ -63,8 +94,10 @@ def _stdlib_roots() -> Set[str]:
     return set(sys.builtin_module_names)
 
 
-def _import_roots(tree: ast.Module) -> Iterable[str]:
-    """AST에서 import된 최상위 모듈 이름을 전부 뽑는다.
+def _import_paths(tree: ast.Module) -> Iterable[str]:
+    """AST에서 import된 **전체 dotted path**를 전부 뽑는다(최상위 세그먼트만이
+    아니다 — `hooks.lib.self_improve.tier`처럼 두 번째·세 번째 세그먼트에서
+    허용 경계를 벗어나는 import를 잡으려면 전체 경로가 필요하다).
 
     `from . import x` 처럼 상대 import(level > 0, module=None)는 항상
     패키지 내부 참조이므로 스킵한다(외부 의존이 될 수 없다).
@@ -72,12 +105,36 @@ def _import_roots(tree: ast.Module) -> Iterable[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                yield alias.name.split(".")[0]
+                yield alias.name
         elif isinstance(node, ast.ImportFrom):
             if node.level and node.level > 0:
                 continue  # 상대 import — 패키지 내부, 외부 의존 아님
             if node.module:
-                yield node.module.split(".")[0]
+                yield node.module
+
+
+def _find_import_violations(source: str, filename: str = "<test>") -> List[str]:
+    """`source`(파이썬 코드 텍스트)에서 stdlib-only 규약을 위반하는 전체
+    dotted import path 목록을 반환한다(위반 없으면 빈 리스트).
+
+    파일시스템과 무관한 순수 함수다 — 실 패키지 스캔(아래 테스트)과 회귀
+    테스트(합성 소스 문자열)가 이 함수 하나를 공유해, "검사기가 실제로
+    위반을 잡는지"를 실 파일을 오염시키지 않고 검증할 수 있다.
+    """
+    tree = ast.parse(source, filename=filename)
+    stdlib = _stdlib_roots()
+    violations: List[str] = []
+    for dotted in _import_paths(tree):
+        top = dotted.split(".")[0]
+        if top == "__future__" or top in stdlib:
+            continue
+        if top == "hooks":
+            if not _is_allowed_hooks_import(dotted):
+                violations.append(dotted)
+            continue
+        # top-level이 stdlib도 "hooks"도 아니면 외부 pip 의존 — 무조건 위반.
+        violations.append(dotted)
+    return violations
 
 
 def test_kompound_snapshot_package_dir_exists() -> None:
@@ -88,7 +145,10 @@ def test_kompound_snapshot_package_dir_exists() -> None:
 
 def test_kompound_snapshot_imports_are_stdlib_or_internal_only() -> None:
     """`hooks/lib/kompound_snapshot/`의 모든 `.py`가 stdlib 외 모듈을
-    import하지 않는다(F13 acceptance) — `hooks.*` 내부 참조만 예외.
+    import하지 않는다(F13 acceptance) — 허용 예외는
+    `hooks.lib.kompound_snapshot`(자기 참조)와
+    `hooks.lib.self_improve.state_io`(arch §4가 허용한 단 하나의 단방향
+    재사용) 두 **전체 경로** prefix뿐이다.
 
     현재는 `__init__.py`만 존재해 자명하게 통과한다. 이후 태스크가 모듈을
     추가할 때마다 `_iter_package_py_files()`가 그 파일까지 스캔하므로
@@ -97,14 +157,48 @@ def test_kompound_snapshot_imports_are_stdlib_or_internal_only() -> None:
     violations: List[str] = []
     for path in _iter_package_py_files():
         source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(path))
-        roots = set(_import_roots(tree)) - _stdlib_roots()
-        disallowed = roots - _ALLOWED_ROOTS
-        if disallowed:
+        found = _find_import_violations(source, filename=str(path))
+        if found:
             rel = path.relative_to(_REPO_ROOT)
-            violations.append(f"{rel}: non-stdlib import root(s) {sorted(disallowed)}")
+            violations.append(f"{rel}: disallowed import path(s) {sorted(found)}")
 
     assert not violations, "stdlib-only 위반:\n" + "\n".join(violations)
+
+
+def test_import_checker_flags_disallowed_self_improve_submodule() -> None:
+    """회귀 케이스 — 검사기가 실제로 위반을 잡는지 검증한다.
+
+    `hooks.lib.self_improve.tier`는 arch §4가 허용한 `state_io` 재사용이
+    아니므로, 최상위 세그먼트("hooks")만 보는 느슨한 검사기라면 이 회귀가
+    FAIL(=조용히 GREEN)해야 정상이지만, 이 테스트는 그 반대(위반이 실제로
+    검출됨)를 요구한다. 실 패키지 파일을 만들지 않고 합성 소스 문자열을
+    `_find_import_violations()`에 직접 주입해 검증한다(패키지 오염 없음).
+    """
+    bad_source = (
+        "from __future__ import annotations\n"
+        "from hooks.lib.self_improve.tier import classify_tier\n"
+    )
+    violations = _find_import_violations(bad_source)
+    assert violations == ["hooks.lib.self_improve.tier"], (
+        f"위반이 검출되지 않음(거짓 GREEN 위험): {violations!r}"
+    )
+
+
+def test_import_checker_allows_state_io_and_self_reference() -> None:
+    """양성 대조 — 허용된 두 경로는 위반으로 잡히지 않아야 한다."""
+    good_source = (
+        "from __future__ import annotations\n"
+        "import json\n"
+        "from hooks.lib.self_improve.state_io import atomic_write\n"
+        "from hooks.lib.kompound_snapshot.config import resolve_config\n"
+    )
+    assert _find_import_violations(good_source) == []
+
+
+def test_import_checker_flags_external_pip_dependency() -> None:
+    """양성 대조 — stdlib도 `hooks.*`도 아닌 외부 pip 의존은 위반이다."""
+    bad_source = "import requests\n"
+    assert _find_import_violations(bad_source) == ["requests"]
 
 
 # ── F16 acceptance: 사용자 고유 절대경로 리터럴 0개 ──────────────────────────
