@@ -17,6 +17,19 @@ kompound(`/Users/.../marvelous_kompound`)에는 절대 쓰지 않는다.
 - C-4 — 같은 `raw_name`으로 수렴하는 내용 상이 2건 → mtime 최신본 채택
 - F6 멱등 — 2회 연속 실행 시 두 번째 카운트 0 + `git status -- raw/` 빈 문자열
 - 배타 락 — 이미 잡힌 락이 있으면 시도조차 하지 않고 `busy`로 통과
+
+it.2 추가(리뷰어 [P1] #1 + compliance #2/#3, `.harness/LEARNING.md` 2026-07-30
+"T-10-apply" 엔트리 반영 — 로직 변경 없음, 테스트만 추가):
+
+- (ii) 실패를 **쓰기 이후**(post-write) 지점에서 유도해 저널 롤백 코드
+  자체가 실행됨을 증명(pre-write 조기 리턴이 아님을 `unparsed is None` +
+  `failed_gates` 비어있지 않음으로 구분)
+- (ii) 실패 → 원인 제거 → 재실행 시 `CATALOG_PENDING` → `DONE`으로 실제
+  전이(2회 이상 `apply()` 호출을 잇는 통합 시나리오, D-impl-1 자기치유가
+  실제로 이어붙는 증거)
+- `wiki/log.md`에 append된 정확한 한 줄을 `wiki_log.build_snapshot_log_line()`
+  으로 독립 재구성해 바이트 단위로 대조(다중 raw 커밋 열거·재시도 횟수·
+  append-only 보존 포함)
 """
 
 from __future__ import annotations
@@ -25,13 +38,14 @@ import hashlib
 import json
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 
 from hooks.lib.kompound_snapshot import apply as apply_mod
-from hooks.lib.kompound_snapshot import git_state, runtime_state
+from hooks.lib.kompound_snapshot import git_state, runtime_state, wiki_log
 
 
 # ── 테스트 인프라 헬퍼 ───────────────────────────────────────────────────────
@@ -107,6 +121,50 @@ def _record(path: Path, *, kind: str, repo_dir: str) -> Dict[str, Any]:
 def _read_state(project_root: Path) -> Dict[str, Any]:
     state_file = runtime_state.state_path_for(project_root)
     return json.loads(state_file.read_text(encoding="utf-8"))
+
+
+def _inject_bad_raw_subdir(kompound: Path) -> None:
+    """`raw/`에 `assets/` 외 서브디렉토리를 심고 커밋한다 — `check_flat_structure`
+    게이트가 **항상** 실패하도록 만드는 사전 조건(우리가 새로 추가하는 문서와
+    무관하게 실패시키므로, registry write가 정상 완료된 **이후**에 게이트가
+    걸린다 — pre-write `catalog_unparsed` 조기 리턴과 구분되는 지점)."""
+    bad_dir = kompound / "raw" / "badsubdir"
+    bad_dir.mkdir(parents=True, exist_ok=True)
+    (bad_dir / "placeholder.md").write_text("placeholder\n", encoding="utf-8")
+    _git("add", "-A", cwd=kompound)
+    _git("commit", "-q", "-m", "test setup: inject raw/ subdirectory to fail flat_structure gate", cwd=kompound)
+
+
+def _remove_bad_raw_subdir(kompound: Path) -> None:
+    """`_inject_bad_raw_subdir`이 심은 위반을 제거하고 커밋한다(사람이
+    flat_structure 위반을 고쳤다고 가정하는 재시도 시나리오의 전제)."""
+    bad_dir = kompound / "raw" / "badsubdir"
+    for child in bad_dir.iterdir():
+        child.unlink()
+    bad_dir.rmdir()
+    _git("add", "-A", cwd=kompound)
+    _git("commit", "-q", "-m", "test setup: remove offending raw/ subdirectory", cwd=kompound)
+
+
+def _raw_commit_shas_in_order(kompound: Path) -> List[str]:
+    """kompound git 이력에서 `snapshot(raw):` 커밋들의 abbreviated sha를
+    시간순(오래된 것 → 최신)으로 반환한다. `apply.py`의
+    `_find_uncataloged_raw_commits`와 **독립적으로**(테스트가 모듈 내부
+    구현을 그대로 재사용하지 않고 직접 재조회) 검증하기 위함."""
+    proc = subprocess.run(
+        ["git", "log", "--format=%h\x01%as\x01%s"],
+        cwd=kompound,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    shas: List[str] = []
+    for line in proc.stdout.splitlines():
+        sha, _date, subject = line.split("\x01")
+        if subject.startswith("snapshot(raw):"):
+            shas.append(sha)
+    shas.reverse()
+    return shas
 
 
 @pytest.fixture()
@@ -479,3 +537,204 @@ def test_apply_busy_when_lock_already_held(fake_kompound_env: Dict[str, Any]) ->
         assert _commit_count(kompound) == before_commits
     finally:
         git_state.release_lock(kompound)
+
+
+# ── [P1] #1 (리뷰어) — post-write 게이트 실패 → 저널 롤백 코드 실행 증명 ────
+
+
+def test_apply_catalog_gate_failure_after_write_rolls_back_journal(
+    fake_kompound_env: Dict[str, Any], project_root: Path
+) -> None:
+    """`check_flat_structure`가 **registry/index/log write 이후** 실패하도록
+    만든다(`raw/`에 비허용 서브디렉토리를 사전에 커밋해 둠 — 우리 문서와
+    무관한 구조적 위반이므로 registry 텍스트 변환 자체는 정상 성공한 뒤에야
+    걸린다). `apply.py:_run_catalog_stage`의 실제 `journal = [...]` 생성 →
+    3파일 write → `run_gates` → 실패 → `_rollback_journal` 경로를 실행시켜
+    3파일이 **바이트 단위로 완전 복원**됨을 확인한다.
+
+    pre-write 조기 리턴(`test_apply_catalog_only_failure_keeps_raw_committed_and_clean`)
+    과 구분하는 결정적 증거: 그 케이스는 `catalog_stage["unparsed"]`가
+    채워지고 `failed_gates`가 항상 빈 리스트다. 여기서는 반대로
+    `unparsed is None`이고 `failed_gates`가 채워진다 — `_catalog_gate_failure`
+    분기(쓰기+게이트 실행 이후에만 도달 가능)에 실제로 진입했다는 뜻이다.
+    """
+    kompound = fake_kompound_env["kompound"]
+    config = fake_kompound_env["config"]
+
+    _inject_bad_raw_subdir(kompound)
+
+    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
+    index_path = kompound / "wiki" / "index.md"
+    log_path = kompound / "wiki" / "log.md"
+    registry_bytes_before = registry_path.read_bytes()
+    index_bytes_before = index_path.read_bytes()
+    log_bytes_before = log_path.read_bytes()
+
+    before_commits = _commit_count(kompound)
+
+    src = _make_source_file(project_root, "2026-07-03-afterwrite-spec.md", "# after write gate failure\n")
+    record = _record(src, kind="spec", repo_dir="acme-widget")
+
+    result = apply_mod.apply(
+        kompound,
+        [record],
+        prefix_map=config["prefix_map"],
+        scan_root=config["scan_root"],
+        project_root=project_root,
+    )
+
+    raw_stage = result["raw_stage"]
+    assert raw_stage["ok"] is True
+    assert raw_stage["new"] == ["acme-afterwrite-spec.md"]
+    assert raw_stage["committed"] is True
+
+    catalog_stage = result["catalog_stage"]
+    assert catalog_stage["attempted"] is True
+    assert catalog_stage["ok"] is False
+    # pre-write catalog_unparsed 분기와 구분되는 결정적 증거(모듈 docstring 참조).
+    assert catalog_stage["unparsed"] is None
+    assert "flat_structure" in catalog_stage["failed_gates"]
+    assert catalog_stage["committed"] is False
+    assert catalog_stage["commit"] is None
+
+    # 저널 롤백 — 3파일이 실패 전 바이트와 완전히 동일(단정 대상은 dict가
+    # 아니라 실제 디스크 바이트).
+    assert registry_path.read_bytes() == registry_bytes_before
+    assert index_path.read_bytes() == index_bytes_before
+    assert log_path.read_bytes() == log_bytes_before
+
+    # 커밋이 raw 1개만 증가(카탈로그 커밋 없음)
+    assert _commit_count(kompound) == before_commits + 1
+
+    assert _git_status_porcelain(kompound, "wiki") == ""
+    assert _git_status_porcelain(kompound) == ""
+
+    state = _read_state(project_root)
+    assert state["status"] == "CATALOG_PENDING"
+
+
+# ── compliance #2/#3 — 재시도 이어짐(원인 제거 후 성공) + log.md 내용 검증 ──
+
+
+def test_apply_retry_after_fixing_catalog_cause_succeeds_and_logs_multiple_raw_commits(
+    fake_kompound_env: Dict[str, Any], project_root: Path
+) -> None:
+    """완료조건 #21("(ii) 실패 후 다음 실행에서 (i)은 unchanged 무동작이고
+    (ii)만 재시도됨")을 **실제 2회 이상의 apply() 호출**로 검증하고,
+    동시에 F7 "배치 1건 = 로그 1줄"과 §6.3.0 N-2(다중 raw 커밋 열거)를
+    `wiki/log.md`의 실제 바이트로 확인한다.
+
+    시나리오: `_inject_bad_raw_subdir`로 flat_structure 위반을 심어둔 채
+    서로 다른 문서 2건을 각각 별도 호출로 raw 커밋만 성공시키고(카탈로그는
+    매번 실패 → `CATALOG_PENDING` 유지), 위반을 제거한 뒤 3차 호출에서
+    두 문서가 **한 번에** 카탈로그로 회수되며 `DONE`으로 전이하는지 확인한다.
+    """
+    kompound = fake_kompound_env["kompound"]
+    config = fake_kompound_env["config"]
+    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
+    log_path = kompound / "wiki" / "log.md"
+
+    log_lines_before = log_path.read_text(encoding="utf-8").splitlines()
+
+    _inject_bad_raw_subdir(kompound)
+
+    # 1차: docA 신규 → raw 커밋 성공, catalog 실패(CATALOG_PENDING).
+    src_a = _make_source_file(project_root, "2026-07-03-retry-a-spec.md", "# retry doc A\n")
+    record_a = _record(src_a, kind="spec", repo_dir="acme-widget")
+    result1 = apply_mod.apply(
+        kompound,
+        [record_a],
+        prefix_map=config["prefix_map"],
+        scan_root=config["scan_root"],
+        project_root=project_root,
+    )
+    assert result1["raw_stage"]["ok"] is True
+    assert result1["raw_stage"]["new"] == ["acme-retry-a-spec.md"]
+    assert result1["raw_stage"]["committed"] is True
+    assert result1["catalog_stage"]["ok"] is False
+    assert _read_state(project_root)["status"] == "CATALOG_PENDING"
+
+    # 2차: docB 신규(다른 문서) → raw 커밋 성공, catalog 여전히 실패.
+    src_b = _make_source_file(project_root, "2026-07-03-retry-b-spec.md", "# retry doc B\n")
+    record_b = _record(src_b, kind="spec", repo_dir="acme-widget")
+    result2 = apply_mod.apply(
+        kompound,
+        [record_b],
+        prefix_map=config["prefix_map"],
+        scan_root=config["scan_root"],
+        project_root=project_root,
+    )
+    assert result2["raw_stage"]["ok"] is True
+    assert result2["raw_stage"]["new"] == ["acme-retry-b-spec.md"]
+    assert result2["raw_stage"]["committed"] is True
+    assert result2["catalog_stage"]["ok"] is False
+    assert _read_state(project_root)["status"] == "CATALOG_PENDING"
+
+    # 이 시점까지 raw만 2개 커밋됐고 카탈로그 커밋은 아직 하나도 없다 —
+    # 다음 apply() 호출이 만들 log.md 줄이 이 두 raw 커밋을 전부 열거해야 한다.
+    raw_shas_before_recovery = _raw_commit_shas_in_order(kompound)
+    assert len(raw_shas_before_recovery) == 2
+
+    # 원인 제거(사람이 flat_structure 위반을 고쳤다고 가정) — clean 유지 위해 커밋.
+    _remove_bad_raw_subdir(kompound)
+
+    commits_before_retry = _commit_count(kompound)
+
+    # 3차: 이번 호출은 두 문서를 다시 스캔하지 않아도(canonical_records=[])
+    # D-impl-1 차집합이 미링크 상태(docA·docB 둘 다)를 회수한다 — F6
+    # unchanged 재현이 아니라 자기치유 경로 자체를 검증하는 것이 이 테스트의
+    # 목적이다(F6 unchanged 재현은 별도 idempotent 테스트가 이미 커버).
+    result3 = apply_mod.apply(
+        kompound,
+        [],
+        prefix_map=config["prefix_map"],
+        scan_root=config["scan_root"],
+        project_root=project_root,
+    )
+
+    assert result3["raw_stage"]["ok"] is True
+    assert result3["raw_stage"]["new"] == []
+    assert result3["raw_stage"]["updated"] == []
+    assert result3["raw_stage"]["committed"] is False  # no_changes — 이번 호출은 raw 커밋 없음
+
+    catalog_stage3 = result3["catalog_stage"]
+    assert catalog_stage3["attempted"] is True
+    assert catalog_stage3["ok"] is True
+    assert catalog_stage3["committed"] is True
+    assert catalog_stage3["commit"]
+
+    # raw 커밋 없이 카탈로그 커밋 1개만 증가(재시도가 실제로 (ii)만 이어붙음).
+    assert _commit_count(kompound) == commits_before_retry + 1
+
+    registry_text = registry_path.read_text(encoding="utf-8")
+    assert "acme-retry-a-spec.md" in registry_text
+    assert "acme-retry-b-spec.md" in registry_text
+
+    # CATALOG_PENDING -> DONE 실제 전이.
+    assert _read_state(project_root)["status"] == "DONE"
+
+    # F7 "배치 1건 = 로그 1줄" — 기존 내용은 재작성/정렬/중복제거 없이
+    # append-only로 보존되고, 정확히 1줄만 새로 추가된다.
+    log_text_after = log_path.read_text(encoding="utf-8")
+    log_lines_after = log_text_after.splitlines()
+    assert log_lines_after[: len(log_lines_before)] == log_lines_before
+    new_lines = log_lines_after[len(log_lines_before) :]
+    assert len(new_lines) == 1
+    new_line = new_lines[0]
+
+    # 두 시점 표기 형식·다중 raw 커밋 열거·재시도 횟수를
+    # `wiki_log.build_snapshot_log_line()`으로 독립 재구성해 바이트 단위로
+    # 대조한다(모듈 내부 함수를 재사용하지 않고 테스트가 직접 재현).
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    raw_commits: List[Tuple[str, str]] = [(sha, today) for sha in raw_shas_before_recovery]
+    expected_line = wiki_log.build_snapshot_log_line(
+        date=today,
+        total_raw=2,
+        raw_commits=raw_commits,
+        catalog_commit=("HEAD", today),
+        retries=len(raw_commits) - 1,
+    )
+    assert new_line == expected_line
+    assert "재시도 1회" in new_line
+    for sha in raw_shas_before_recovery:
+        assert sha in new_line
