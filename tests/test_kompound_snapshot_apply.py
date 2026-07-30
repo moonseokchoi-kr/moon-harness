@@ -41,11 +41,12 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from unittest.mock import patch
 
 import pytest
 
 from hooks.lib.kompound_snapshot import apply as apply_mod
-from hooks.lib.kompound_snapshot import git_state, runtime_state, wiki_log
+from hooks.lib.kompound_snapshot import git_state, runtime_state, verify, wiki_log
 
 
 # ── 테스트 인프라 헬퍼 ───────────────────────────────────────────────────────
@@ -738,3 +739,64 @@ def test_apply_retry_after_fixing_catalog_cause_succeeds_and_logs_multiple_raw_c
     assert "재시도 1회" in new_line
     for sha in raw_shas_before_recovery:
         assert sha in new_line
+
+
+# ── 완료조건 #23 — 박제 0건 시 F8 게이트 함수 미호출을 mock call_count로 단정 ──
+
+
+def test_apply_skips_gate_functions_when_nothing_new_to_catalog(
+    fake_kompound_env: Dict[str, Any], project_root: Path
+) -> None:
+    """task 문서가 명시한 검증 형태 그대로: 박제(카탈로그 갱신 대상)가 0건이면
+    `verify.run_gates`가 **호출되지 않음**을 `unittest.mock.patch`의
+    `call_count`로 직접 단정한다.
+
+    패치 타깃은 `hooks.lib.kompound_snapshot.verify.run_gates`다 —
+    `apply.py`는 `from hooks.lib.kompound_snapshot import ... verify ...`로
+    `verify`를 **모듈 객체**로 import하고 `verify.run_gates(...)`처럼 속성
+    접근으로 호출한다(`from verify import run_gates` 형태가 아니다). 따라서
+    `verify` 모듈 자체의 `run_gates` 속성을 패치해야 `apply.py`가 호출 시점에
+    보는 것과 동일한 객체가 치환된다 — `apply` 모듈 네임스페이스에
+    `run_gates`라는 별도 바인딩이 없으므로 `apply.run_gates`를 패치하는
+    것은 애초에 대상이 없어 아무 효과가 없다.
+
+    **패치가 실제로 걸렸음을 어떻게 확인했는가(대칭 케이스)**: 같은
+    context manager 안에서 먼저 신규 문서가 있는 호출을 실행해
+    `call_count >= 1`을 확인한다(=패치가 걸리지 않았다면 이 단정 자체가
+    실패해 테스트가 즉시 잡아낸다). 그 다음 `reset_mock()` 후 박제 0건
+    호출을 실행해 `call_count == 0`을 단정한다 — 같은 패치 컨텍스트·같은
+    kompound 위에서 "도는 경우"와 "스킵되는 경우"를 나란히 비교하므로,
+    패치 오적용으로 인한 위양성(항상 0)을 이 비교 자체가 배제한다.
+    """
+    kompound = fake_kompound_env["kompound"]
+    config = fake_kompound_env["config"]
+
+    src = _make_source_file(project_root, "2026-07-04-gatecount-spec.md", "# gate count spec\n")
+    record = _record(src, kind="spec", repo_dir="acme-widget")
+
+    with patch(
+        "hooks.lib.kompound_snapshot.verify.run_gates", wraps=verify.run_gates
+    ) as mocked_run_gates:
+        # 대칭 케이스 — 신규 문서가 있어 카탈로그가 실제로 시도되는 최초 호출.
+        first = apply_mod.apply(
+            kompound, [record], prefix_map=config["prefix_map"], scan_root=config["scan_root"]
+        )
+        assert first["catalog_stage"]["attempted"] is True
+        assert first["catalog_stage"]["ok"] is True
+        assert mocked_run_gates.call_count >= 1, (
+            "패치가 걸리지 않았다면(잘못된 타깃) 이 단정에서 실패해야 정상 —"
+            " 이 실패 없이 아래 0-count 단정만 통과하면 그 결과는 신뢰할 수 없다"
+        )
+
+        mocked_run_gates.reset_mock()
+
+        # 박제 0건 — 같은 문서를 다시 넣어도 이미 raw·registry 모두 링크됨.
+        second = apply_mod.apply(
+            kompound, [record], prefix_map=config["prefix_map"], scan_root=config["scan_root"]
+        )
+        assert second["raw_stage"]["new"] == []
+        assert second["raw_stage"]["updated"] == []
+        assert second["catalog_stage"]["attempted"] is False
+
+        # 완료조건 #23 핵심 단정 — 박제 0건이면 게이트 함수가 전혀 호출되지 않는다.
+        assert mocked_run_gates.call_count == 0
