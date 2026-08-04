@@ -163,11 +163,15 @@ main에 직접 머지하지 않는다. PR을 열고 외부 신호가 전부 gree
 
 1. result 문서 생성: `docs/sdd/result/{date}-{feature}.md`
 2. ORCHESTRATOR_STATE.md 상태를 COMPLETED로 변경
-3. head 브랜치 push 후 `Skill(pr-converge)`로 PR을 열고 수렴 루프를 시작한다.
+3. **kompound 박제 실행** (F1, T-12) — `hooks/enforcement/stop-pipeline.py`의 완료 게이트가 이 시점 이후의 Stop 훅에서 자동으로 directive를 발화한다. directive 지시에 따라 kompound 박제 CLI(`python3 -m hooks.lib.kompound_snapshot apply --json`, 절대경로는 directive가 제시)를 실행하고, 성공/실패 결과를 사용자에게 보고한다. 실패해도 사이클을 되돌리지 않고 사용자 판단을 요청한다.
+   - **근거(D1, 사용자 확정)**: 다음 4번(push + pr-converge)은 코드단 수정 작업이고, 박제 대상 문서(spec/arch/task/result)의 의도는 이미 2번(STATE=COMPLETED)에서 확정된다 — 이후 코드가 더 바뀌어도 박제할 문서 내용은 달라지지 않는다. 따라서 박제는 push 이전, STATE 확정 직후 실행하는 것이 안전하다.
+   - 이 위치가 성립하려면 설계 전제 3가지가 모두 충족돼야 한다: ① result 문서가 이미 생성되어 있다(1번) ② worktree가 아직 살아 있다(6번 정리는 더 뒤) ③ self-improve(Step 5)보다 먼저 실행된다.
+   - `.harness/LEARNING.md`에 이번 사이클 신규 엔트리가 있는지 여부와 **무관하게** 실행한다 — Step 5의 self-improve를 건너뛰어도 이 박제 스텝은 그대로 실행된다.
+4. head 브랜치 push 후 `Skill(pr-converge)`로 PR을 열고 수렴 루프를 시작한다.
    - CI/CD·테스트·빌드·린트·**모든 리뷰 코멘트**에 대해 green까지 자동 수정·push.
    - 분 단위로 걸리는 CI를 블로킹하지 않도록, 사용자에게 **`/loop /pr-converge`로 주기 실행**을 안내한다 (CI 도는 중 ~270s, 사람 코멘트 대기 중 길게).
-4. pr-converge가 **CONVERGED**(전부 green + 코멘트 처리 완료)를 보고하면 → 사용자에게 결과 + 머지 승인 요청. **NEEDS_HUMAN/BLOCKED**면 → 막힌 항목(설계 코멘트·반복 실패)을 사람에게 에스컬레이션.
-5. 사용자 머지 승인 후 worktree 정리.
+5. pr-converge가 **CONVERGED**(전부 green + 코멘트 처리 완료)를 보고하면 → 사용자에게 결과 + 머지 승인 요청. **NEEDS_HUMAN/BLOCKED**면 → 막힌 항목(설계 코멘트·반복 실패)을 사람에게 에스컬레이션.
+6. 사용자 머지 승인 후 worktree 정리.
 
 > 📌 pr-converge는 SDD 밖에서도 독립 사용 가능하다 (`/pr-converge <pr>`). 자세한 분류·서킷브레이커·케이던스 규칙은 skills/pr-converge/SKILL.md 참조.
 
