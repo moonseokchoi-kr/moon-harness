@@ -23,6 +23,8 @@ import time
 import tempfile
 import shutil
 import glob
+import io
+import contextlib
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -42,6 +44,26 @@ def _winify_path(p: str) -> str:
     ):
         return p[1].upper() + ":" + p[2:]
     return p
+
+
+# ─── kompound 박제 완료 게이트(F1, T-12) — 코어 import 부트스트랩 ──────
+# arch §5.1.1/§5.1.2: `stop-pipeline.sh`는 `exec python3 "$SCRIPT_DIR/..."`만
+# 하고 PYTHONPATH를 설정하지 않는다. 부트스트랩 없이는 이 스크립트 안에서
+# `hooks.lib.kompound_snapshot`을 import할 수 없다(ModuleNotFoundError).
+# 여기서는 sys.path 부작용만 만든다 — 실제 import는 게이트 함수 내부에서
+# 지연 수행한다(무장 안 된 대다수 호출에서 import 비용 0, import 실패가
+# 이 모듈 로드 자체를 깨뜨리지 않도록. F17 안전망이 "부트스트랩 후에도 기존
+# Step 0~9 동작이 입력별로 불변"임을 고정한다).
+def _resolve_kompound_plugin_root() -> Path:
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return Path(_winify_path(env_root))
+    return Path(__file__).resolve().parents[2]
+
+
+_KOMPOUND_PLUGIN_ROOT = _resolve_kompound_plugin_root()
+if str(_KOMPOUND_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KOMPOUND_PLUGIN_ROOT))
 
 
 # ─── 상수 ──────────────────────────────────────────────────────
@@ -156,6 +178,21 @@ DIRECTIVES = {
         "파이프라인은 여기서 종료됩니다. 이후 Stop 훅은 개입하지 않습니다."
     ),
     "PHASE4_WORKTREE_CREATED": None,  # 터미널
+
+    # ── kompound 박제 완료 게이트 전용 (F1, T-12) ──────────────────────
+    # 선형 라벨 체인의 원소가 아니다(arch §5.1.2) — decide()가 current_label
+    # 로 조회하지 않으며, _kompound_completion_gate()만 이 키를 직접 조회해
+    # directive 문자열 템플릿으로 쓴다. 치환은 str.format이 아니라
+    # str.replace로 한다 — 위 기존 directive 값들이 `{YYYY-MM-DD}` 같은
+    # 리터럴 중괄호를 포함해 format이 KeyError로 죽는다(arch §5.1.2 📌).
+    "PHASE4_KOMPOUND_SNAPSHOT_PENDING": (
+        "[SDD-PIPELINE] Phase 4 완료 감지 — kompound 박제(F1)가 아직 끝나지 않았습니다.\n"
+        "지금 아래 명령을 실행해 SDD 산출물을 kompound 위키에 박제하세요(@@SCOPE@@):\n"
+        "  @@CLI@@\n"
+        "실행 후 성공/실패 결과를 사용자에게 보고하세요. 실패하더라도 사이클을 되돌리지 말고 "
+        "사용자 판단을 요청하세요.\n"
+        "self-improve(Step 5)보다 반드시 먼저 끝내세요."
+    ),
 }
 
 # ─── 파일 존재 검사 (라벨별 전이 조건) ────────────────────────
@@ -329,6 +366,127 @@ def label_prerequisite_met(label: str, state: dict, project_dir: Path) -> tuple:
         return (True, "")  # fail-safe: 검증 에러 시 진행 허용
 
 
+# ─── kompound 박제 완료 게이트 (F1, T-12) ──────────────────────
+# 설계 SSOT: docs/sdd/design/arch/2026-07-29-kompound-snapshot-hook.md §5.1
+# (F1 — T1 통합 전체). decide()의 Step 0(context limit) 직후, Step 1
+# (pipeline.json 로드) 이전에 호출된다 — pipeline.json을 읽지도 쓰지도
+# 않는다(C3, §5.1.1). 판정 자체(무장 조건·상태 전이·블록 예산·
+# CATALOG_PENDING 패스스루·A-1)는 전부 runtime_state.record_and_decide()에
+# 위임한다 — 이 함수는 입력을 조립해 넘기고 반환값을 Stop 훅 프로토콜
+# 모양으로 번역할 뿐, 판정 로직을 복제하지 않는다. increment_breaker나
+# CB_MAX_BLOCKS도 쓰지 않는다(§5.1.4 — 자체 예산은 runtime_state가 관리하며,
+# 그 state는 Step 1에서 로드되는 pipeline.json 기반이라 이 게이트보다 뒤다).
+
+
+def _kompound_directive_text(plugin_root: Path, project_dir: Path) -> str:
+    """`DIRECTIVES["PHASE4_KOMPOUND_SNAPSHOT_PENDING"]` 템플릿의 @@CLI@@/
+    @@SCOPE@@ 토큰을 실행 가능한 값으로 치환한다. `str.format`은 쓰지 않는다
+    (모듈 상단 DIRECTIVES 주석 참조 — 리터럴 중괄호가 있는 기존 directive와
+    같은 딕셔너리에 있으므로 이 값도 `str.replace` 관례를 따른다)."""
+    cli_cmd = (
+        f'PYTHONPATH="{plugin_root}" python3 -m hooks.lib.kompound_snapshot apply --json'
+    )
+    text = DIRECTIVES["PHASE4_KOMPOUND_SNAPSHOT_PENDING"]
+    text = text.replace("@@CLI@@", cli_cmd)
+    text = text.replace("@@SCOPE@@", f"repo 스코프, project_root={project_dir}")
+    return text
+
+
+def _kompound_check_pending(ks_cli_module, project_dir: Path) -> tuple:
+    """`cli.py`의 `check` 서브커맨드를 in-process로 호출해 (pending_count,
+    unmapped_count)를 얻는다(부작용 없음 — T-11 확정 계약).
+
+    `cli.main()`은 `report.emit_report()`를 통해 실제 stdout/stderr에 쓴다.
+    Stop 훅은 "stdout에 한 줄 JSON만" 규약이므로, 여기서는 stdout/stderr를
+    임시로 가로채 흡수한 뒤 캡처된 JSON만 파싱한다 — 실제 훅 출력 오염은
+    0이다.
+
+    `cli.py`의 `check`는 `--scope-root`를 받지 않는 한 자체적으로
+    `CLAUDE_PROJECT_DIR` 환경변수(없으면 cwd)로 프로젝트 루트를 다시
+    계산한다(이 모듈이 그 값을 인자로 넘겨받을 방법이 없다 — arch/task에
+    없어 이 태스크가 직접 내린 결정). 호출 전 그 환경변수를 `project_dir`로
+    맞춰 두어, 이 게이트가 판정에 쓰는 `project_dir`과 `check`가 스캔하는
+    프로젝트 루트가 어긋나지 않게 한다. 호출 후 원래 값으로 복원한다.
+    """
+    env_key = "CLAUDE_PROJECT_DIR"
+    original = os.environ.get(env_key)
+    os.environ[env_key] = str(project_dir)
+    try:
+        buf_out, buf_err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            ks_cli_module.main(["check", "--json"])
+        check_report = json.loads(buf_out.getvalue())
+    finally:
+        if original is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = original
+    pending = check_report.get("pending") or []
+    unmapped = check_report.get("unmapped") or []
+    return len(pending), len(unmapped)
+
+
+def _kompound_completion_gate(stop_data: dict, project_dir: Path):
+    """완료 게이트 본체.
+
+    반환:
+      None                                     → 개입하지 않음 (기존 Step 1로 진행)
+      {"decision": "block", "reason": "..."}    → 정지 차단
+
+    실패는 전부 통과(None)로 흡수한다 — arch §5.1.3 마지막 두 행("판정 자체를
+    못 했음 → 경고 후 통과")과 동일 원칙이다. 이 함수는 `pipeline.json`을
+    절대 읽거나 쓰지 않는다.
+    """
+    orchestrator_state_path = project_dir / "docs" / "sdd" / "ORCHESTRATOR_STATE.md"
+    if not orchestrator_state_path.is_file():
+        return None  # STATE 문서가 없는 프로젝트 — 게이트 대상 아님(C3 무관)
+
+    try:
+        from hooks.lib.kompound_snapshot import cli as _ks_cli
+        from hooks.lib.kompound_snapshot import config as _ks_config
+        from hooks.lib.kompound_snapshot import runtime_state as _ks_runtime_state
+    except Exception:
+        return None  # import 실패 — 판정 불가, 차단 없이 통과(§5.1.3)
+
+    try:
+        cfg = _ks_config.resolve_config(project_dir)
+    except Exception:
+        return None
+
+    pending_count = 0
+    unmapped_count = 0
+    if cfg.get("ok"):
+        try:
+            pending_count, unmapped_count = _kompound_check_pending(_ks_cli, project_dir)
+        except Exception:
+            pending_count, unmapped_count = 0, 0
+
+    current_sid = os.environ.get("CLAUDE_SESSION_ID", "") or stop_data.get("session_id", "")
+
+    try:
+        result = _ks_runtime_state.record_and_decide(
+            project_dir,
+            orchestrator_state_path,
+            config_ok=bool(cfg.get("ok")),
+            pending_count=pending_count,
+            unmapped_count=unmapped_count,
+            state_max_age_hours=cfg.get("state_max_age_hours"),
+            session_id=(current_sid or None),
+        )
+    except Exception:
+        return None
+
+    if not isinstance(result, dict) or result.get("action") != "block":
+        return None
+
+    directive = _kompound_directive_text(_KOMPOUND_PLUGIN_ROOT, project_dir)
+    message = result.get("message")
+    if message:
+        directive = f"{directive}\n\n{message}"
+
+    return {"decision": "block", "reason": directive}
+
+
 # ─── 메인 판정 로직 ────────────────────────────────────────────
 
 def decide(stop_data: dict, project_dir: Path, pipeline_path: Path) -> dict:
@@ -343,6 +501,15 @@ def decide(stop_data: dict, project_dir: Path, pipeline_path: Path) -> dict:
     # Step 0: Context limit (최우선 — deadlock 회피)
     if check_context_limit(stop_data):
         return {"continue": True, "suppressOutput": True}
+
+    # Step 0.5: kompound 박제 완료 게이트 (F1, T-12, arch §5.1) —
+    # pipeline.json과 독립적이다(C3). is_stale/세션 매칭(Step 2/3)보다
+    # 앞에 둔다 — Phase 4는 수 시간~수 세션에 걸쳐 있어 뒤에 두면 발화하지
+    # 않는다(C1/C2). 게이트가 개입하지 않으면(None) 기존 Step 1~9 동작은
+    # 입력별로 완전히 동일하다(F17 안전망).
+    gate_result = _kompound_completion_gate(stop_data, project_dir)
+    if gate_result is not None:
+        return gate_result
 
     # Step 1: 상태 파일 로드
     state = load_state(pipeline_path)
