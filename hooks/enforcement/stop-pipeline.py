@@ -451,9 +451,13 @@ def _kompound_completion_gate(stop_data: dict, project_dir: Path):
         return None  # STATE 문서가 없는 프로젝트 — 게이트 대상 아님(C3 무관)
 
     # 1단계: 무장(arming) 여부만 싸게 확인한다(성능 P1 수정, T-12 iteration 2,
-    # arch §2.3 "무장 안 됨 < 20ms, 코어 import 없음"). `runtime_state` 모듈
-    # "하나만" 지연 import한다 — `config`/`cli`(및 그 안의 `resolve_config()`·
-    # 전체 워크스페이스 스캔)는 무장이 확정된 뒤에만 import한다.
+    # arch §2.3 "무장 안 됨 < 20ms"). `runtime_state`와 `config`를 지연
+    # import한다. `config.resolve_config()`는 `os.walk`/`glob` 없이 작은
+    # JSON 설정 파일 읽기 + bounded 상위 디렉터리 탐색만 하므로 이 사전판정
+    # 예산 안에 들어온다(리뷰어 실측 근거, iteration 3) — **`cli`(및 그 안의
+    # `check`/`apply`가 부르는 전체 워크스페이스 스캔)만 무장이 확정된 뒤로
+    # 계속 미룬다.** 성능 P1 수정의 핵심은 그 스캔을 피하는 것이지, config
+    # 해석 자체를 피하는 게 아니다 — 이 구분을 되돌리지 말 것.
     #
     # 이렇게 하지 않으면: `ORCHESTRATOR_STATE.md`는 SDD 사이클이 머지되면
     # main에 영구히 남는다(.harness/LEARNING.md 2026-07-01 엔트리). kompound가
@@ -463,48 +467,25 @@ def _kompound_completion_gate(stop_data: dict, project_dir: Path):
     #
     # `is_armed()`는 STATE 서명 비교만 하는 부작용 없는 함수이고,
     # `record_and_decide()`도 내부적으로 같은 구현을 재사용한다(판정 이원화
-    # 없음, runtime_state.py 참조) — 여기서 무장이라고 판단해도 최종 판정은
-    # 여전히 아래 `record_and_decide()`가 (올바른 config의 state_max_age_hours로)
-    # 다시 내린다. 이 사전판정은 순수 최적화이며 판정 결과의 정확성에
-    # 영향을 주지 않는다 — 다만 `state_max_age_hours`는 아직 config를 읽지
-    # 않았으므로 기본값(24h)으로 확인한다(사용자가 설정 파일로 신선도 상한을
-    # 바꾼 경계 케이스에서는 이 사전판정이 실제보다 느슨하게/엄격하게 판단할
-    # 수 있으나, 그 경우에도 뒤따르는 진짜 `record_and_decide()` 호출이
-    # 정확한 값으로 최종 판정하므로 정답은 항상 보존된다 — 최악의 경우
-    # 드물게 불필요한 스캔을 한 번 더 하는 정도의 손해뿐이다).
+    # 없음, runtime_state.py 참조).
+    #
+    # ⚠️ `state_max_age_hours`는 반드시 실제 config 값을 이 사전판정에도
+    # 전달해야 한다(iteration 3 [P1] — 2단계 분리 자체가 만든 회귀였다).
+    # "느슨한 오판"과 "엄격한 오판"은 비대칭이라 그냥 넘어갈 수 없다:
+    #   - 사전판정이 실제보다 **느슨하게**(armed=True로) 오판 → 2단계가
+    #     진짜 config로 재검증해 자동 교정된다. 안전.
+    #   - 사전판정이 실제보다 **엄격하게**(armed=False로, 예: 프로젝트가
+    #     `state_max_age_hours=72h`로 설정했는데 사전판정이 기본값 24h로
+    #     STATE를 stale로 오판) → 2단계 자체가 실행되지 않으므로(무장 안
+    #     됨 분기가 곧바로 `return`) 교정 기회가 없고, 그 잘못된 판정
+    #     그대로 baseline이 갱신돼(§5.1.3 "무장 안 됨 → baseline만 갱신")
+    #     **그 완료 사이클이 영구히 무장 불가능**해진다(서명이 다시 바뀌지
+    #     않는 한 `signature_unchanged`로 계속 통과).
+    #   → 그래서 사전판정도 반드시 실제 `state_max_age_hours`를 써야
+    #     한다. "성능 때문에 config를 다시 빼자"로 되돌리지 말 것 —
+    #     `config.resolve_config()`는 스캔이 아니라 저렴한 설정 해석이다.
     try:
         from hooks.lib.kompound_snapshot import runtime_state as _ks_runtime_state
-    except Exception:
-        return None  # import 실패 — 판정 불가, 차단 없이 통과(§5.1.3)
-
-    try:
-        armed_probe = _ks_runtime_state.is_armed(project_dir, orchestrator_state_path)
-    except Exception:
-        return None
-
-    if not armed_probe.get("armed"):
-        # 무장 안 됨 — config/cli import·전체 워크스페이스 스캔은 전부
-        # 생략한다(이 최적화가 이 수정의 목적). 그래도 arch §5.1.3 판정표의
-        # "무장 안 됨 → 아무것도 안 하고 Step 1로 진행, **baseline만 갱신**"
-        # 행은 반드시 실행돼야 한다 — 그렇지 않으면 baseline_signature가
-        # 영원히 None으로 남아(첫 관측 등록이 전혀 발생하지 않아) 이 프로젝트
-        # 전체 수명 동안 게이트가 단 한 번도 무장되지 못하는 치명적 회귀가
-        # 생긴다. `record_and_decide()`를 placeholder 값(`pending_count=0`
-        # 등)으로 호출해 그 갱신만 수행시킨다 — 이 함수의 "무장 안 됨" 분기는
-        # `pending_count`/`config_ok`를 전혀 참조하지 않으므로(코드 확인
-        # 완료) 안전하고, `config`/`cli`를 import하지 않으므로 전체 스캔
-        # 비용도 여전히 0이다.
-        try:
-            _ks_runtime_state.record_and_decide(
-                project_dir, orchestrator_state_path, config_ok=False, pending_count=0
-            )
-        except Exception:
-            pass
-        return None
-
-    # 2단계: 무장 확정 — 그제서야 config/cli를 import하고 실제 판정을 한다.
-    try:
-        from hooks.lib.kompound_snapshot import cli as _ks_cli
         from hooks.lib.kompound_snapshot import config as _ks_config
     except Exception:
         return None  # import 실패 — 판정 불가, 차단 없이 통과(§5.1.3)
@@ -513,6 +494,50 @@ def _kompound_completion_gate(stop_data: dict, project_dir: Path):
         cfg = _ks_config.resolve_config(project_dir)
     except Exception:
         return None
+
+    state_max_age_hours = cfg.get("state_max_age_hours")
+
+    try:
+        armed_probe = _ks_runtime_state.is_armed(
+            project_dir, orchestrator_state_path, state_max_age_hours=state_max_age_hours
+        )
+    except Exception:
+        return None
+
+    if not armed_probe.get("armed"):
+        # 무장 안 됨 — `cli` import·전체 워크스페이스 스캔은 생략한다(이
+        # 최적화가 이 수정의 목적). 그래도 arch §5.1.3 판정표의 "무장 안 됨
+        # → 아무것도 안 하고 Step 1로 진행, **baseline만 갱신**" 행은
+        # 반드시 실행돼야 한다 — 그렇지 않으면 baseline_signature가 영원히
+        # None으로 남아(첫 관측 등록이 전혀 발생하지 않아) 이 프로젝트 전체
+        # 수명 동안 게이트가 단 한 번도 무장되지 못하는 치명적 회귀가
+        # 생긴다. `record_and_decide()`를 placeholder 값(`config_ok=False,
+        # pending_count=0`)으로 호출해 그 갱신만 수행시킨다 — 이 함수의
+        # "무장 안 됨" 분기는 `pending_count`/`config_ok`를 전혀 참조하지
+        # 않으므로(코드 확인 완료, 리뷰어 재확인) 안전하고, `cli`를
+        # import하지 않으므로 전체 스캔 비용도 여전히 0이다. 단
+        # `state_max_age_hours`는 위에서 계산한 실제 값을 그대로 넘긴다 —
+        # 안 그러면 방금 `armed_probe`가 쓴 것과 다른 신선도 기준으로
+        # baseline이 갱신돼 같은 오손이 되풀이된다.
+        try:
+            _ks_runtime_state.record_and_decide(
+                project_dir,
+                orchestrator_state_path,
+                config_ok=False,
+                pending_count=0,
+                state_max_age_hours=state_max_age_hours,
+            )
+        except Exception:
+            pass
+        return None
+
+    # 2단계: 무장 확정 — 그제서야 `cli`를 import하고 실제 판정(전체 스캔
+    # 포함)을 한다. `config`는 1단계에서 이미 해석했으므로(`cfg`) 다시
+    # import·재해석하지 않는다.
+    try:
+        from hooks.lib.kompound_snapshot import cli as _ks_cli
+    except Exception:
+        return None  # import 실패 — 판정 불가, 차단 없이 통과(§5.1.3)
 
     pending_count = 0
     unmapped_count = 0
@@ -531,7 +556,7 @@ def _kompound_completion_gate(stop_data: dict, project_dir: Path):
             config_ok=bool(cfg.get("ok")),
             pending_count=pending_count,
             unmapped_count=unmapped_count,
-            state_max_age_hours=cfg.get("state_max_age_hours"),
+            state_max_age_hours=state_max_age_hours,
             session_id=(current_sid or None),
         )
     except Exception:

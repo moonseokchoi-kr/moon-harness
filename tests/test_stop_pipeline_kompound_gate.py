@@ -540,9 +540,16 @@ def test_directive_text_uses_str_replace_not_format(stop_pipeline, tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 10) 성능 회귀 방지 (T-12 iteration 2, [P1]) — 무장 안 됨 경로는 config/cli를
-#     전혀 건드리지 않는다(전체 워크스페이스 스캔 회피). 대칭으로, 무장되면
-#     반드시 호출된다(패치 오적용으로 "항상 스킵"이 되는 회귀를 배제).
+# 10) 성능 회귀 방지 (T-12 iteration 2/3, [P1]) — 무장 안 됨 경로는 `cli`(전체
+#     워크스페이스 스캔)를 전혀 건드리지 않는다. `config.resolve_config()`는
+#     iteration 3부터 무장 안 됨 경로에서도 호출된다 — 사전판정이 실제
+#     `state_max_age_hours`(config 오버라이드 가능)를 반영해야 하기 때문이다
+#     (기본값 24h로만 사전판정하면 baseline이 잘못된 신선도 기준으로 영구
+#     오손될 수 있다, iteration 3 [P1] 참조). `config.resolve_config()`는
+#     os.walk/glob 없는 저렴한 설정 해석이라 이 예산 안에 들어온다 — 여전히
+#     제거해야 하는 것은 `cli.main()`의 전체 스캔뿐이다. 대칭으로, 무장되면
+#     `cli.main`도 반드시 호출된다(패치 오적용으로 "항상 스킵"이 되는 회귀를
+#     배제).
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -578,9 +585,11 @@ def _install_call_counters(monkeypatch) -> Dict[str, Dict[str, int]]:
 def test_not_armed_skips_core_import_and_scan_status_not_completed(
     stop_pipeline, tmp_path, monkeypatch
 ):
-    """무장 안 됨 케이스 ①: 상태 != COMPLETED. `cli.main`/`config.resolve_config`
-    가 단 한 번도 호출되지 않아야 한다(전체 스캔 회피가 이 iteration의 핵심
-    성능 수정 사항)."""
+    """무장 안 됨 케이스 ①: 상태 != COMPLETED. `cli.main`(전체 스캔)은 단 한
+    번도 호출되지 않아야 한다 — 전체 스캔 회피가 이 iteration의 핵심 성능
+    수정 사항이다. `config.resolve_config`는 iteration 3부터 무장 안 됨
+    경로에서도 호출된다(실제 `state_max_age_hours`를 사전판정에 반영하기
+    위함 — 저렴한 설정 해석이라 예산 안에 든다)."""
     project_root = tmp_path / "project"
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
     counters = _install_call_counters(monkeypatch)
@@ -590,7 +599,7 @@ def test_not_armed_skips_core_import_and_scan_status_not_completed(
 
     assert result == {"continue": True, "suppressOutput": True}
     assert counters["cli_main"]["count"] == 0
-    assert counters["resolve_config"]["count"] == 0
+    assert counters["resolve_config"]["count"] >= 1
 
 
 def test_not_armed_skips_core_import_and_scan_signature_unchanged(
@@ -598,7 +607,9 @@ def test_not_armed_skips_core_import_and_scan_signature_unchanged(
 ):
     """무장 안 됨 케이스 ②: 서명 불변(같은 COMPLETED를 반복 관측). 첫 관측은
     baseline 등록(첫 관측 자체도 무장 아님)이고, 두 번째 동일 관측은
-    signature_unchanged로 여전히 무장 아님 — 두 호출 다 스캔 0회."""
+    signature_unchanged로 여전히 무장 아님 — 두 호출 다 `cli.main`(전체
+    스캔) 호출 0회. `config.resolve_config`는 매 호출 실제
+    `state_max_age_hours`를 얻기 위해 호출된다(저렴, 예산 안)."""
     project_root = tmp_path / "project"
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
     counters = _install_call_counters(monkeypatch)
@@ -608,12 +619,13 @@ def test_not_armed_skips_core_import_and_scan_signature_unchanged(
     _decide(stop_pipeline, project_root)  # 서명 불변 — 여전히 무장 아님
 
     assert counters["cli_main"]["count"] == 0
-    assert counters["resolve_config"]["count"] == 0
+    assert counters["resolve_config"]["count"] >= 1
 
 
 def test_not_armed_skips_core_import_and_scan_state_stale(stop_pipeline, tmp_path, monkeypatch):
     """무장 안 됨 케이스 ③: STATE mtime이 `state_max_age_hours`(기본 24h)를
-    초과 — 신선도 조건 미충족으로 여전히 무장 아님, 스캔 0회."""
+    초과 — 신선도 조건 미충족으로 여전히 무장 아님, `cli.main`(전체 스캔)
+    호출 0회."""
     project_root = tmp_path / "project"
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
     counters = _install_call_counters(monkeypatch)
@@ -630,7 +642,7 @@ def test_not_armed_skips_core_import_and_scan_state_stale(stop_pipeline, tmp_pat
 
     assert result == {"continue": True, "suppressOutput": True}
     assert counters["cli_main"]["count"] == 0
-    assert counters["resolve_config"]["count"] == 0
+    assert counters["resolve_config"]["count"] >= 1
 
 
 def test_armed_calls_core_config_and_scan_at_least_once(stop_pipeline, tmp_path, monkeypatch):
@@ -646,3 +658,116 @@ def test_armed_calls_core_config_and_scan_at_least_once(stop_pipeline, tmp_path,
     assert result["decision"] == "block"
     assert counters["cli_main"]["count"] >= 1
     assert counters["resolve_config"]["count"] >= 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 11) [P1] 회귀 (iteration 3) — 사전판정이 기본 24h를 쓰면 config가
+#     `state_max_age_hours`를 오버라이드(예: 72h)한 프로젝트에서 baseline이
+#     영구 오손된다. 사전판정이 실제 config 값을 반영해야 함을 고정한다.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_stale_precheck_uses_configured_max_age_not_default_and_arms(
+    stop_pipeline, tmp_path, monkeypatch
+):
+    """`state_max_age_hours=72`로 설정한 프로젝트에서 STATE mtime이 30h 전
+    (기본 24h 기준으로는 stale이지만 실제 72h 기준으로는 신선함)이면, 사전
+    판정이 기본값이 아니라 실제 config 값을 써서 **무장돼야 한다**. 또한
+    baseline_signature가 이 과정에서 오손되지 않아야 한다(호출 전후 비교)."""
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+
+    def _resolve_config_72h(project_root=None):
+        return {
+            "ok": True,
+            "kompound_repo": str(tmp_path / "fake-kompound"),
+            "scan_root": None,
+            "max_anchor_depth": 5,
+            "state_max_age_hours": 72,
+            "prefix_map": {},
+            "source": {},
+        }
+
+    monkeypatch.setattr(ks_config, "resolve_config", _resolve_config_72h)
+
+    def _fake_main_pending(argv):
+        import sys
+
+        sys.stdout.write(json.dumps({"pending": ["x-spec.md"], "unmapped": []}))
+        return 0
+
+    monkeypatch.setattr(ks_cli, "main", _fake_main_pending)
+
+    # baseline을 EXECUTING으로 등록해 이후 COMPLETED와 서명이 달라지게 한다.
+    _write_state_md(project_root, status="EXECUTING")
+    _decide(stop_pipeline, project_root)
+    baseline_after_first = ks_runtime_state._load_runtime(
+        ks_runtime_state.state_path_for(project_root)
+    ).get("baseline_signature")
+
+    state_path = _write_state_md(project_root, status="COMPLETED")
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=30)).timestamp()
+    os.utime(state_path, (old_ts, old_ts))
+
+    result = _decide(stop_pipeline, project_root)
+
+    # 기본 24h 기준이었다면 이 STATE(30h 전)는 stale로 오판되어
+    # {"continue": True, ...}만 반환하고 다시는 무장되지 않았을 것이다.
+    # 실제 config(72h)를 반영해야 아래처럼 정상 차단된다.
+    assert result["decision"] == "block"
+
+    runtime_after = ks_runtime_state._load_runtime(
+        ks_runtime_state.state_path_for(project_root)
+    )
+    # 무장된 사이클 동안 baseline은 고정된다(runtime_state.py `_persist`
+    # 계약) — 회귀 발생 시에는 사전판정이 "stale"로 오판해 baseline이
+    # COMPLETED 서명으로 잘못 덮어써지고 다시는 무장되지 않았을 것이다.
+    assert runtime_after.get("baseline_signature") == baseline_after_first
+    assert runtime_after.get("status") == ks_runtime_state.PENDING
+    assert runtime_after.get("blocks") == 1
+
+
+def test_stale_precheck_still_rejects_state_older_than_configured_max_age(
+    stop_pipeline, tmp_path, monkeypatch
+):
+    """반대 케이스 고정: `state_max_age_hours=72`로 설정해도 STATE mtime이
+    그보다 더 오래되면(예: 100h 전) 정당하게 stale로 판정돼 무장되지 않는다
+    (사전판정이 그냥 "항상 armed"로 무너지는 회귀를 배제)."""
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+
+    def _resolve_config_72h(project_root=None):
+        return {
+            "ok": True,
+            "kompound_repo": str(tmp_path / "fake-kompound"),
+            "scan_root": None,
+            "max_anchor_depth": 5,
+            "state_max_age_hours": 72,
+            "prefix_map": {},
+            "source": {},
+        }
+
+    monkeypatch.setattr(ks_config, "resolve_config", _resolve_config_72h)
+
+    cli_calls = {"count": 0}
+
+    def _counting_main(argv):
+        cli_calls["count"] += 1
+        import sys
+
+        sys.stdout.write(json.dumps({"pending": ["x-spec.md"], "unmapped": []}))
+        return 0
+
+    monkeypatch.setattr(ks_cli, "main", _counting_main)
+
+    _write_state_md(project_root, status="EXECUTING")
+    _decide(stop_pipeline, project_root)
+
+    state_path = _write_state_md(project_root, status="COMPLETED")
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=100)).timestamp()
+    os.utime(state_path, (old_ts, old_ts))
+
+    result = _decide(stop_pipeline, project_root)
+
+    assert result == {"continue": True, "suppressOutput": True}
+    assert cli_calls["count"] == 0  # 스캔이 실행되지 않았다(무장 안 됨 유지)
