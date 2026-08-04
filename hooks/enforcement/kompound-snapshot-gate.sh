@@ -40,12 +40,28 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 # 워크트리 삭제류로 "보이는" 명령만 python을 기동한다. 이 정도의 텍스트
 # 검사만 한다 — "실제로 워크트리인가"의 사실 판정(코어 wt_target.py 몫)은
 # 여기서 하지 않는다.
+#
+# 대소문자 무관 매칭(it.2 compliance 실질 결함 수정) — 코어
+# wt_target._is_recursive_flag는 대소문자 무관(`"r" in token[1:].lower()`)
+# 하게 `-r`/`-R`/`-rf`/`-Rf`/`-RF`/`-fR` 등을 재귀 플래그로 인식하는데,
+# 이 프리필터가 소문자 `-r`/`-f`만 매칭하면 대문자 변형(`rm -Rf <worktree>`
+# 등)이 여기서 조용히 `exit 0`으로 새어나가 코어가 아예 기동되지 않는다
+# (문서 영구 소실 경로, .harness/LEARNING.md 2026-08-04 엔트리). `case`
+# 문 안에서만 `nocasematch`를 켜고 즉시 끈다(스코프 오염 금지) — 패턴
+# 자체의 폭(무엇을 매칭하는가)은 그대로 두고 대소문자 축만 코어와 맞춘다.
+# 이렇게 하면 `-[rRfF]`처럼 "rm -" 뒤 아무 문자열에서나 r/R/f/F를 찾는
+# 넓은 패턴(파일명에 우연히 r/f가 들어간 무관한 `rm` 호출까지 python을
+# 띄우게 됨)보다 훨씬 좁게, 딱 이 결함이 지적한 대소문자 축만 보정한다.
+shopt -s nocasematch
 case "$COMMAND" in
   *worktree*remove*|*rm\ -r*|*rm\ -f*|*--recursive*)
-    ;;  # 계속 진행
+    _PREFILTER_MATCH=1 ;;
   *)
-    exit 0 ;;
+    _PREFILTER_MATCH=0 ;;
 esac
+shopt -u nocasematch
+
+[ "$_PREFILTER_MATCH" != "1" ] && exit 0
 
 # ── python3 부재 — 인프라 실패, 경고 후 통과 ────────────────────────────
 # (기능이 고장났다고 사용자가 워크트리를 영구히 못 지우게 되면 안 된다.)

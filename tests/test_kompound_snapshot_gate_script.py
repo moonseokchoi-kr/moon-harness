@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -88,6 +89,44 @@ def _inject_bad_raw_subdir(kompound: Path) -> None:
 def _write_config_file(path: Path, cfg: Dict[str, Any]) -> Path:
     path.write_text(json.dumps(cfg), encoding="utf-8")
     return path
+
+
+def _write_relay_python3_with_sentinel(fake_bin: Path, *, real_python3: str, sentinel: Path) -> Path:
+    """`fake_bin/python3`을 만든다 — 호출될 때마다(인자와 무관하게)
+    `sentinel` 파일을 남기고, 실제 python3로 그대로 위임한다(정상 동작
+    유지). 프리필터가 실제로 코어(python)에 도달시키는지 검증하는 용도
+    (it.2 실질 결함 회귀 테스트 — "python이 기동되는가"만 보면 되므로 실제
+    동작까지 그대로 위임해도 무방하다)."""
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    fake_python3 = fake_bin / "python3"
+    fake_python3.write_text(
+        f'#!/bin/bash\ntouch {sentinel}\nexec {real_python3} "$@"\n', encoding="utf-8"
+    )
+    fake_python3.chmod(0o755)
+    return fake_python3
+
+
+def _write_python3_failing_only_on_dash_c(fake_bin: Path, *, real_python3: str) -> Path:
+    """`fake_bin/python3`을 만든다 — 첫 인자가 `-c`(정책 조회
+    `report.blocks_deletion(verdict)` 호출 형태)면 유효한 출력 없이
+    실패시키고, 그 외(`-m hooks.lib.kompound_snapshot gate ...`, 진짜
+    `gate` 서브커맨드 호출)는 실제 python3로 그대로 위임해 정상 동작시킨다.
+    `gate` 서브커맨드는 정상 동작해 verdict를 얻되, 그 다음 정책 조회만
+    별도로 실패하는 상황(Issue 2 fail-safe 분기)을 재현하기 위함이다."""
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    fake_python3 = fake_bin / "python3"
+    fake_python3.write_text(
+        f"""#!/bin/bash
+if [ "$1" = "-c" ]; then
+  echo "simulated policy lookup crash" >&2
+  exit 1
+fi
+exec {real_python3} "$@"
+""",
+        encoding="utf-8",
+    )
+    fake_python3.chmod(0o755)
+    return fake_python3
 
 
 @pytest.fixture()
@@ -219,6 +258,66 @@ def test_gate_no_python_subprocess_spawned_for_irrelevant_command(
     proc = _run_gate("echo hello world", env)
     assert proc.returncode == 0
     assert not sentinel.exists(), "무관한 명령인데 python3가 기동됐다(성능 위반)"
+
+
+@pytest.mark.parametrize("command", ["rm -i /tmp/x", "ls -la", "git commit -m foo"])
+def test_gate_no_python_subprocess_for_various_irrelevant_commands(
+    configured_env: Dict[str, str], tmp_path: Path, command: str
+) -> None:
+    """it.2 회귀 확인 — 프리필터에 `nocasematch`를 도입해도(대소문자 축만
+    넓혔다) `rm -i`(비재귀)·`ls`·`git commit` 같은 진짜 무관한 명령은
+    여전히 python3를 기동하지 않아야 한다(과다 매칭 방지 확인)."""
+    fake_bin = tmp_path / f"fake_bin_{abs(hash(command))}"
+    fake_bin.mkdir()
+    sentinel = tmp_path / f"python3_was_invoked_{abs(hash(command))}"
+    fake_python3 = fake_bin / "python3"
+    fake_python3.write_text(f"#!/bin/bash\ntouch {sentinel}\nexit 0\n", encoding="utf-8")
+    fake_python3.chmod(0o755)
+
+    env = dict(configured_env)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+
+    proc = _run_gate(command, env)
+    assert proc.returncode == 0
+    assert not sentinel.exists(), f"무관한 명령 '{command}'인데 python3가 기동됐다(과다 매칭)"
+
+
+# ── it.1 실질 결함 회귀 — 대문자 재귀 플래그가 프리필터를 통과해 코어에 도달 ──
+
+
+@pytest.mark.parametrize("flag_variant", ["rm -Rf", "rm -RF", "rm -R", "rm -fR"])
+def test_gate_uppercase_recursive_flags_reach_core(
+    configured_env: Dict[str, str], gate_env: Dict[str, Any], tmp_path: Path, flag_variant: str
+) -> None:
+    """compliance it.1 실질 결함 회귀 — bash `case`는 기본이 대소문자
+    구분이라, 소문자 `-r`/`-f`만 매칭하던 원래 프리필터는 `rm -Rf` 같은
+    대문자 재귀 플래그 변형을 조용히 놓쳐 코어(wt_target)가 아예 기동되지
+    않았다(문서 영구 소실 경로). `nocasematch` 도입 후 이 4종이 실제로
+    프리필터를 통과해 python(코어)에 도달하는지를, 대상이 실제 워크트리인지
+    여부와 무관하게(핵심은 "python이 기동되는가") 센티널로 직접 확인한다.
+    """
+    real_python3 = shutil.which("python3")
+    assert real_python3, "테스트 환경에 python3이 없다"
+
+    fake_bin = tmp_path / f"fake_bin_{abs(hash(flag_variant))}"
+    sentinel = tmp_path / f"python3_invoked_{abs(hash(flag_variant))}"
+    _write_relay_python3_with_sentinel(fake_bin, real_python3=real_python3, sentinel=sentinel)
+
+    env = dict(configured_env)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+
+    # 실제 워크트리 여부는 무관하다(핵심은 python 기동 여부) — 존재하지
+    # 않는 경로를 써서 코어가 no_target으로 빠르게 수렴하게 한다.
+    target = gate_env["scope_root"] / "no-such-target-for-prefilter-check"
+    command = f"{flag_variant} {target}"
+
+    proc = _run_gate(command, env)
+
+    assert sentinel.exists(), (
+        f"'{command}'이 프리필터를 통과하지 못해 코어(python)가 기동되지 않았다"
+        "(it.1 회귀 — 대문자 재귀 플래그가 다시 새고 있다)"
+    )
+    assert proc.returncode == 0  # no_target — 문법상 정상 종료
 
 
 # ── 분기1: kompound 미설정 → disabled(20) → 통과 ───────────────────────────
@@ -424,6 +523,38 @@ def test_gate_blocks_scan_error(configured_env: Dict[str, str], gate_env: Dict[s
 
     assert proc.returncode == 2
     assert report.blocks_deletion("scan_error") is True
+
+
+# ── it.2 테스트 공백 — 정책 조회(report.blocks_deletion) 자체가 실패하면 ────
+# 보수적으로 차단한다(fail-safe)
+
+
+def test_gate_blocks_conservatively_when_policy_lookup_itself_fails(
+    configured_env: Dict[str, str], gate_env: Dict[str, Any], tmp_path: Path
+) -> None:
+    """`gate` 서브커맨드 호출(-m 형태)은 정상 동작해 verdict를 얻지만,
+    그 다음 정책 조회(`report.blocks_deletion(verdict)`, -c 형태)만 별도로
+    실패시킨다(가짜 python3로 `-c` 호출만 가로챔). `$BLOCKS`가 "0"도 "1"도
+    아닌 이 극단 상황에서 게이트가 report.py의 fail-safe 철학과 동일하게
+    보수적으로 차단하는지(exit 2) 확인한다 — 지금까지 이 경로를 유도하는
+    테스트가 없었다(compliance it.2 테스트 공백).
+    """
+    real_python3 = shutil.which("python3")
+    assert real_python3, "테스트 환경에 python3이 없다"
+
+    fake_bin = tmp_path / "fake_bin_policy_lookup_failure"
+    _write_python3_failing_only_on_dash_c(fake_bin, real_python3=real_python3)
+
+    env = dict(configured_env)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+
+    wt = gate_env["scope_root"] / "acme-widget" / "worktrees" / "wt-policy-lookup-failure"
+    wt.mkdir(parents=True)  # 빈 워크트리 — gate 서브커맨드 자체는 ok_no_pending으로 정상 종료
+
+    proc = _run_gate(_removal_command(wt), env)
+
+    assert proc.returncode == 2, "정책 조회(report.blocks_deletion) 실패는 보수적으로 차단해야 한다"
+    assert "보수적으로 차단" in proc.stderr
 
 
 # ── T1→T2 실패/지연 승계 노출 (A-2) — 톤 분리 + 반복 억제 ──────────────────
