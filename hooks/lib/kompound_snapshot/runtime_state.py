@@ -97,6 +97,7 @@ __all__ = [
     "parse_orchestrator_state",
     "is_state_fresh",
     "compute_signature",
+    "is_armed",
     "record_and_decide",
     "record_apply_outcome",
     "should_emit_unconfigured_notice",
@@ -263,6 +264,130 @@ def _effective_session_id(session_id: Optional[str]) -> Optional[str]:
     return os.environ.get(_ENV_SESSION_ID) or None
 
 
+# ── 무장(arming) 사전판정 — 성능 전용, 부작용 없음 (T-12 iteration 2, P1) ────
+#
+# stop-pipeline.py의 Stop 훅 게이트는 `ORCHESTRATOR_STATE.md`가 존재하는
+# 프로젝트에서 매 호출마다 이 판정을 거쳐야 한다. 그런데 `record_and_decide()`
+# 전체를 호출하려면 호출자가 이미 `pending_count`(코어 config 해석 + 전체
+# 워크스페이스 스캔의 결과)를 계산해 인자로 넘겨야 한다 — 무장조차 안 된
+# 대다수 호출에서 이 스캔 비용을 미리 지불하고 버리게 되는 구조였다(arch
+# §2.3 "무장 안 됨 < 20ms, 코어 import 없음"과 충돌). `ORCHESTRATOR_STATE.md`가
+# COMPLETED 상태로 머지된 프로젝트에서는 그 사이클과 무관한 모든 이후 Stop
+# 훅 호출이 이 비용을 영구히 지불하게 된다.
+#
+# `is_armed()`는 무장 판정에 필요한 조건 1(서명 변화)·조건 2(신선도)·조건
+# 3(상태==COMPLETED)만 싸게 계산한다(STATE 텍스트 1회 read + mtime stat +
+# 런타임 상태 파일의 baseline 서명 비교) — 조건 4(`pending_count`)는 보지
+# 않으므로 그 인자 자체가 없다. 부작용이 없다(baseline을 갱신하지 않는다 —
+# "무장 안 됨"일 때 baseline을 갱신하는 책임은 여전히 `record_and_decide()`가
+# 진다). `record_and_decide()`는 이 함수(의 내부 구현)를 재사용한다 — 무장
+# 판정 로직이 두 곳에 따로 존재하지 않도록(판정 이원화 금지).
+
+
+def is_armed(
+    project_root: PathLike,
+    orchestrator_state_path: PathLike,
+    *,
+    state_max_age_hours: Optional[float] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """무장(arming) 여부만 싸게 판정한다(arch §5.1.3 조건 1+2+3 — `pending_count`
+    불필요, 조건 4는 보지 않는다). STATE 텍스트 1회 read + mtime stat + 런타임
+    상태의 baseline 서명 비교만 하는 **읽기 전용, 부작용 없음** 함수다.
+
+    호출자(예: `stop-pipeline.py`의 Stop 훅 게이트)가 이 함수로 "무장이
+    아니다"를 먼저 싸게 확인하면, config 해석·전체 워크스페이스 스캔 같은
+    비싼 코어 경로를 아예 밟지 않고 즉시 통과할 수 있다.
+
+    Returns:
+        ``{"armed": bool, "reason": str, "signature": [feature, status,
+        result_doc]|None, "status": str|None}``. 예외를 던지지 않는다.
+
+        ``reason`` 값:
+
+        - 무장됨: ``"armed"``
+        - STATE 파일 자체가 없음: ``"state_missing"``
+        - 첫 관측(baseline 미등록): ``"baseline_registered"``
+        - STATE mtime이 `state_max_age_hours`를 초과: ``"state_stale"``
+        - 상태 != COMPLETED: ``"state_not_completed"``
+        - 서명이 baseline과 동일(이미 처리된 사이클): ``"signature_unchanged"``
+        - 예기치 못한 내부 오류: ``"internal_error"``
+    """
+    try:
+        now_dt = now if now is not None else datetime.now(timezone.utc)
+        max_age = (
+            float(state_max_age_hours)
+            if state_max_age_hours is not None
+            else float(DEFAULT_STATE_MAX_AGE_HOURS)
+        )
+        return _is_armed_impl(
+            Path(project_root), Path(orchestrator_state_path), max_age, now_dt
+        )
+    except Exception as exc:  # noqa: BLE001 - fail-safe, 절대 예외를 던지지 않는다
+        return {
+            "armed": False,
+            "reason": "internal_error",
+            "signature": None,
+            "status": None,
+            "error": str(exc),
+        }
+
+
+def _is_armed_impl(
+    project_root: Path,
+    orchestrator_state_path: Path,
+    max_age_hours: float,
+    now_dt: datetime,
+) -> Dict[str, Any]:
+    state_file = state_path_for(project_root)
+    runtime = _load_runtime(state_file)
+
+    try:
+        state_text = orchestrator_state_path.read_text(encoding="utf-8")
+    except OSError:
+        return {"armed": False, "reason": "state_missing", "signature": None, "status": None}
+
+    current_signature = compute_signature(project_root, state_text)
+    parsed = parse_orchestrator_state(state_text)
+    status_value = parsed.get("status")
+    is_completed = status_value == "COMPLETED"
+
+    baseline = runtime.get("baseline_signature")
+    is_first_observation = baseline is None
+    fresh = is_state_fresh(orchestrator_state_path, max_age_hours, now=now_dt)
+
+    armed = (
+        (not is_first_observation)
+        and (current_signature != baseline)
+        and fresh
+        and is_completed
+    )
+
+    if armed:
+        return {
+            "armed": True,
+            "reason": "armed",
+            "signature": current_signature,
+            "status": status_value,
+        }
+
+    if is_first_observation:
+        reason = "baseline_registered"
+    elif not fresh:
+        reason = "state_stale"
+    elif not is_completed:
+        reason = "state_not_completed"
+    else:
+        reason = "signature_unchanged"
+
+    return {
+        "armed": False,
+        "reason": reason,
+        "signature": current_signature,
+        "status": status_value,
+    }
+
+
 # ── 메인 판정 (arch §5.1.3 판정표 + D-1 + A-1) ──────────────────────────────
 
 
@@ -350,9 +475,16 @@ def _record_and_decide_impl(
     runtime = _load_runtime(state_file)
     sid = _effective_session_id(session_id)
 
-    try:
-        state_text = orchestrator_state_path.read_text(encoding="utf-8")
-    except OSError:
+    # 무장 판정은 `_is_armed_impl()`(§"무장 사전판정" 섹션)에 위임한다 — T-12
+    # iteration 2 P1 수정: 이 로직을 여기 다시 인라인하면 `is_armed()`와
+    # 판정이 두 곳으로 갈라진다(판정 이원화 금지, 성능 게이트 쪽이 참조하는
+    # 결과와 여기서 재계산한 결과가 어긋날 위험).
+    armed_probe = _is_armed_impl(project_root, orchestrator_state_path, max_age_hours, now_dt)
+    # 무장 상태 동안 `_persist()`가 baseline을 고정값으로 되쓰기 위해 필요
+    # (armed 분기에서는 baseline을 건드리지 않는다 — 아래 `_persist` 참조).
+    baseline = runtime.get("baseline_signature")
+
+    if armed_probe["reason"] == "state_missing":
         return {
             "action": "pass",
             "reason": "state_missing",
@@ -360,39 +492,16 @@ def _record_and_decide_impl(
             "blocks": int(runtime.get("blocks", 0) or 0),
         }
 
-    current_signature = compute_signature(project_root, state_text)
-    parsed = parse_orchestrator_state(state_text)
-    status_value = parsed.get("status")
-    is_completed = status_value == "COMPLETED"
+    current_signature = armed_probe["signature"]
 
-    baseline = runtime.get("baseline_signature")
-    is_first_observation = baseline is None
-    fresh = is_state_fresh(orchestrator_state_path, max_age_hours, now=now_dt)
-
-    armed = (
-        (not is_first_observation)
-        and (current_signature != baseline)
-        and fresh
-        and is_completed
-    )
-
-    if not armed:
-        if is_first_observation:
-            reason = "baseline_registered"
-        elif not fresh:
-            reason = "state_stale"
-        elif not is_completed:
-            reason = "state_not_completed"
-        else:
-            reason = "signature_unchanged"
-
+    if not armed_probe["armed"]:
         new_runtime = dict(runtime)
         new_runtime["baseline_signature"] = current_signature
         new_runtime["updated_at"] = now_iso()
         write_result = atomic_write(state_file, new_runtime)
         return {
             "action": "pass",
-            "reason": reason,
+            "reason": armed_probe["reason"],
             "status": runtime.get("status"),
             "blocks": int(runtime.get("blocks", 0) or 0),
             "write_ok": bool(write_result.get("ok")),

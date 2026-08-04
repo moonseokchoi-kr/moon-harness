@@ -416,6 +416,15 @@ def _kompound_check_pending(ks_cli_module, project_dir: Path) -> tuple:
         with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
             ks_cli_module.main(["check", "--json"])
         check_report = json.loads(buf_out.getvalue())
+    except SystemExit:
+        # `cli.main()`은 argparse 사용법 오류에서 SystemExit을 던질 수 있다
+        # (`BaseException` — 호출부의 `except Exception:`으로 잡히지 않는다).
+        # 이 호출은 항상 고정된 유효 argv(["check", "--json"])만 쓰므로 실제
+        # 도달 가능성은 매우 낮지만, 혹시라도 발생하면 이 훅 프로세스 전체가
+        # 죽어 stdout에 아무 것도 못 쓰는 것보다는 "판정 불가"로 흡수하는
+        # 편이 fail-safe 원칙(§5.1.3 "판정 자체를 못 했음 → 경고 후 통과")에
+        # 맞다.
+        check_report = {}
     finally:
         if original is None:
             os.environ.pop(env_key, None)
@@ -441,10 +450,62 @@ def _kompound_completion_gate(stop_data: dict, project_dir: Path):
     if not orchestrator_state_path.is_file():
         return None  # STATE 문서가 없는 프로젝트 — 게이트 대상 아님(C3 무관)
 
+    # 1단계: 무장(arming) 여부만 싸게 확인한다(성능 P1 수정, T-12 iteration 2,
+    # arch §2.3 "무장 안 됨 < 20ms, 코어 import 없음"). `runtime_state` 모듈
+    # "하나만" 지연 import한다 — `config`/`cli`(및 그 안의 `resolve_config()`·
+    # 전체 워크스페이스 스캔)는 무장이 확정된 뒤에만 import한다.
+    #
+    # 이렇게 하지 않으면: `ORCHESTRATOR_STATE.md`는 SDD 사이클이 머지되면
+    # main에 영구히 남는다(.harness/LEARNING.md 2026-07-01 엔트리). kompound가
+    # 설정된 채로 SDD를 한 번이라도 완료한 프로젝트는, 그 이후 그 SDD와
+    # 무관한 모든 세션의 모든 Stop 훅 호출마다 전체 스캔 비용을 영구히
+    # 지불하게 된다 — 이 사전판정이 그 비용을 없앤다.
+    #
+    # `is_armed()`는 STATE 서명 비교만 하는 부작용 없는 함수이고,
+    # `record_and_decide()`도 내부적으로 같은 구현을 재사용한다(판정 이원화
+    # 없음, runtime_state.py 참조) — 여기서 무장이라고 판단해도 최종 판정은
+    # 여전히 아래 `record_and_decide()`가 (올바른 config의 state_max_age_hours로)
+    # 다시 내린다. 이 사전판정은 순수 최적화이며 판정 결과의 정확성에
+    # 영향을 주지 않는다 — 다만 `state_max_age_hours`는 아직 config를 읽지
+    # 않았으므로 기본값(24h)으로 확인한다(사용자가 설정 파일로 신선도 상한을
+    # 바꾼 경계 케이스에서는 이 사전판정이 실제보다 느슨하게/엄격하게 판단할
+    # 수 있으나, 그 경우에도 뒤따르는 진짜 `record_and_decide()` 호출이
+    # 정확한 값으로 최종 판정하므로 정답은 항상 보존된다 — 최악의 경우
+    # 드물게 불필요한 스캔을 한 번 더 하는 정도의 손해뿐이다).
+    try:
+        from hooks.lib.kompound_snapshot import runtime_state as _ks_runtime_state
+    except Exception:
+        return None  # import 실패 — 판정 불가, 차단 없이 통과(§5.1.3)
+
+    try:
+        armed_probe = _ks_runtime_state.is_armed(project_dir, orchestrator_state_path)
+    except Exception:
+        return None
+
+    if not armed_probe.get("armed"):
+        # 무장 안 됨 — config/cli import·전체 워크스페이스 스캔은 전부
+        # 생략한다(이 최적화가 이 수정의 목적). 그래도 arch §5.1.3 판정표의
+        # "무장 안 됨 → 아무것도 안 하고 Step 1로 진행, **baseline만 갱신**"
+        # 행은 반드시 실행돼야 한다 — 그렇지 않으면 baseline_signature가
+        # 영원히 None으로 남아(첫 관측 등록이 전혀 발생하지 않아) 이 프로젝트
+        # 전체 수명 동안 게이트가 단 한 번도 무장되지 못하는 치명적 회귀가
+        # 생긴다. `record_and_decide()`를 placeholder 값(`pending_count=0`
+        # 등)으로 호출해 그 갱신만 수행시킨다 — 이 함수의 "무장 안 됨" 분기는
+        # `pending_count`/`config_ok`를 전혀 참조하지 않으므로(코드 확인
+        # 완료) 안전하고, `config`/`cli`를 import하지 않으므로 전체 스캔
+        # 비용도 여전히 0이다.
+        try:
+            _ks_runtime_state.record_and_decide(
+                project_dir, orchestrator_state_path, config_ok=False, pending_count=0
+            )
+        except Exception:
+            pass
+        return None
+
+    # 2단계: 무장 확정 — 그제서야 config/cli를 import하고 실제 판정을 한다.
     try:
         from hooks.lib.kompound_snapshot import cli as _ks_cli
         from hooks.lib.kompound_snapshot import config as _ks_config
-        from hooks.lib.kompound_snapshot import runtime_state as _ks_runtime_state
     except Exception:
         return None  # import 실패 — 판정 불가, 차단 없이 통과(§5.1.3)
 

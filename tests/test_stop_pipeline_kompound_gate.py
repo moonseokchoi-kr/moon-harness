@@ -23,6 +23,7 @@ import importlib.util
 import json
 import os
 import stat
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -536,3 +537,112 @@ def test_directive_text_uses_str_replace_not_format(stop_pipeline, tmp_path):
     assert "@@CLI@@" not in text
     assert "@@SCOPE@@" not in text
     assert str(tmp_path / "plugin") in text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 10) 성능 회귀 방지 (T-12 iteration 2, [P1]) — 무장 안 됨 경로는 config/cli를
+#     전혀 건드리지 않는다(전체 워크스페이스 스캔 회피). 대칭으로, 무장되면
+#     반드시 호출된다(패치 오적용으로 "항상 스킵"이 되는 회귀를 배제).
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _install_call_counters(monkeypatch) -> Dict[str, Dict[str, int]]:
+    """`ks_cli.main`/`ks_config.resolve_config`를 호출 횟수를 세는 스텁으로
+    바꿔치기하고, 카운터 dict를 반환한다."""
+    counters = {"cli_main": {"count": 0}, "resolve_config": {"count": 0}}
+
+    def _counting_main(argv):
+        counters["cli_main"]["count"] += 1
+        import sys
+
+        sys.stdout.write(json.dumps({"pending": ["x-spec.md"], "unmapped": []}))
+        return 0
+
+    def _counting_resolve_config(project_root=None):
+        counters["resolve_config"]["count"] += 1
+        return {
+            "ok": True,
+            "kompound_repo": "/does/not/matter",
+            "scan_root": None,
+            "max_anchor_depth": 5,
+            "state_max_age_hours": 24,
+            "prefix_map": {},
+            "source": {},
+        }
+
+    monkeypatch.setattr(ks_cli, "main", _counting_main)
+    monkeypatch.setattr(ks_config, "resolve_config", _counting_resolve_config)
+    return counters
+
+
+def test_not_armed_skips_core_import_and_scan_status_not_completed(
+    stop_pipeline, tmp_path, monkeypatch
+):
+    """무장 안 됨 케이스 ①: 상태 != COMPLETED. `cli.main`/`config.resolve_config`
+    가 단 한 번도 호출되지 않아야 한다(전체 스캔 회피가 이 iteration의 핵심
+    성능 수정 사항)."""
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+    counters = _install_call_counters(monkeypatch)
+
+    _write_state_md(project_root, status="EXECUTING")
+    result = _decide(stop_pipeline, project_root)
+
+    assert result == {"continue": True, "suppressOutput": True}
+    assert counters["cli_main"]["count"] == 0
+    assert counters["resolve_config"]["count"] == 0
+
+
+def test_not_armed_skips_core_import_and_scan_signature_unchanged(
+    stop_pipeline, tmp_path, monkeypatch
+):
+    """무장 안 됨 케이스 ②: 서명 불변(같은 COMPLETED를 반복 관측). 첫 관측은
+    baseline 등록(첫 관측 자체도 무장 아님)이고, 두 번째 동일 관측은
+    signature_unchanged로 여전히 무장 아님 — 두 호출 다 스캔 0회."""
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+    counters = _install_call_counters(monkeypatch)
+
+    _write_state_md(project_root, status="COMPLETED")
+    _decide(stop_pipeline, project_root)  # 첫 관측 — baseline 등록, 무장 아님
+    _decide(stop_pipeline, project_root)  # 서명 불변 — 여전히 무장 아님
+
+    assert counters["cli_main"]["count"] == 0
+    assert counters["resolve_config"]["count"] == 0
+
+
+def test_not_armed_skips_core_import_and_scan_state_stale(stop_pipeline, tmp_path, monkeypatch):
+    """무장 안 됨 케이스 ③: STATE mtime이 `state_max_age_hours`(기본 24h)를
+    초과 — 신선도 조건 미충족으로 여전히 무장 아님, 스캔 0회."""
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+    counters = _install_call_counters(monkeypatch)
+
+    # baseline을 EXECUTING으로 먼저 등록(서명이 이후 COMPLETED와 달라지게).
+    _write_state_md(project_root, status="EXECUTING")
+    _decide(stop_pipeline, project_root)
+
+    state_path = _write_state_md(project_root, status="COMPLETED")
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=48)).timestamp()
+    os.utime(state_path, (old_ts, old_ts))
+
+    result = _decide(stop_pipeline, project_root)
+
+    assert result == {"continue": True, "suppressOutput": True}
+    assert counters["cli_main"]["count"] == 0
+    assert counters["resolve_config"]["count"] == 0
+
+
+def test_armed_calls_core_config_and_scan_at_least_once(stop_pipeline, tmp_path, monkeypatch):
+    """대칭 확인: 실제로 무장되면 `config.resolve_config`/`cli.main`이 최소
+    1회씩 호출된다 — 패치가 "항상 스킵"으로 오적용되는 회귀를 배제한다."""
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+    counters = _install_call_counters(monkeypatch)
+
+    _arm_to_completed(stop_pipeline, project_root)
+    result = _decide(stop_pipeline, project_root)
+
+    assert result["decision"] == "block"
+    assert counters["cli_main"]["count"] >= 1
+    assert counters["resolve_config"]["count"] >= 1
