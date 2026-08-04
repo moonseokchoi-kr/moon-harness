@@ -202,8 +202,24 @@ def test_import_checker_flags_external_pip_dependency() -> None:
 
 
 # ── F16 acceptance: 사용자 고유 절대경로 리터럴 0개 ──────────────────────────
-
-_USER_ABS_PATH_RE = re.compile(r"/(?:Users|home)/[^\s\"'<>]+")
+#
+# C-2(T-11, ORCHESTRATOR_STATE.md "이월 실행 항목") — 이 정규식이 원래
+# `/Users/`·`/home/`(POSIX)만 잡아 arch §2.2 "Windows(Git-bash)에서 깨지지
+# 않아야 한다" 제약과 별개로 `C:\Users\...` 같은 Windows 스타일 절대경로
+# 리터럴은 못 잡는다는 지적이 있었다. 판단: **백슬래시 형태만 확장한다.**
+# `C:/Users/...`(git-bash에서 흔한 forward-slash 표기)는 이미 부분 문자열
+# "/Users/"를 포함하므로 기존 정규식이 그대로 잡는다(재확인:
+# `test_windows_forward_slash_path_already_caught_by_existing_pattern`).
+# 진짜 사각지대는 `C:\Users\<name>\...`(순수 백슬래시)뿐이라 그 한 갈래만
+# 추가했다 — 이 패키지 어떤 모듈의 docstring에도 실제로 `C:\Users\...` 값이
+# 없음을 확인했다(`config.py`의 유일한 `C:\` 언급은 사용자 이름이 없는
+# 일반 예시라 파싱된 문자열 상수는 `C:\` 한 글자뿐이라 이 확장으로도
+# 오탐하지 않는다 — `test_config_py_windows_root_docstring_example_still_passes`
+# 가 이를 회귀 고정한다).
+_USER_ABS_PATH_RE = re.compile(
+    r"/(?:Users|home)/[^\s\"'<>]+"
+    r"|[A-Za-z]:\\Users\\[^\s\"'<>]+"
+)
 
 
 def _string_constants(tree: ast.Module) -> Iterable[str]:
@@ -228,6 +244,24 @@ def test_kompound_snapshot_has_no_user_specific_absolute_path_literals() -> None
                 violations.append(f"{rel}: {value!r}")
 
     assert not violations, "사용자 고유 절대경로 리터럴 발견:\n" + "\n".join(violations)
+
+
+def test_windows_backslash_user_path_literal_is_now_flagged() -> None:
+    """C-2 확장 회귀 — `C:\\Users\\<name>\\...` 형태(순수 백슬래시)가 잡힌다."""
+    assert _USER_ABS_PATH_RE.search(r"C:\Users\moon\workspace\repo") is not None
+
+
+def test_windows_forward_slash_path_already_caught_by_existing_pattern() -> None:
+    """C-2 판단 근거 — `C:/Users/...`(forward-slash, git-bash 표기)는 확장 없이도
+    기존 `/Users/` 패턴이 이미 부분 문자열로 잡는다(재확인, 이중 방어 불필요)."""
+    assert _USER_ABS_PATH_RE.search("C:/Users/moon/workspace/repo") is not None
+
+
+def test_config_py_windows_root_docstring_example_still_passes() -> None:
+    """C-2 확장이 기존 회귀를 깨지 않는지 확인 — `config.py`의 `_is_root_path`
+    docstring이 예시로 언급하는 `C:\\` 하나뿐인 문자열(사용자 이름 없음)은
+    확장된 패턴에도 걸리지 않는다(``Users``가 뒤따르지 않으므로)."""
+    assert _USER_ABS_PATH_RE.search(r"path가 파일시스템 루트인가(`/`, `C:\` 등)") is None
 
 
 # ── fake_kompound_env 계약 스모크 (arch §9.3, spec F13 fixture 구조) ────────
