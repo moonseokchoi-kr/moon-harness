@@ -123,6 +123,39 @@ def test_duplicate_project_prefix_is_folded() -> None:
     assert result == {"raw_name": "raw/codegraph-internal-mcp-result.md"}
 
 
+def test_trailing_duplicate_project_token_is_folded() -> None:
+    # harness-self-improving-harness-spec → harness-self-improving-spec
+    # (실전 1회차에서 기존 스냅샷과 바이트 동일한 중복 파일을 만들어
+    #  bidirectional_count 게이트를 영구 실패시킨 케이스)
+    record = _record(
+        "moon-harness",
+        "/x/moon-harness/docs/sdd/spec/self-improving-harness-spec.md",
+        "spec",
+    )
+    result = name_document(record, _PREFIX_MAP)
+    assert result == {"raw_name": "raw/harness-self-improving-spec.md"}
+
+
+def test_project_token_in_the_middle_is_not_folded() -> None:
+    # 선두도 후미도 아닌 중간 등장은 접지 않는다(의미 있는 토큰일 수 있다)
+    record = _record(
+        "moon-harness",
+        "/x/moon-harness/docs/sdd/spec/pre-harness-post-spec.md",
+        "spec",
+    )
+    result = name_document(record, _PREFIX_MAP)
+    assert result == {"raw_name": "raw/harness-pre-harness-post-spec.md"}
+
+
+def test_feature_equal_to_project_token_is_not_folded() -> None:
+    # feature가 프로젝트 토큰 하나뿐이면 접으면 feature가 비므로 접지 않는다
+    record = _record(
+        "moon-harness", "/x/moon-harness/docs/sdd/spec/harness-spec.md", "spec"
+    )
+    result = name_document(record, _PREFIX_MAP)
+    assert result == {"raw_name": "raw/harness-harness-spec.md"}
+
+
 def test_no_duplicate_prefix_is_unaffected() -> None:
     record = _record(
         "codegraph-clo",

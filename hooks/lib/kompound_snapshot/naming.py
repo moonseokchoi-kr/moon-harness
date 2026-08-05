@@ -10,7 +10,8 @@
    (레코드의 ``kind`` 필드). 이 모듈은 kind 매핑을 다시 하지 않는다.
 3. ``<feature>`` = 원본 파일명(stem)에서 날짜 프리픽스(``^\\d{4}-\\d{2}-\\d{2}-``)와
    접미사(``-spec``/``-dev``/``-result``)를 제거한 나머지.
-4. ``<project>-<project>-...`` 꼴이면 중복된 프리픽스 하나를 접는다.
+4. ``<feature>``가 ``<project>`` 토큰을 선두(``<project>-...``) 또는
+   후미(``...-<project>``)에 중복으로 물고 있으면 그 하나를 접는다.
 
 **주의(T-4 결정 — task 문서 명시 지침)**: 기본 프리픽스 매핑(spec F4의 10종)은
 이 모듈이 정의하지 않는다. 그 값의 단일 진실은 T-3 ``config.py``의
@@ -38,15 +39,30 @@ def _strip_feature(stem: str) -> str:
 
 
 def _fold_duplicate_prefix(project: str, feature: str) -> str:
-    """``feature``가 이미 ``<project>-``로 시작하면 그 접두를 접어낸다.
+    """``feature``가 ``<project>`` 토큰을 중복으로 물고 있으면 접어낸다 —
+    **선두와 후미 양쪽** 모두 대상이다.
 
-    예: project="codegraph", feature="codegraph-internal-mcp" →
+    선두: project="codegraph", feature="codegraph-internal-mcp" →
     "internal-mcp" (최종 raw_name이 "codegraph-codegraph-internal-mcp-result"가
     아니라 "codegraph-internal-mcp-result"가 되도록).
+
+    후미: project="harness", feature="self-improving-harness" →
+    "self-improving" ("harness-self-improving-harness-spec"이 아니라
+    "harness-self-improving-spec"이 되도록). 선두만 접던 시절 이 케이스가
+    기존 스냅샷과 바이트 동일한 중복 파일을 만들어 카탈로그 게이트
+    (bidirectional_count)를 영구히 실패시켰다.
+
+    ``feature``가 프로젝트 토큰 하나로만 이루어진 경우(feature == project)는
+    접지 않는다 — 접으면 feature가 비어 ``raw/<project>--<kind>.md``가 된다.
     """
     prefix = project + "-"
     if feature.startswith(prefix):
         return feature[len(prefix) :]
+
+    suffix = "-" + project
+    if feature.endswith(suffix):
+        return feature[: -len(suffix)]
+
     return feature
 
 
