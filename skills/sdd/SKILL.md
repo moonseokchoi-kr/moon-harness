@@ -152,6 +152,8 @@ docs/sdd/
 
 **핵심 원칙**: "직전 Phase의 **모든** 필수 산출물이 존재하지 않으면 다음 Phase로 진입하지 않는다." 불완전 감지 시 해당 Phase로 롤백해서 누락분만 복원한다.
 
+> 📌 위 표의 `ORCHESTRATOR_STATE`는 **`docs/sdd/ORCHESTRATOR_STATE.md`(현재 사이클)만** 가리킨다. 완료된 사이클의 STATE는 Step 4 마지막에 `docs/sdd/archive/{date}-{feature}-ORCHESTRATOR_STATE.md`로 아카이브되며(sdd-orchestrator Step 4.7), Phase 판정에 쓰지 않는다. 따라서 이전 사이클을 끝낸 레포에서 새 사이클을 시작해도 STATE 존재가 "P4 진행 중"으로 오판되지 않는다.
+
 ## 라벨 기반 상태 머신
 
 ```

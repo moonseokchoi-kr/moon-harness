@@ -123,7 +123,14 @@ DEFAULT_NOTICE_WINDOW_HOURS = 24  # arch §6.1 ④ — session id 없을 때의 
 _STATE_RELATIVE = Path(".claude") / "state" / "kompound-snapshot.json"
 _ENV_SESSION_ID = "CLAUDE_SESSION_ID"
 
-_STATUS_RE = re.compile(r"^-?\s*(?:상태|status)\s*:\s*([A-Za-z0-9_]+)", re.MULTILINE)
+# 라벨/값 양쪽에 붙는 마크다운 강조(`**`, `_`, 백틱)와 선행 들여쓰기를 건너뛴다 —
+# 오케스트레이터가 `- 상태: **COMPLETED** (2026-08-04) — …` 처럼 값을 굵게 쓰는데,
+# 콜론 직후 word 문자만 받으면 그 서식 때문에 status=None 이 되어 is_armed() 의
+# `status == "COMPLETED"` 판정이 조용히 항상 False 가 된다(T1 비무장).
+_STATUS_RE = re.compile(
+    r"^\s*-?\s*[*_`]*\s*(?:상태|status)\s*[*_`]*\s*:\s*[*_`]*([A-Za-z0-9_]+)",
+    re.MULTILINE,
+)
 _FEATURE_RE_BACKTICK = re.compile(r"^-?\s*feature\s*:\s*`([^`]+)`", re.MULTILINE | re.IGNORECASE)
 _FEATURE_RE_PLAIN = re.compile(r"^-?\s*feature\s*:\s*(\S+)", re.MULTILINE | re.IGNORECASE)
 
@@ -177,6 +184,10 @@ def parse_orchestrator_state(text: str) -> Dict[str, Optional[str]]:
     - 상태 라벨은 `- 상태: <VALUE>`와 `status: <VALUE>` 둘 다 허용한다.
       값은 첫 word-문자 런(`[A-Za-z0-9_]+`)만 취한다 — 뒤에 괄호로 붙는
       주석·마크다운 서식(`(**2026-07-30 재개** ...)`)에 흔들리지 않는다.
+      **값 앞에 붙는** 강조(`- 상태: **COMPLETED**`)와 라벨 자체의 강조
+      (`- **상태**: ...`), 선행 들여쓰기도 건너뛴다 — 실사용 STATE 문서가 값을
+      굵게 쓰는데 이걸 못 읽으면 `is_armed()`의 `status == "COMPLETED"`가
+      조용히 항상 False가 된다(T1 비무장).
     - feature는 백틱으로 감싼 슬러그(`- feature: \\`slug\\``)를 우선
       시도하고, 없으면 평문 토큰으로 폴백한다.
     - 파싱 실패(라벨 부재)는 예외가 아니라 해당 키 `None`으로 흡수한다.

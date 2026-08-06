@@ -172,6 +172,15 @@ main에 직접 머지하지 않는다. PR을 열고 외부 신호가 전부 gree
    - 분 단위로 걸리는 CI를 블로킹하지 않도록, 사용자에게 **`/loop /pr-converge`로 주기 실행**을 안내한다 (CI 도는 중 ~270s, 사람 코멘트 대기 중 길게).
 5. pr-converge가 **CONVERGED**(전부 green + 코멘트 처리 완료)를 보고하면 → 사용자에게 결과 + 머지 승인 요청. **NEEDS_HUMAN/BLOCKED**면 → 막힌 항목(설계 코멘트·반복 실패)을 사람에게 에스컬레이션.
 6. 사용자 머지 승인 후 worktree 정리.
+7. **ORCHESTRATOR_STATE.md 아카이브** — 결정적 글루를 호출한다(판정·이동·링크 갱신이 전부 결정적이므로 프롬프트가 판단하지 않는다):
+   ```bash
+   python3 skills/sdd-orchestrator/scripts/archive_state.py --json
+   ```
+   `docs/sdd/ORCHESTRATOR_STATE.md` → `docs/sdd/archive/{date}-{feature}-ORCHESTRATOR_STATE.md`로 `git mv`한다(추적 안 되면 일반 이동). `date`는 result 문서명에서 가져오므로 "정리를 언제 돌렸는가"가 아니라 "사이클이 언제 끝났는가"가 이름에 남는다. 출력의 `external_refs`(= `docs/sdd/**` 밖에서 옛 경로를 링크로 가리키는 파일)는 스크립트가 **교체하지 않고 보고만** 하므로, 사용자에게 그 목록을 전달한다.
+   - **왜 정리하는가**: STATE는 머지되면 main에 영구히 남는다. 그러면 ① 완료된 사이클이 현역처럼 보여 다음 사이클 STATE와 구분되지 않고 ② `hooks/enforcement/stop-pipeline.py`의 T1 완료 게이트가 STATE **존재**를 진입 조건으로 쓰기 때문에, SDD를 한 번이라도 완료한 프로젝트는 그 사이클과 무관한 이후 모든 세션의 모든 Stop 훅에서 판정 비용을 영구 지불한다(콜드 프로세스 실측 **+43.5ms**). 아카이브하면 `is_file()` 실패로 **패키지 import 이전에** 조기 반환하므로 그 비용이 사라진다.
+   - **안전 인터록** — 스크립트가 아래 중 하나라도 걸리면 옮기지 않고 사유를 보고한다: 상태가 `COMPLETED`가 아님 / result 문서 부재 / **kompound 박제가 `PENDING`·`CATALOG_PENDING`·`FAILED`**. 마지막 항목이 핵심이다 — T1은 STATE 존재를 진입 조건으로 쓰므로, 미뤄진 박제를 남긴 채 아카이브하면 재시도가 **영구히 오지 않는다**(비수렴). 목적지가 이미 있으면 덮어쓰지 않고 no-op(멱등).
+   - **T2 게이트(`hooks/enforcement/kompound-snapshot-gate.sh`)는 영향받지 않는다** — STATE 의존이 0건이고 명령만 보고 판정하므로, "워크트리 삭제 직전 미박제 문서 차단" 안전망은 그대로 살아 있다.
+   - enforcement 훅 8개는 전부 STATE 부재를 통과(`exit 0`)로 처리하므로 아카이브가 게이트를 깨지 않는다. `hooks/lib/kompound_snapshot/scan.py`의 `SKIP_NAMES`에 `ORCHESTRATOR_STATE`가 있어 아카이브 사본이 새 박제 대상이 되지도 않는다.
 
 > 📌 pr-converge는 SDD 밖에서도 독립 사용 가능하다 (`/pr-converge <pr>`). 자세한 분류·서킷브레이커·케이던스 규칙은 skills/pr-converge/SKILL.md 참조.
 

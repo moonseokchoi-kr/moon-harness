@@ -122,6 +122,49 @@ def test_parse_orchestrator_state_dash_form() -> None:
     assert parsed == {"feature": "my-feature", "status": "COMPLETED"}
 
 
+def test_parse_orchestrator_state_bold_status_value() -> None:
+    """실사용 STATE 는 값을 굵게 쓴다 — 못 읽으면 is_armed() 의
+    `status == "COMPLETED"` 가 조용히 항상 False 가 되어 T1 이 비무장된다."""
+    parsed = runtime_state.parse_orchestrator_state(
+        "- feature: `f`\n- 상태: **COMPLETED** (2026-08-04) — 13/13 태스크 complete\n"
+    )
+    assert parsed == {"feature": "f", "status": "COMPLETED"}
+
+
+def test_parse_orchestrator_state_backticked_status_value() -> None:
+    parsed = runtime_state.parse_orchestrator_state("- 상태: `EXECUTING`\n")
+    assert parsed["status"] == "EXECUTING"
+
+
+def test_parse_orchestrator_state_bold_label() -> None:
+    parsed = runtime_state.parse_orchestrator_state("- **상태**: PLANNING\n")
+    assert parsed["status"] == "PLANNING"
+
+
+def test_parse_orchestrator_state_indented_status_line() -> None:
+    parsed = runtime_state.parse_orchestrator_state("   - 상태: **PAUSED_AT_LIMIT**\n")
+    assert parsed["status"] == "PAUSED_AT_LIMIT"
+
+
+def test_parse_orchestrator_state_empty_status_value_is_none() -> None:
+    parsed = runtime_state.parse_orchestrator_state("- 상태:\n")
+    assert parsed["status"] is None
+
+
+def test_is_armed_sees_bold_completed(tmp_path) -> None:
+    """굵은 COMPLETED 로도 무장 경로에 도달한다(회귀 — 실 repo STATE 형태)."""
+    project = tmp_path / "p"
+    (project / "docs" / "sdd" / "result").mkdir(parents=True)
+    state = project / "docs" / "sdd" / "ORCHESTRATOR_STATE.md"
+    state.write_text(
+        "- feature: `demo`\n- 상태: **COMPLETED** (2026-08-04)\n", encoding="utf-8"
+    )
+    (project / "docs" / "sdd" / "result" / "2026-08-04-demo.md").write_text("x")
+    sig = runtime_state.compute_signature(project, state.read_text())
+    assert sig[0] == "demo"
+    assert sig[1] == "COMPLETED", "굵은 서식 때문에 status 가 None 이 되면 T1 이 비무장된다"
+
+
 def test_parse_orchestrator_state_status_label_form() -> None:
     text = "feature: other-feature\nstatus: EXECUTING\n"
     parsed = runtime_state.parse_orchestrator_state(text)
