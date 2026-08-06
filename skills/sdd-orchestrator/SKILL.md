@@ -176,7 +176,8 @@ main에 직접 머지하지 않는다. PR을 열고 외부 신호가 전부 gree
    ```bash
    python3 skills/sdd-orchestrator/scripts/archive_state.py --json
    ```
-   `docs/sdd/ORCHESTRATOR_STATE.md` → `docs/sdd/archive/{date}-{feature}-ORCHESTRATOR_STATE.md`로 `git mv`한다(추적 안 되면 일반 이동). `date`는 result 문서명에서 가져오므로 "정리를 언제 돌렸는가"가 아니라 "사이클이 언제 끝났는가"가 이름에 남는다. 출력의 `external_refs`(= `docs/sdd/**` 밖에서 옛 경로를 링크로 가리키는 파일)는 스크립트가 **교체하지 않고 보고만** 하므로, 사용자에게 그 목록을 전달한다.
+   `docs/sdd/ORCHESTRATOR_STATE.md` → `docs/sdd/archive/{date}-{feature}-ORCHESTRATOR_STATE.md`로 `git mv`한다(추적 안 되면 일반 이동). `date`는 result 문서명에서 가져오므로 "정리를 언제 돌렸는가"가 아니라 "사이클이 언제 끝났는가"가 이름에 남는다.
+   - **링크 교체 범위**: `docs/sdd/**`의 **마크다운 링크 타깃(`](...)`)만** 교체한다 — 그 형태는 문법적으로 항상 경로 참조라 모호성이 없다. 백틱 경로와 산문 언급은 **절대 교체하지 않고** `manual_refs`로 보고만 한다. 완전한 경로여도 그것이 *이 사이클 인스턴스*를 가리키는지 *SDD 규약 일반*을 서술하는지 스크립트가 판정할 수 없기 때문이다(예: "Phase 4는 `pipeline.json`이 아니라 `docs/sdd/ORCHESTRATOR_STATE.md`로 운영된다" — 아카이브 경로로 바꾸면 문장이 거짓이 된다). `manual_refs` 목록은 사용자에게 그대로 전달한다.
    - **왜 정리하는가**: STATE는 머지되면 main에 영구히 남는다. 그러면 ① 완료된 사이클이 현역처럼 보여 다음 사이클 STATE와 구분되지 않고 ② `hooks/enforcement/stop-pipeline.py`의 T1 완료 게이트가 STATE **존재**를 진입 조건으로 쓰기 때문에, SDD를 한 번이라도 완료한 프로젝트는 그 사이클과 무관한 이후 모든 세션의 모든 Stop 훅에서 판정 비용을 영구 지불한다(콜드 프로세스 실측 **+43.5ms**). 아카이브하면 `is_file()` 실패로 **패키지 import 이전에** 조기 반환하므로 그 비용이 사라진다.
    - **안전 인터록** — 스크립트가 아래 중 하나라도 걸리면 옮기지 않고 사유를 보고한다: 상태가 `COMPLETED`가 아님 / result 문서 부재 / **kompound 박제가 `PENDING`·`CATALOG_PENDING`·`FAILED`**. 마지막 항목이 핵심이다 — T1은 STATE 존재를 진입 조건으로 쓰므로, 미뤄진 박제를 남긴 채 아카이브하면 재시도가 **영구히 오지 않는다**(비수렴). 목적지가 이미 있으면 덮어쓰지 않고 no-op(멱등).
    - **T2 게이트(`hooks/enforcement/kompound-snapshot-gate.sh`)는 영향받지 않는다** — STATE 의존이 0건이고 명령만 보고 판정하므로, "워크트리 삭제 직전 미박제 문서 차단" 안전망은 그대로 살아 있다.

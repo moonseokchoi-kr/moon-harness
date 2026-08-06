@@ -48,15 +48,29 @@ _ARCHIVE_RELATIVE = Path("docs") / "sdd" / "archive"
 # 박제가 미완이면 아카이브를 거부한다 (T1 비무장 -> 재시도 영구 소실 방지)
 _BLOCKING_SNAPSHOT_STATUSES = ("PENDING", "CATALOG_PENDING", "FAILED")
 
-# 마크다운 링크 타깃 / 백틱 경로만 교체한다. 산문 속 맨 파일명 언급
-# ("ORCHESTRATOR_STATE.md 상태를 COMPLETED로 변경")은 건드리지 않는다.
+# `skills/**`·`agents/**`는 "현재 사이클 STATE가 어디 있는지"라는 **일반 규약**을
+# 서술하는 하네스 문서다 — 특정 사이클 인스턴스를 가리키는 게 아니므로 아카이브
+# 때마다 보고하면 매번 같은 4~5건이 떠서 신호가 무력해진다.
+_REF_REPORT_EXCLUDED_TOPLEVEL = ("skills", "agents")
+
+# **교체 대상**: 마크다운 링크 타깃만. `](...ORCHESTRATOR_STATE.md)` 는 문법적으로
+# 항상 경로 참조이므로 모호성이 없다.
+#
+# **보고 전용**: 백틱 경로(`docs/sdd/ORCHESTRATOR_STATE.md`)와 산문 언급. 백틱이
+# 붙어도, 심지어 디렉토리를 포함한 완전한 경로여도, 그것이 *이 사이클 인스턴스*를
+# 가리키는지 *SDD 규약 일반*을 서술하는지 이 스크립트는 판정할 수 없다. 실전
+# 1회차에서 두 번 연속 이 구분에 실패했다:
+#   - "`ORCHESTRATOR_STATE.md` 상태를 COMPLETED로 변경" (맨 파일명 = 이름 언급)
+#   - "Phase 4는 `pipeline.json`이 아니라 `docs/sdd/ORCHESTRATOR_STATE.md`로
+#     운영된다" (완전 경로인데 규약 서술 — 아카이브 경로로 바꾸면 문장이 거짓)
+# 그래서 백틱 형태는 절대 교체하지 않고 사람에게 목록으로 넘긴다.
 _LINK_RE = re.compile(r"\]\(([^)]*ORCHESTRATOR_STATE\.md)\)")
-_BACKTICK_PATH_RE = re.compile(r"`((?:[\w./-]*/)?ORCHESTRATOR_STATE\.md)`")
+_BACKTICK_PATH_RE = re.compile(r"`([\w.-]*(?:/[\w.-]+)*/ORCHESTRATOR_STATE\.md)`")
 
 
 def _fail(reason: str, **extra: Any) -> Dict[str, Any]:
     out = {"ok": False, "archived": False, "reason": reason, "target": None,
-           "rewritten": [], "external_refs": []}
+           "rewritten": [], "manual_refs": []}
     out.update(extra)
     return out
 
@@ -129,10 +143,10 @@ def _is_tracked(project_root: Path, path: Path) -> bool:
 
 
 def _rewrite_links(project_root: Path, old_rel: str, new_rel: str) -> List[str]:
-    """`docs/sdd/**`의 마크다운 링크 타깃/백틱 경로만 새 경로로 교체한다.
+    """`docs/sdd/**`의 **마크다운 링크 타깃만** 새 경로로 교체한다.
 
-    범위를 사이클 산출물 트리로 한정한다 — 레포 전체 치환은 부작용이 크고
-    되돌리기 어렵다. 트리 밖 참조는 교체하지 않고 호출자에게 보고한다.
+    백틱 경로와 산문 언급은 건드리지 않는다 — 위 상수 주석 참조. 범위를 사이클
+    산출물 트리로 한정한다(레포 전체 치환은 부작용이 크고 되돌리기 어렵다).
     """
     changed: List[str] = []
     sdd_dir = project_root / "docs" / "sdd"
@@ -149,37 +163,28 @@ def _rewrite_links(project_root: Path, old_rel: str, new_rel: str) -> List[str]:
             continue
 
         def _sub_link(m: "re.Match[str]") -> str:
-            target = m.group(1)
-            if Path(target).name != old_name:
+            if Path(m.group(1)).name != old_name:
                 return m.group(0)
             depth = len(md.relative_to(sdd_dir).parts) - 1
             prefix = "../" * depth
             return f"]({prefix}archive/{Path(new_rel).name})"
 
-        def _sub_backtick(m: "re.Match[str]") -> str:
-            if Path(m.group(1)).name != old_name:
-                return m.group(0)
-            return f"`{new_rel}`"
-
         updated = _LINK_RE.sub(_sub_link, text)
-        updated = _BACKTICK_PATH_RE.sub(_sub_backtick, updated)
         if updated != text:
             md.write_text(updated, encoding="utf-8")
             changed.append(md.relative_to(project_root).as_posix())
     return changed
 
 
-# `skills/**`·`agents/**`는 "현재 사이클 STATE가 어디 있는지"라는 **일반 규약**을
-# 서술하는 하네스 문서다 — 특정 사이클 인스턴스를 가리키는 게 아니므로 아카이브
-# 때마다 보고하면 매번 같은 4~5건이 떠서 신호가 무력해진다.
-_REF_REPORT_EXCLUDED_TOPLEVEL = ("skills", "agents")
+def _manual_refs(project_root: Path) -> List[str]:
+    """교체하지 않고 사람이 확인해야 하는 참조 파일 목록.
 
+    백틱 경로 언급(트리 안·밖 모두)과, `docs/sdd/**` 밖의 마크다운 링크가 대상이다.
+    교체하지 않는 이유는 `_LINK_RE`/`_BACKTICK_PATH_RE` 상수 주석에 있다.
 
-def _external_refs(project_root: Path) -> List[str]:
-    """`docs/sdd/**` 밖에서 STATE 경로를 링크로 참조하는 파일 목록(보고용).
-
-    교체는 하지 않는다 — 사이클 인스턴스 참조인지 일반 규약 서술인지는 이
-    스크립트가 판정할 수 없으므로 사람에게 넘긴다.
+    `skills/**`·`agents/**`는 "현재 사이클 STATE가 어디 있는지"라는 일반 규약을
+    서술하는 하네스 문서다 — 아카이브 때마다 보고하면 매번 같은 4~5건이 떠서
+    신호가 무력해지므로 제외한다.
     """
     refs: List[str] = []
     sdd_dir = project_root / "docs" / "sdd"
@@ -194,15 +199,15 @@ def _external_refs(project_root: Path) -> List[str]:
         if rel_parts and rel_parts[0] in _REF_REPORT_EXCLUDED_TOPLEVEL:
             continue
         try:
-            if sdd_dir in md.parents:
-                continue
-        except Exception:  # noqa: BLE001
-            pass
-        try:
             text = md.read_text(encoding="utf-8")
         except OSError:
             continue
-        if _LINK_RE.search(text) or _BACKTICK_PATH_RE.search(text):
+
+        inside_sdd = sdd_dir in md.parents or md.parent == sdd_dir
+        has_backtick = bool(_BACKTICK_PATH_RE.search(text))
+        has_link = bool(_LINK_RE.search(text))
+        # 트리 안의 마크다운 링크는 _rewrite_links 가 이미 교체했다
+        if has_backtick or (has_link and not inside_sdd):
             refs.append(md.relative_to(project_root).as_posix())
     return refs
 
@@ -216,7 +221,7 @@ def archive_state(project_root: Path, *, dry_run: bool = False) -> Dict[str, Any
 
         if not state_path.is_file():
             return {"ok": True, "archived": False, "reason": "state_absent",
-                    "target": None, "rewritten": [], "external_refs": []}
+                    "target": None, "rewritten": [], "manual_refs": []}
 
         try:
             state_text = state_path.read_text(encoding="utf-8")
@@ -232,7 +237,7 @@ def archive_state(project_root: Path, *, dry_run: bool = False) -> Dict[str, Any
         if status != "COMPLETED":
             return {"ok": True, "archived": False,
                     "reason": f"status_not_completed: {status}",
-                    "target": None, "rewritten": [], "external_refs": []}
+                    "target": None, "rewritten": [], "manual_refs": []}
 
         result_doc = _find_result_doc(project_root, feature)
         if result_doc is None:
@@ -253,7 +258,7 @@ def archive_state(project_root: Path, *, dry_run: bool = False) -> Dict[str, Any
         if target.exists():
             return {"ok": True, "archived": False, "reason": "already_archived",
                     "target": target.relative_to(project_root).as_posix(),
-                    "rewritten": [], "external_refs": []}
+                    "rewritten": [], "manual_refs": []}
 
         old_rel = _STATE_RELATIVE.as_posix()
         new_rel = target.relative_to(project_root).as_posix()
@@ -261,7 +266,7 @@ def archive_state(project_root: Path, *, dry_run: bool = False) -> Dict[str, Any
         if dry_run:
             return {"ok": True, "archived": False, "reason": "dry_run",
                     "target": new_rel, "feature": feature,
-                    "rewritten": [], "external_refs": _external_refs(project_root)}
+                    "rewritten": [], "manual_refs": _manual_refs(project_root)}
 
         archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -279,7 +284,7 @@ def archive_state(project_root: Path, *, dry_run: bool = False) -> Dict[str, Any
         return {"ok": True, "archived": True, "reason": "archived",
                 "target": new_rel, "feature": feature,
                 "rewritten": rewritten,
-                "external_refs": _external_refs(project_root)}
+                "manual_refs": _manual_refs(project_root)}
     except Exception as exc:  # noqa: BLE001 - fail-safe
         return _fail(f"unexpected_error: {exc}")
 
@@ -302,9 +307,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"[sdd-archive] STATE 아카이브 완료 -> {result['target']}")
             if result["rewritten"]:
                 print(f"[sdd-archive] docs/sdd 링크 {len(result['rewritten'])}건 갱신")
-            if result["external_refs"]:
-                print("[sdd-archive] docs/sdd 밖 참조(수동 확인 필요): "
-                      + ", ".join(result["external_refs"]))
+            if result["manual_refs"]:
+                print("[sdd-archive] 참조 확인 필요(교체 안 함): "
+                      + ", ".join(result["manual_refs"]))
         elif result["ok"]:
             print(f"[sdd-archive] 아카이브하지 않음 — {result['reason']}")
         else:

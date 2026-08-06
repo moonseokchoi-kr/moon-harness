@@ -194,19 +194,18 @@ def test_dry_run_moves_nothing(tmp_path: Path) -> None:
 
 
 def test_sdd_tree_links_are_rewritten(tmp_path: Path) -> None:
+    """마크다운 링크 타깃은 문법적으로 항상 경로 참조이므로 교체한다."""
     root = _make_project(tmp_path)
     doc = root / "docs" / "sdd" / "result" / "2026-08-04-demo-feature.md"
     doc.write_text(
-        "# result\n\n계약은 [STATE](../ORCHESTRATOR_STATE.md) 에 있다.\n"
-        "경로: `docs/sdd/ORCHESTRATOR_STATE.md`\n",
+        "# result\n\n계약은 [STATE](../ORCHESTRATOR_STATE.md) 에 있다.\n",
         encoding="utf-8",
     )
     r = archive_state_mod.archive_state(root)
     assert r["archived"], r
     text = doc.read_text()
-    assert "archive/2026-08-04-demo-feature-ORCHESTRATOR_STATE.md" in text
+    assert "](../archive/2026-08-04-demo-feature-ORCHESTRATOR_STATE.md)" in text
     assert "](../ORCHESTRATOR_STATE.md)" not in text
-    assert "`docs/sdd/archive/2026-08-04-demo-feature-ORCHESTRATOR_STATE.md`" in text
     assert doc.relative_to(root).as_posix() in r["rewritten"]
 
 
@@ -223,6 +222,46 @@ def test_prose_mention_of_bare_filename_is_untouched(tmp_path: Path) -> None:
     assert r["rewritten"] == []
 
 
+def test_backticked_bare_filename_is_untouched(tmp_path: Path) -> None:
+    """백틱이 붙은 맨 파일명도 *이름* 언급이다 — 경로로 치환하면 문장이 깨진다.
+
+    실전 1회차 회귀: 디렉토리 부분을 optional 로 둔 정규식이
+    "`ORCHESTRATOR_STATE.md` 상태를 COMPLETED로 변경" 을
+    "`docs/sdd/archive/2026-…-ORCHESTRATOR_STATE.md` 상태를 …" 로 치환해
+    spec/arch/task 문서 6개의 문장을 망가뜨렸다.
+    """
+    root = _make_project(tmp_path)
+    doc = root / "docs" / "sdd" / "result" / "2026-08-04-demo-feature.md"
+    original = (
+        "Step 4-2(`ORCHESTRATOR_STATE.md` 상태를 COMPLETED로 변경) 직후.\n"
+        "그리고 `HANDOFF.md`·`ORCHESTRATOR_STATE.md` 가 스캔에서 0건이어야 한다.\n"
+    )
+    doc.write_text(original, encoding="utf-8")
+    r = archive_state_mod.archive_state(root)
+    assert r["archived"]
+    assert doc.read_text() == original
+    assert r["rewritten"] == []
+
+
+def test_backticked_full_path_is_reported_not_rewritten(tmp_path: Path) -> None:
+    """완전한 백틱 경로도 교체하지 않는다 — 규약 서술일 수 있다.
+
+    실전 2회차 회귀: "Phase 4는 `pipeline.json`이 아니라
+    `docs/sdd/ORCHESTRATOR_STATE.md`로 운영된다" 는 완전 경로지만 SDD 규약
+    일반을 서술한다. 아카이브 경로로 바꾸면 문장이 거짓이 된다. 인스턴스 참조인지
+    규약 서술인지는 스크립트가 판정할 수 없으므로 보고만 한다.
+    """
+    root = _make_project(tmp_path)
+    doc = root / "docs" / "sdd" / "result" / "2026-08-04-demo-feature.md"
+    original = "Phase 4는 `docs/sdd/ORCHESTRATOR_STATE.md`로 운영된다.\n"
+    doc.write_text(original, encoding="utf-8")
+    r = archive_state_mod.archive_state(root)
+    assert r["archived"]
+    assert doc.read_text() == original
+    assert r["rewritten"] == []
+    assert "docs/sdd/result/2026-08-04-demo-feature.md" in r["manual_refs"]
+
+
 def test_harness_convention_docs_are_not_reported(tmp_path: Path) -> None:
     """skills/**·agents/** 는 일반 규약 서술이라 매번 보고하면 신호가 무력해진다."""
     root = _make_project(tmp_path)
@@ -235,8 +274,8 @@ def test_harness_convention_docs_are_not_reported(tmp_path: Path) -> None:
     )
     r = archive_state_mod.archive_state(root)
     assert r["archived"]
-    assert "docs/plan.md" in r["external_refs"]
-    assert "skills/SKILL.md" not in r["external_refs"]
+    assert "docs/plan.md" in r["manual_refs"]
+    assert "skills/SKILL.md" not in r["manual_refs"]
 
 
 def test_untracked_state_is_moved_without_git(tmp_path: Path) -> None:
