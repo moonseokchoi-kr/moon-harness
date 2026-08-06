@@ -17,9 +17,22 @@ SDD 파이프라인, 아이디어 워크샵, 자가개선 시스템(pr-converge 
 ## 빌드 / 테스트
 
 ```bash
-# pytest는 homebrew python(3.14)에 설치됨 — Xcode python3엔 없음
-PATH="/opt/homebrew/bin:$PATH" python3 -m pytest tests/ -q
+python3 -m pytest tests/ -q
 ```
+
+> 📌 **인터프리터 경로를 하드코딩하지 말 것.** 이전 문구는 `PATH="/opt/homebrew/bin:$PATH"`를
+> prepend했는데, 이 머신의 pytest는 `/usr/local`(Intel prefix) homebrew python 3.14.4에 있고
+> `/opt/homebrew`(ARM) python 3.14.6에는 **없다**. `/opt/homebrew/bin/python3`가 없던 동안은
+> prepend가 무해한 no-op이라 문제가 드러나지 않았지만, brew가 그 심링크를 만든 순간부터
+> prepend가 **pytest 있는 인터프리터를 가려서** `No module named pytest`로 깨졌다
+> (2026-08-06 실측). 두 prefix가 공존하는 머신에서는 어느 쪽이 pytest를 갖는지 보장되지 않는다.
+>
+> 환경이 의심되면 경로를 추측하지 말고 **먼저 확정**한다:
+> ```bash
+> python3 -m pytest --version   # 실패하면 아래로 실제 인터프리터를 찾는다
+> which -a python3; for p in $(which -a python3); do "$p" -c 'import pytest,sys;print(sys.executable, pytest.__version__)' 2>/dev/null; done
+> ```
+> 확정한 인터프리터를 `<PY>`로 두고 `<PY> -m pytest tests/...` 형태로 고정한다.
 
 오프라인(`tests/`, 네트워크/LLM 무호출)과 라이브(`evals/`, claude -p)는 **비혼합**. `pytest tests/`는 `evals/`를 수집하지 않는다.
 
