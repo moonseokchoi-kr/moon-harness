@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_processed_marker": "## 2026-08-05 — harness-enforcement / file-ownership 오탐 재발 + dangerous-command heredoc 오탐",
-  "last_retro_at": "2026-08-05T00:00:00Z",
-  "cumulative": { "applied_project": 3, "proposed_harness": 4, "dropped": 5 }
+  "last_processed_marker": "2026-08-06 — harness-docs / 인터프리터 경로 하드코딩이 무해→유해로 전환",
+  "last_retro_at": "2026-08-06T00:00:00Z",
+  "cumulative": { "applied_project": 4, "proposed_harness": 6, "dropped": 5 }
 }

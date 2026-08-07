@@ -62,3 +62,59 @@ critic 배치 판정: UPHELD 1 · NARROW 6 · REFUTED 1.
   실행**했으므로(위 적용 2번째 항목) 별도 규칙화 불필요.
 - `two-stage-prefilter-parity` 중 arch 리뷰 항목은 제안으로 살아남았고, 그 원인이 된 코드 결함은
   위 C3a로 폐기 — 클러스터가 절반만 생존.
+
+## 2026-08-06 retro — 신규 1건 처리 / 적용 2 · 제안 2 · 폐기 0
+
+두 번째 회고. **Phase A에서 커서 결함을 발견**해 그것부터 처리했다 — 저장된 마커가
+`## ` 접두형이라 `cursor.get_new_entries`의 완전일치 비교가 실패하고, fail-safe가 발동해
+**13/13건을 "신규"로 반환**했다(접두 제거 시 1건). 즉 1회차 이후 커서가 한 번도 전진하지 않았다.
+실제 신규는 `## 2026-08-06 — harness-docs / 인터프리터 경로 하드코딩이 무해→유해로 전환` 1건.
+클러스터 `toolchain-path-hardcoding` — `same_repo=1`이지만 본문에 명시적 반복 신호("같은 지적이
+이미 두 번")가 있어 `run_prechecks`의 `too_sparse=False` 통과. `has_cross_project=False`.
+critic 판정: UPHELD 1 · NARROW 2 · REFUTED 0.
+
+### 적용 (프로젝트 티어, 자동)
+
+- **`docs/lessons-learned.md`** ← "인터프리터·툴 경로를 적지 말고 확정 절차를 적는다" (§문서에 적는 실행 명령 신설)
+  - critic: NARROW
+  - 근거: `## 2026-08-06 — harness-docs / 인터프리터 경로 하드코딩이 무해→유해로 전환`
+  - 좁힌 이유: 원안("문서의 빌드/테스트 명령은 경로를 하드코딩하지 말 것")은 CI 러너 핀·컨테이너
+    이미지·lockfile·shebang처럼 **경로 고정이 목적인** 곳까지 금지로 읽힌다. 적용 범위를
+    "문서의 복사-실행 명령"으로 한정. 이 머신의 pytest 실측 사례는 `CLAUDE.md` 빌드/테스트 절에
+    이미 있으므로 재기술하지 않고 일반 원칙만 승격.
+  - rollback: `docs/lessons-learned.md`의 `## 문서에 적는 실행 명령` 섹션 전체 제거
+
+- **`.harness/retro-state.json`** ← 마커를 비접두형으로 교체 (커서 복구)
+  - critic: 판정 대상 아님 (규칙 변경이 아니라 상태 파일 수리)
+  - before: `"last_processed_marker": "## 2026-08-05 — harness-enforcement / file-ownership 오탐 재발 + dangerous-command heredoc 오탐"`
+  - after: `"last_processed_marker": "2026-08-06 — harness-docs / 인터프리터 경로 하드코딩이 무해→유해로 전환"`
+  - 검증: 교체 후 `get_new_entries` 신규 0건 (정상 전진)
+  - rollback: 위 before 값으로 복원 (단 커서가 다시 전량 재처리 상태로 돌아간다)
+
+### 제안 (하네스 티어, 승인 대기)
+
+- `harness-proposals/2026-08-06-cursor-marker-prefix-mismatch.md` —
+  `hooks/lib/self_improve/cursor.py`(비protected) + `skills/self-improve/SKILL.md`(**protected**) +
+  `skills/self-improve/scripts/cursor_runner.py`(**protected**) /
+  **최우선**: 비교 시점 마커 정규화 + `marker_resolved` 관측성 + 문서 스키마 예시 수정.
+  critic **UPHELD**. protected 2개를 건드리므로 사람 승인 필수.
+- `harness-proposals/2026-08-06-ssot-command-divergence-capture.md` —
+  `skills/sdd/SKILL.md` §LEARNING 캡처 / "SSOT 명령 불일치"를 캡처 대상에 추가.
+  critic NARROW — **target 교체**(원안 `sdd-orchestrator` Step 4/5는 오케스트레이터가 서브에이전트
+  셸을 못 보므로 탐지 불가) + `:636` "단순 트러블슈팅" 조항과의 충돌 해소 필수.
+
+### 폐기
+
+- 없음. (1회차와 달리 REFUTED 0건 — 신규 신호가 1건뿐이었고 그 1건이 인용 가능한 선행 2건을 동반)
+
+### 다음 라운드 후보 (critic 부수 발견 — 이번 라운드 판정 대상 아님)
+
+- **`run_prechecks` 충돌 오탐이 영구화됐다.** `docs/lessons-learned.md`의 preamble(3–9행,
+  "사람이 직접 규칙을 추가하지 말고 회고 루프를 통해 승격할 것")은 고정이고 `근거`는 모든 엔트리의
+  보일러플레이트 키워드다. ±3행 슬라이딩 윈도우라 **프로젝트 티어 주 타깃 파일을 겨냥한 모든
+  후보에서 앞으로 100% `conflict=True`**가 뜬다 — 일시적 오탐이 아니라 신호가 영구 무용화된 상태.
+  좁은 수정 방향: 충돌 스캔에서 첫 `##` 헤딩 이전 preamble 제외(파서가 이미 쓰는 규약과 동일).
+- **`PROTECTED_SET`이 self-improve의 결정적 코어(`hooks/lib/self_improve/`)를 포함하지 않는다.**
+  프롬프트(`skills/self-improve`)는 보호하면서 같은 루프의 판정 로직은 보호하지 않는다 —
+  이번 커서 결함이 자기 커서 엔진을 대상으로 삼은 상황이 그 비대칭을 처음 실증했다.
+  보호를 넓히면 자가수정 여력이 줄어드는 트레이드오프가 있어 별건 판정 필요.
