@@ -58,7 +58,7 @@ description: "누적된 LEARNING.md 교훈을 읽고 하네스/프로젝트를 �
 ```json
 {
   "schema_version": 1,
-  "last_processed_marker": "## 2026-06-10 — auth-flow / T-03",
+  "last_processed_marker": "2026-06-10 — auth-flow / T-03",
   "last_retro_at": "2026-06-16T00:00:00Z",
   "cumulative": { "applied_project": 0, "proposed_harness": 0, "dropped": 0 }
 }
@@ -72,7 +72,9 @@ description: "누적된 LEARNING.md 교훈을 읽고 하네스/프로젝트를 �
 
 1. 집계 로더(`learning_source.py`, `load_and_merge`)로 로컬 `.harness/LEARNING.md` + (config `.harness/config.json`의 `cross_project_store`가 가리키는) 교차-repo store `*.md`를 합쳐 읽는다. config/키 없으면 로컬-only로 기존과 동일(하위호환). 합쳐진 entries가 없거나 헤더만 있으면 → "신호 없음" 보고하고 종료.
 2. `.harness/retro-state.json`의 `last_processed_marker`를 읽는다. 그 마커 **이후**의 `##` 엔트리만 *신규*로 취급한다. state 파일이 없으면 전체가 신규.
+   - **마커는 파서 산출 형식(헤딩 마크 `##` 없음)으로 저장한다** — 위 스키마 예시 그대로. 비교는 `cursor.py`가 양쪽의 선행 `#`/공백을 정규화하므로 접두형도 매칭되지만, **저장 형식을 둘로 두면 2차 진실원이 된다**.
 3. 신규 엔트리가 0건이면 → "신규 교훈 없음" 보고하고 종료 (커서 갱신 없음).
+   - **커서 미해석 검사 (필수)**: `cursor_runner.run_cursor()`의 `marker_resolved`가 `False`이고 `last_marker`가 비어 있지 않으면, 반환된 엔트리는 **신규가 아니라 fail-safe 전량 재처리분**이다. 그 건수를 "신규 N건"으로 보고하지 말고 `warning` 문자열을 그대로 사용자에게 전달한 뒤, 마커를 바로잡을지 사람에게 확인한다. (근거: 커서가 깨진 상태와 "state 없는 첫 실행"이 구분되지 않으면 매 실행이 조용히 전량 재처리되고 **이미 REFUTED된 후보가 다시 승인 큐로 올라간다** — 2회차 회고에서 13/13건으로 실측됨.)
 
 ### Phase B — 진단·클러스터 (Diagnose & Cluster)
 

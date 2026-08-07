@@ -1,5 +1,11 @@
 # 제안 — retro 커서 마커 형식 불일치 (문서 스키마 ↔ cursor.py)
 
+> ✅ **적용 완료 (2026-08-06, 사용자 승인)** — C3a 정규화 + `marker_resolves()` 신설
+> (`hooks/lib/self_improve/cursor.py`), C3b `marker_resolved`/`warning`
+> (`cursor_runner.py`, protected), C3c 스키마 예시 + Phase A 3항 미해석 검사
+> (`skills/self-improve/SKILL.md`, protected), C3d 회귀 13건. 라이브 검증: 접두형
+> 마커가 14건→1건으로 정상 해석, 미해석 마커는 경고 + fail-safe 전량 유지.
+
 **티어**: 하네스 · **자동 적용 없음**
 **우선순위**: **최상** — self-improve 루프가 자기 커서를 신뢰할 수 없는 상태다.
 **critic 판정**: **UPHELD** (이번 배치 유일)

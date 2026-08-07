@@ -151,6 +151,64 @@ class TestCursorRunner:
         assert result["ok"] is True
         assert result["last_marker"] == "2026-06-10 — auth-flow / T-01"
 
+    # ── 커서 관측성 (marker_resolved / warning) ──────────────────────────────
+    # 회귀: 마커가 해석되지 않으면 get_new_entries 는 fail-safe 로 전량을 반환한다.
+    # 그 분기가 "state 없는 첫 실행"과 구분되지 않으면 깨진 커서가 조용히 매 실행
+    # 전량 재처리되고, 이미 REFUTED 된 후보가 다시 승인 큐로 올라간다.
+
+    @pytest.mark.offline
+    def test_marker_resolved_true_for_valid_marker(
+        self, harness_dir, learning_md, retro_state
+    ):
+        result = run_cursor(harness_dir)
+        assert result["marker_resolved"] is True
+        assert result["warning"] == ""
+
+    @pytest.mark.offline
+    def test_prefixed_marker_still_resolves(self, harness_dir, learning_md):
+        """`## ` 접두형으로 저장돼 있어도 해석된다(정규화)."""
+        (harness_dir / "retro-state.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "last_processed_marker": "## 2026-06-10 — auth-flow / T-01",
+                "last_retro_at": "2026-06-10T00:00:00Z",
+                "cumulative": {"applied_project": 0, "proposed_harness": 0, "dropped": 0},
+            }),
+            encoding="utf-8",
+        )
+        result = run_cursor(harness_dir)
+        assert result["ok"] is True
+        assert result["marker_resolved"] is True
+        assert result["warning"] == ""
+        assert len(result["entries"]) == 1  # 전량(2건)이 아니라 커서 이후 1건
+
+    @pytest.mark.offline
+    def test_unresolved_marker_warns_and_returns_all(self, harness_dir, learning_md):
+        (harness_dir / "retro-state.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "last_processed_marker": "2099-01-01 — pruned-entry / T-0",
+                "last_retro_at": "2026-06-10T00:00:00Z",
+                "cumulative": {"applied_project": 0, "proposed_harness": 0, "dropped": 0},
+            }),
+            encoding="utf-8",
+        )
+        result = run_cursor(harness_dir)
+        assert result["ok"] is True
+        assert result["marker_resolved"] is False
+        assert len(result["entries"]) == 2  # fail-safe 방향 유지 — 전량 반환
+        assert "커서 미해석" in result["warning"]
+        assert "신규" in result["warning"]  # 건수를 신규로 보고하지 말라는 지시 포함
+
+    @pytest.mark.offline
+    def test_first_run_is_not_warned(self, harness_dir, learning_md):
+        """state 부재(첫 실행)는 미해석이 아니다 — warning 을 붙이지 않는다."""
+        result = run_cursor(harness_dir)
+        assert result["ok"] is True
+        assert result["marker_resolved"] is False  # 해석할 마커 자체가 없다
+        assert result["warning"] == ""  # 그러나 경고 대상은 아니다
+        assert len(result["entries"]) == 2
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # precheck_runner

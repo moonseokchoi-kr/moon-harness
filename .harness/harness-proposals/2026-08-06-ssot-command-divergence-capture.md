@@ -1,5 +1,9 @@
 # 제안 — LEARNING 캡처 대상에 "SSOT 명령 불일치" 추가
 
+> ✅ **적용 완료 (2026-08-06, 사용자 승인)** — `skills/sdd/SKILL.md`에 캡처 대상 행,
+> `:636` 트러블슈팅 예외, 트리거 규칙(1회 캡처 + 근거/조치 기재 형식), 엔트리 포맷
+> `유형` 목록 추가. `skills/sdd-orchestrator/SKILL.md`는 critic 지적대로 미변경.
+
 **티어**: 하네스 · **자동 적용 없음**
 **critic 판정**: NARROW (원안의 **target을 교체**해야 한다)
 **근거 엔트리**: `.harness/LEARNING.md`
