@@ -303,13 +303,15 @@ def test_fake_kompound_env_schema(fake_kompound_env: Dict[str, Any]) -> None:
 
 
 def test_fake_kompound_structure(fake_kompound_env: Dict[str, Any]) -> None:
-    """가짜 kompound에 `raw/`·`wiki/{sdd-spec-registry,index,log}.md`가 있다."""
+    """가짜 kompound가 v2 볼트 레이아웃이다(2026-10-07 이관): `10. Raw Sources/`·
+    `20. Wiki/24. Maps/SDD Spec Registry.md`·루트 `index.md`/`log.md`."""
     kompound = fake_kompound_env["kompound"]
-    assert (kompound / "raw").is_dir()
-    assert (kompound / "wiki" / "sdd-spec-registry.md").is_file()
-    assert (kompound / "wiki" / "index.md").is_file()
-    assert (kompound / "wiki" / "log.md").is_file()
-    assert any((kompound / "raw").iterdir())
+    assert (kompound / "10. Raw Sources").is_dir()
+    assert (kompound / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").is_file()
+    assert (kompound / "index.md").is_file()
+    assert (kompound / "log.md").is_file()
+    assert any((kompound / "10. Raw Sources").rglob("*.md"))
+    assert not (kompound / "raw").exists() and not (kompound / "wiki").exists()
 
 
 def test_fake_kompound_git_is_clean(fake_kompound_env: Dict[str, Any]) -> None:
@@ -364,13 +366,16 @@ def test_fake_kompound_boundary_case_seeded(fake_kompound_env: Dict[str, Any]) -
     valid_prefixes = set(prefix_map.values())
 
     kind_suffixes = ("-spec", "-arch", "-ui", "-api", "-context", "-result")
-    raw_files = list((kompound / "raw").glob("*.md"))
+    raw_files = list((kompound / "10. Raw Sources").rglob("*.md"))
+
+    def _slug(p: Path) -> str:
+        return p.stem[len("YYYY-MM-DD-"):]
 
     boundary_candidates = [
         p
         for p in raw_files
-        if p.stem.endswith(kind_suffixes)
-        and not any(p.stem.startswith(prefix + "-") for prefix in valid_prefixes)
+        if _slug(p).endswith(kind_suffixes)
+        and not any(_slug(p).startswith(prefix + "-") for prefix in valid_prefixes)
     ]
     assert boundary_candidates, (
         "§6.3.1 경계 케이스(미등록 프리픽스 + kind 접미사) 파일이 raw/에 없음"

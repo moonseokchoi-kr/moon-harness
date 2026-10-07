@@ -13,7 +13,9 @@ spec: docs/sdd/spec/2026-07-29-kompound-snapshot-hook.md F9.
 
 ## 네트워크 무호출 (F13 ↔ F9, arch §6.4)
 
-이 모듈은 ``fetch``/``pull``/``push``를 **절대 호출하지 않는다**. divergence는
+이 모듈은 ``fetch``/``pull``/``push``를 **절대 호출하지 않는다** — 볼트에 remote가
+없어도(v2 볼트는 2026-10-07 기준 remote 미설정) 정상 동작하고, remote가 생겨도
+push는 사용자 몫이다. divergence는
 "마지막으로 알려진 remote-tracking ref" 기준으로 오프라인 계산한다
 (``git rev-list --left-right --count @{upstream}...HEAD``). "remote가 실제로
 앞서 있는지"는 사용자의 마지막 fetch 시점 기준이라는 한계가 있다(arch §6.4).
@@ -55,6 +57,8 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
+
+from hooks.lib.kompound_snapshot import vault
 
 PathLike = Union[str, Path]
 
@@ -124,7 +128,9 @@ def check_dirty(kompound_repo: PathLike) -> Dict[str, Any]:
       {"ok": False, "dirty": False, "dirty_files": [], "reason": "<message>"}
         — git 바이너리 부재/비-git 디렉토리/존재하지 않는 경로 등.
     """
-    result = _run_git(["status", "--porcelain"], cwd=kompound_repo)
+    # `-z`: 경로를 따옴표로 감싸지 않는다 — v2 볼트 경로에는 공백·`&`·한글이
+    # 흔해서(`10. Raw Sources/...`) 기본 porcelain은 `"..."`로 인용해 버린다.
+    result = _run_git(["status", "--porcelain", "-z"], cwd=kompound_repo)
     if not result["ok"]:
         return {
             "ok": False,
@@ -138,11 +144,19 @@ def check_dirty(kompound_repo: PathLike) -> Dict[str, Any]:
         )
         return {"ok": False, "dirty": False, "dirty_files": [], "reason": reason}
 
-    dirty_files = [
-        line[3:].strip() if len(line) > 3 else line.strip()
-        for line in result["stdout"].splitlines()
-        if line.strip()
-    ]
+    dirty_files: List[str] = []
+    tokens = result["stdout"].split("\0")
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        i += 1
+        if not token.strip():
+            continue
+        status, path = token[:2], token[3:] if len(token) > 3 else token.strip()
+        dirty_files.append(path)
+        if status[:1] in ("R", "C"):
+            i += 1  # rename/copy: 다음 토큰은 원래 경로 — 건너뛴다
+    
     return {
         "ok": True,
         "dirty": bool(dirty_files),
@@ -463,12 +477,14 @@ def commit_raw(
     new_count: int,
     updated_count: int,
     *,
-    paths: Sequence[str] = ("raw",),
+    paths: Sequence[str] = (vault.RAW_ROOT.as_posix(),),
 ) -> Dict[str, Any]:
     """(i) raw 전용 커밋 — ``snapshot(raw): N new, M updated`` (arch §6.3.0).
 
-    ``paths``(기본 ``("raw",)``)만 스테이징한다 — 카탈로그(wiki/*) 변경은
-    이 커밋에 포함하지 않는다(F9 자기 오염 회피, §6.3.0 커밋 경계).
+    ``paths``(기본 v2 raw 루트 ``"10. Raw Sources"``)만 스테이징한다 — 카탈로그
+    (registry/index/log) 변경은 이 커밋에 포함하지 않는다(F9 자기 오염 회피,
+    §6.3.0 커밋 경계). `apply`는 실제로 건드린 raw 파일 경로만 넘긴다. 경로는
+    인자 리스트로 전달되므로 공백·`&`가 있어도 안전하다.
 
     반환: {"ok": bool, "committed": bool, "commit": <sha|None>,
            "reason": <str|None>}
@@ -481,11 +497,16 @@ def commit_catalog(
     kompound_repo: PathLike,
     detail: str,
     *,
-    paths: Sequence[str] = ("wiki",),
+    paths: Sequence[str] = (
+        vault.REGISTRY_RELATIVE.as_posix(),
+        vault.INDEX_RELATIVE.as_posix(),
+        vault.LOG_RELATIVE.as_posix(),
+    ),
 ) -> Dict[str, Any]:
     """(ii) 카탈로그 전용 커밋 — ``snapshot(catalog): <detail>`` (arch §6.3.0).
 
-    ``paths``(기본 ``("wiki",)``)만 스테이징한다 — raw 커밋과 독립적으로
+    ``paths``(기본 v2 카탈로그 3파일 — registry · 루트 index.md · 루트 log.md)만
+    스테이징한다 — raw 커밋과 독립적으로
     수행되며, (i)이 이미 커밋된 뒤에만 호출돼야 한다(§6.3.0 2단 분리).
 
     반환: {"ok": bool, "committed": bool, "commit": <sha|None>,

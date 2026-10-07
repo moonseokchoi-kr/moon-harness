@@ -24,6 +24,9 @@ from typing import Any, Dict
 
 from hooks.lib.kompound_snapshot import git_state
 
+# v2 볼트 raw 위치(2026-10-07 이관 — v1 `raw/` 대체). 공백 포함 경로 그대로 쓴다.
+_RAW = Path("10. Raw Sources") / "17. Specs" / "AI Harness"
+
 
 # ─── 테스트 전용 git 헬퍼 (fixture 조작 — 패키지 본체와 무관) ─────────────
 
@@ -112,9 +115,9 @@ class TestCheckDirty:
         self, fake_kompound_env: Dict[str, Any]
     ) -> None:
         kompound: Path = fake_kompound_env["kompound"]
-        modified = kompound / "raw" / "acme-widget-onboarding-spec.md"
+        modified = kompound / _RAW / "2026-07-01-acme-widget-onboarding-spec.md"
         modified.write_text("changed content\n", encoding="utf-8")
-        untracked = kompound / "raw" / "new-untracked-file.md"
+        untracked = kompound / _RAW / "new-untracked-file.md"
         untracked.write_text("new\n", encoding="utf-8")
 
         result = git_state.check_dirty(kompound)
@@ -168,7 +171,7 @@ class TestCheckDivergence:
         _setup_bare_remote_with_upstream(kompound, tmp_path, base_sha)
 
         # 로컬에 미push 커밋 1개 추가 → ahead=1, behind=0.
-        (kompound / "raw" / "extra.md").write_text("extra\n", encoding="utf-8")
+        (kompound / _RAW / "extra.md").write_text("extra\n", encoding="utf-8")
         _git("add", "-A", cwd=kompound)
         _git("commit", "-q", "-m", "local ahead commit", cwd=kompound)
 
@@ -202,7 +205,7 @@ class TestCheckDivergence:
         remote_only_sha = _commit_tree_only(kompound, base_sha, "remote-only commit")
         _setup_bare_remote_with_upstream(kompound, tmp_path, remote_only_sha)
 
-        (kompound / "raw" / "extra.md").write_text("extra\n", encoding="utf-8")
+        (kompound / _RAW / "extra.md").write_text("extra\n", encoding="utf-8")
         _git("add", "-A", cwd=kompound)
         _git("commit", "-q", "-m", "local diverging commit", cwd=kompound)
 
@@ -250,7 +253,7 @@ class TestCheckPreconditions:
         self, fake_kompound_env: Dict[str, Any]
     ) -> None:
         kompound: Path = fake_kompound_env["kompound"]
-        (kompound / "raw" / "acme-widget-onboarding-spec.md").write_text(
+        (kompound / _RAW / "2026-07-01-acme-widget-onboarding-spec.md").write_text(
             "dirty\n", encoding="utf-8"
         )
 
@@ -300,7 +303,7 @@ class TestCommits:
     ) -> None:
         kompound: Path = fake_kompound_env["kompound"]
         before_sha = _current_sha(kompound)
-        (kompound / "raw" / "new-doc-spec.md").write_text("new doc\n", encoding="utf-8")
+        (kompound / _RAW / "new-doc-spec.md").write_text("new doc\n", encoding="utf-8")
 
         result = git_state.commit_raw(kompound, new_count=1, updated_count=0)
 
@@ -346,7 +349,7 @@ class TestCommits:
         pre_commit.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
         pre_commit.chmod(0o755)
 
-        (kompound / "raw" / "reject-me-spec.md").write_text(
+        (kompound / _RAW / "reject-me-spec.md").write_text(
             "reject\n", encoding="utf-8"
         )
         status_before_add = _git("status", "--porcelain", cwd=kompound).stdout
@@ -387,7 +390,7 @@ class TestCommits:
         의도한 경로를 재현하지 못한다.
         """
         kompound: Path = fake_kompound_env["kompound"]
-        (kompound / "raw" / "diff-check-fail-spec.md").write_text(
+        (kompound / _RAW / "diff-check-fail-spec.md").write_text(
             "diff check fail\n", encoding="utf-8"
         )
         status_before_add = _git("status", "--porcelain", cwd=kompound).stdout
@@ -423,8 +426,8 @@ class TestCommits:
         self, fake_kompound_env: Dict[str, Any]
     ) -> None:
         kompound: Path = fake_kompound_env["kompound"]
-        (kompound / "wiki" / "log.md").write_text(
-            (kompound / "wiki" / "log.md").read_text(encoding="utf-8")
+        (kompound / "log.md").write_text(
+            (kompound / "log.md").read_text(encoding="utf-8")
             + "2026-07-29 [snapshot] test\n",
             encoding="utf-8",
         )
@@ -443,7 +446,7 @@ class TestCommits:
     ) -> None:
         """2단 커밋: raw 커밋 후 카탈로그 커밋이 별도 sha를 가진다(§6.3.0)."""
         kompound: Path = fake_kompound_env["kompound"]
-        (kompound / "raw" / "second-doc-spec.md").write_text(
+        (kompound / _RAW / "second-doc-spec.md").write_text(
             "second\n", encoding="utf-8"
         )
         raw_result = git_state.commit_raw(kompound, new_count=1, updated_count=0)
@@ -453,8 +456,8 @@ class TestCommits:
         precheck = git_state.check_preconditions(kompound)
         assert precheck["dirty"] is False
 
-        (kompound / "wiki" / "index.md").write_text(
-            (kompound / "wiki" / "index.md").read_text(encoding="utf-8")
+        (kompound / "index.md").write_text(
+            (kompound / "index.md").read_text(encoding="utf-8")
             + "\n- 2026-07-29 [snapshot] second-doc\n",
             encoding="utf-8",
         )
@@ -549,7 +552,7 @@ class TestNoNetwork:
         self, fake_kompound_env: Dict[str, Any], no_network: None
     ) -> None:
         kompound: Path = fake_kompound_env["kompound"]
-        (kompound / "raw" / "net-check-spec.md").write_text(
+        (kompound / _RAW / "net-check-spec.md").write_text(
             "net check\n", encoding="utf-8"
         )
         commit_result = git_state.commit_raw(kompound, new_count=1, updated_count=0)
@@ -558,3 +561,33 @@ class TestNoNetwork:
         lock_result = git_state.acquire_lock(kompound)
         assert lock_result["ok"] is True
         git_state.release_lock(kompound)
+
+
+def test_dirty_files_with_spaces_and_ampersand_are_unquoted(fake_kompound_env: Dict[str, Any]) -> None:
+    """v2 볼트 경로(`10. Raw Sources/… & …`)는 기본 porcelain에서 `"..."`로
+    인용된다 — `-z` 파싱으로 실제 경로 그대로 보고해야 한다."""
+    kompound: Path = fake_kompound_env["kompound"]
+    target = kompound / "10. Raw Sources" / "19. Decisions & Lessons" / "Org & Process" / "new file.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("x\n", encoding="utf-8")
+
+    result = git_state.check_dirty(kompound)
+
+    assert result["dirty"] is True
+    assert "10. Raw Sources/19. Decisions & Lessons/Org & Process/new file.md" in result["dirty_files"]
+    assert not any(f.startswith('"') for f in result["dirty_files"])
+
+
+def test_commit_raw_with_space_pathspecs_commits_only_those_paths(fake_kompound_env: Dict[str, Any]) -> None:
+    kompound: Path = fake_kompound_env["kompound"]
+    a = kompound / _RAW / "2026-10-07-acme-a-spec.md"
+    b = kompound / "index.md"
+    a.write_text("a\n", encoding="utf-8")
+    b.write_text(b.read_text(encoding="utf-8") + "\nunrelated\n", encoding="utf-8")
+
+    result = git_state.commit_raw(kompound, 1, 0, paths=[str(_RAW / "2026-10-07-acme-a-spec.md")])
+
+    assert result["ok"] is True and result["committed"] is True
+    status = _git("status", "--porcelain", cwd=kompound).stdout
+    assert "index.md" in status  # 커밋 대상이 아니었던 변경은 그대로 남는다
+    assert "acme-a-spec" not in status

@@ -22,7 +22,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from unittest.mock import patch
 
 import pytest
@@ -206,19 +206,86 @@ def _git(*args: str, cwd: Path) -> None:
     )
 
 
+# ── v2 볼트 레이아웃 (2026-10-07 — kompound가 v1 flat `raw/`+`wiki/`에서
+# cmds-llm-wiki Obsidian 레이아웃 `moon_kompound`로 이관) ─────────────────────
+# fixture도 v2 레이아웃을 그대로 축약 재현한다:
+#   10. Raw Sources/<NN. 유형>/<도메인>/YYYY-MM-DD-<slug>.md   (raw-source 형식)
+#   20. Wiki/24. Maps/SDD Spec Registry.md                    (wikilink 셀)
+#   index.md / log.md                                         (볼트 루트)
+FAKE_RAW_ROOT = "10. Raw Sources"
+FAKE_SPECS_DIR = "10. Raw Sources/17. Specs"
+FAKE_REGISTRY_REL = "20. Wiki/24. Maps/SDD Spec Registry.md"
+FAKE_RAW_DATE = "2026-07-01"
+
+
+def fake_raw_text(slug: str, body: str, *, title: Optional[str] = None, domain: str = "AI Harness") -> str:
+    """v2 raw-source 한 장(테스트용 축약판). ``body``가 ``## Original Content`` 본문."""
+    title = title or slug
+    return (
+        "---\n"
+        "type: raw-source\n"
+        "aliases:\n"
+        f'  - "{title}"\n'
+        f'  - "{slug}"\n'
+        f'description: "fixture raw {slug}."\n'
+        "date created: 2026-07-01\n"
+        "date modified: 2026-07-01\n"
+        "date ingested: 2026-07-01\n"
+        'category: "Specs"\n'
+        f'domain: "{domain}"\n'
+        "status: ingested\n"
+        "---\n"
+        "\n"
+        f"# {title}\n"
+        "\n"
+        "> [!info] Source\n"
+        "> 원본 출처: fake_kompound_env fixture\n"
+        "\n"
+        "---\n"
+        "\n"
+        "## Original Content\n"
+        "\n"
+        f"{body}\n"
+        "\n"
+        "---\n"
+        "\n"
+        "## Metadata\n"
+        "\n"
+        "- **인제스트 일시**: 2026-07-01\n"
+    )
+
+
 # registry 골든 텍스트 — heterogeneous 3형상(§6.3.2: (a) 7열 · (b) 6열 · (c) 8열
 # 통합표) + 갱신 대상 카운트 문장 2종(§6.3.3: "현재 상태" 첫 문장, "관련 문서"의
-# raw 총계) + 날짜 박힌 불변 스냅샷 문장 1종을 실제
-# `marvelous_kompound/wiki/sdd-spec-registry.md`의 형상을 그대로 축약 재현한다.
+# raw 총계) + 날짜 박힌 불변 스냅샷 문장 1종을 실제 v2
+# `20. Wiki/24. Maps/SDD Spec Registry.md`의 형상(frontmatter + wikilink 셀
+# `[[<raw 이름>\|✓]]`)으로 축약 재현한다.
 # raw 6개 = snapshot_set_rule(§6.3.1)을 만족하는 문서만 센 값이다 — 경계 케이스
-# 파일(`notaproject-standalone-topic-ui.md`, 아래 참조)은 포함하지 않는다.
+# 파일(`notaproject-standalone-topic-ui`, 아래 참조)은 포함하지 않는다.
 _FAKE_REGISTRY_TEXT = """\
-<!-- AGENT: do not Edit/Write this file directly. This wiki page is a derived registry of raw/ SDD snapshots. To add/refresh entries, copy the source docs into raw/<project>-<feature>-{spec,arch,ui,api,context,result}.md and re-run the SDD-spec ingest, then update this page. Direct content edits will drift from raw/. index.md / log.md remain operationally maintained. -->
+---
+type: moc
+aliases:
+  - "sdd-spec-registry"
+description: "fixture registry."
+date created: 2026-07-01
+date modified: 2026-07-01
+source:
+  - "[[2026-07-01-acme-widget-onboarding-arch]]"
+  - "[[2026-07-01-acme-widget-onboarding-spec]]"
+  - "[[2026-07-01-beta-launch-flow-arch]]"
+  - "[[2026-07-01-beta-launch-flow-result]]"
+  - "[[2026-07-01-beta-launch-flow-spec]]"
+  - "[[2026-07-01-gamma-metrics-spec]]"
+domain: "AI Harness"
+legacySlug: sdd-spec-registry
+status: active
+---
 
-# sdd-spec-registry (fixture)
+# SDD Spec Registry
 
 이 문서는 `tests/conftest.py`의 `fake_kompound_env`가 생성하는 테스트 전용
-축약 registry다. 실제 `marvelous_kompound/wiki/sdd-spec-registry.md`가 아니다.
+축약 registry다. 실제 `20. Wiki/24. Maps/SDD Spec Registry.md`가 아니다.
 
 ## 현재 상태
 
@@ -228,49 +295,64 @@ _FAKE_REGISTRY_TEXT = """\
 
 | feature | spec | arch | 기타 | result | 기존 위키 | home repo |
 |---------|:--:|:--:|:--:|:--:|------|-----------|
-| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | [✓](../raw/acme-widget-onboarding-arch.md) | — | — | — | acme-widget |
+| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | [[2026-07-01-acme-widget-onboarding-arch\\|✓]] | — | — | — | acme-widget |
 
 ### beta-service (형상 (b) — 6열, `기타` 열 없음)
 
 | feature | spec | arch | result | 기존 위키 | home repo |
 |---------|:--:|:--:|:--:|------|-----------|
-| launch-flow | [✓](../raw/beta-launch-flow-spec.md) | [✓](../raw/beta-launch-flow-arch.md) | [✓](../raw/beta-launch-flow-result.md) | — | beta-service |
+| launch-flow | [[2026-07-01-beta-launch-flow-spec\\|✓]] | [[2026-07-01-beta-launch-flow-arch\\|✓]] | [[2026-07-01-beta-launch-flow-result\\|✓]] | — | beta-service |
 
 ### 기타 프로젝트 (형상 (c) — `프로젝트` 열이 선행하는 8열 통합표)
 
 | 프로젝트 | feature | spec | arch | 기타 | result | 기존 위키 | home repo |
 |---|---|:--:|:--:|:--:|:--:|------|-----------|
-| gamma-tool | metrics | [✓](../raw/gamma-metrics-spec.md) | — | — | — | — | gamma-tool |
+| gamma-tool | metrics | [[2026-07-01-gamma-metrics-spec\\|✓]] | — | — | — | — | gamma-tool |
 
 **2026-07-01 재스냅샷**: 3 feature · raw 6개. 직전 스냅샷(2026-06-01)은 1 feature · raw 2개였다.
 
 ## 결정과 근거
 
-- 이 fixture는 테스트 전용이며 실제 kompound `raw/`·프로젝트와 무관하다.
+- 이 fixture는 테스트 전용이며 실제 kompound raw·프로젝트와 무관하다.
 
 ## 관련 문서
 - raw: `raw/<project>-<feature>-<kind>.md` 6개 (위 표 링크)
 """
 
 _FAKE_INDEX_TEXT = """\
+---
+type: moc
+---
+
 # Wiki Index (fixture)
 
-## Entries
+## 🗺 Domain Maps
 
-- [sdd-spec-registry](sdd-spec-registry.md) — 테스트 전용 축약 registry (fake_kompound_env)
+운영 페이지:
 
-## 최근 변경
+- [[SDD Spec Registry]] — 테스트 전용 축약 registry (fake_kompound_env)
+
+## ⚠️ Open Contradictions
+
+(없음 — fixture 전용)
+
+## 📥 Recent Ingests
+
+> fixture 머리말 (최신순).
 
 - 2026-07-01 [bulk-ingest] fake_kompound_env 초기 시드 — 3 feature · raw 6개
 
-## 미해결 모순
+## 🔗 Quick Links
 
-(없음 — fixture 전용)
+- [[log]]
 """
 
 _FAKE_LOG_TEXT = (
-    "2026-07-01 [bulk-ingest] fake_kompound_env 초기 시드 — 테스트 전용, "
-    "실제 kompound 아님\n"
+    "# Log (fixture)\n"
+    "\n"
+    "## [2026-07-01] bulk-ingest | fake_kompound_env 초기 시드\n"
+    "\n"
+    "- 테스트 전용, 실제 kompound 아님\n"
 )
 
 # §6.3.1 경계 케이스: 프리픽스가 등록되지 않은("notaproject"는 아래 prefix_map
@@ -280,21 +362,28 @@ _FAKE_LOG_TEXT = (
 # 6개에 포함되지 않음).
 _FAKE_BOUNDARY_RAW_NAME = "notaproject-standalone-topic-ui.md"
 _FAKE_BOUNDARY_RAW_TEXT = (
-    "# standalone topic\n\n"
     "사람이 독립적으로 `/ingest`한 주제 문서. 파일명이 우연히 kind 접미사"
     "(`-ui`)로 끝나지만 프리픽스가 매핑돼 있지 않으므로 SDD 스냅샷 집합"
-    "(snapshot_set_rule, arch §6.3.1) 밖이다.\n"
+    "(snapshot_set_rule, arch §6.3.1) 밖이다."
 )
 
+# 논리 이름(slug.md) → (볼트 기준 상위 디렉토리, Original Content 본문).
+# 도메인/유형을 일부러 섞어 "기존 raw는 어디에 있든 찾는다"를 fixture가 보장한다.
 _FAKE_RAW_DOCS = {
-    "acme-widget-onboarding-spec.md": "# widget-onboarding spec (fixture)\n",
-    "acme-widget-onboarding-arch.md": "# widget-onboarding arch (fixture)\n",
-    "beta-launch-flow-spec.md": "# launch-flow spec (fixture)\n",
-    "beta-launch-flow-arch.md": "# launch-flow arch (fixture)\n",
-    "beta-launch-flow-result.md": "# launch-flow result (fixture)\n",
-    "gamma-metrics-spec.md": "# metrics spec (fixture)\n",
-    _FAKE_BOUNDARY_RAW_NAME: _FAKE_BOUNDARY_RAW_TEXT,
+    "acme-widget-onboarding-spec.md": (f"{FAKE_SPECS_DIR}/AI Harness", "widget-onboarding spec (fixture)"),
+    "acme-widget-onboarding-arch.md": (f"{FAKE_SPECS_DIR}/AI Harness", "widget-onboarding arch (fixture)"),
+    "beta-launch-flow-spec.md": (f"{FAKE_SPECS_DIR}/Pattern API", "launch-flow spec (fixture)"),
+    "beta-launch-flow-arch.md": (f"{FAKE_SPECS_DIR}/Pattern API", "launch-flow arch (fixture)"),
+    "beta-launch-flow-result.md": (f"{FAKE_SPECS_DIR}/Pattern API", "launch-flow result (fixture)"),
+    "gamma-metrics-spec.md": (f"{FAKE_RAW_ROOT}/19. Decisions & Lessons/CLOFab", "metrics spec (fixture)"),
+    _FAKE_BOUNDARY_RAW_NAME: (f"{FAKE_RAW_ROOT}/19. Decisions & Lessons/Org & Process", _FAKE_BOUNDARY_RAW_TEXT),
 }
+
+
+def fake_raw_path(kompound: Path, logical_name: str) -> Path:
+    """fixture가 심은 raw의 실제 경로(논리 이름 ``<slug>.md`` 기준)."""
+    rel_dir, _ = _FAKE_RAW_DOCS[logical_name]
+    return kompound / rel_dir / f"{FAKE_RAW_DATE}-{logical_name}"
 
 # workspace 스코프: 스캔 루트 아래 홈 repo 트리 + 워크트리 전용 문서 케이스.
 # repo dir 이름(`acme-widget`)은 config["prefix_map"]의 키와 일치해야 한다
@@ -308,6 +397,16 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_kompound_default_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """config ③-b 잘 알려진 기본 볼트 위치(`~/workspace/moon_kompound`)를 테스트
+    전역에서 끈다 — 개발 머신에 실제 볼트가 있으면 "미설정" 케이스가 그걸
+    집어 결과가 머신에 따라 달라진다. 서브프로세스(게이트 스크립트)도 env를
+    상속하므로 함께 격리된다. 기본 위치 자체를 검증하는 테스트는 이 env를
+    다시 설정한다."""
+    monkeypatch.setenv("HARNESS_KOMPOUND_DEFAULT_REPO", "")
+
+
 @pytest.fixture()
 def fake_kompound_env(tmp_path: Path) -> Dict[str, Any]:
     """오프라인 kompound + workspace + config 계약 fixture (arch §9.3, spec F13).
@@ -315,10 +414,12 @@ def fake_kompound_env(tmp_path: Path) -> Dict[str, Any]:
     `tmp_path` 아래에 다음을 만들고 ``{"kompound": Path, "workspace": Path,
     "config": dict}``를 반환한다:
 
-    - ``fake_kompound/``: ``git init`` + 초기 커밋된 가짜 kompound. ``raw/``,
-      ``wiki/{sdd-spec-registry,index,log}.md``. registry는 heterogeneous
+    - ``fake_kompound/``: ``git init`` + 초기 커밋된 가짜 kompound(v2 볼트
+      레이아웃). ``10. Raw Sources/<유형>/<도메인>/YYYY-MM-DD-<slug>.md``,
+      ``20. Wiki/24. Maps/SDD Spec Registry.md``, 루트 ``index.md``·``log.md``.
+      registry는 heterogeneous
       표 3형상 + 갱신 대상 카운트 문장 2종 + 날짜 박힌 불변 문장을 포함한다
-      (§6.3.2·§6.3.3). ``raw/``에는 §6.3.1 경계 케이스(미등록 프리픽스 +
+      (§6.3.2·§6.3.3). raw에는 §6.3.1 경계 케이스(미등록 프리픽스 +
       kind 접미사)가 1건 심어져 있다.
     - ``fake_workspace/<repo>/docs/sdd/{spec,design/arch,result}/``,
       ``<repo>/worktrees/<wt>/docs/sdd/spec/``(워크트리 전용 문서 케이스).
@@ -333,12 +434,14 @@ def fake_kompound_env(tmp_path: Path) -> Dict[str, Any]:
     kompound = tmp_path / "fake_kompound"
     workspace = tmp_path / "fake_workspace"
 
-    # ── fake_kompound: raw/ + wiki/{registry,index,log} ────────────────────
-    for name, text in _FAKE_RAW_DOCS.items():
-        _write(kompound / "raw" / name, text)
-    _write(kompound / "wiki" / "sdd-spec-registry.md", _FAKE_REGISTRY_TEXT)
-    _write(kompound / "wiki" / "index.md", _FAKE_INDEX_TEXT)
-    _write(kompound / "wiki" / "log.md", _FAKE_LOG_TEXT)
+    # ── fake_kompound: v2 볼트 (10. Raw Sources/ + 20. Wiki/ + index/log) ──
+    for name, (rel_dir, body) in _FAKE_RAW_DOCS.items():
+        slug = name[: -len(".md")]
+        domain = rel_dir.rsplit("/", 1)[-1]
+        _write(fake_raw_path(kompound, name), fake_raw_text(slug, body, domain=domain))
+    _write(kompound / FAKE_REGISTRY_REL, _FAKE_REGISTRY_TEXT)
+    _write(kompound / "index.md", _FAKE_INDEX_TEXT)
+    _write(kompound / "log.md", _FAKE_LOG_TEXT)
 
     _git("init", "-q", cwd=kompound)
     _git("add", "-A", cwd=kompound)

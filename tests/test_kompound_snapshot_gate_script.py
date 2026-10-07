@@ -38,6 +38,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _GATE_SCRIPT = _REPO_ROOT / "hooks" / "enforcement" / "kompound-snapshot-gate.sh"
 _HOOKS_JSON_PATH = _REPO_ROOT / "hooks" / "hooks.json"
 
+# v2 볼트 경로(2026-10-07 이관). 미등록 프리픽스(acme/delta)는 폴백 도메인 AI Harness로 간다.
+_RAW_ROOT = "10. Raw Sources"
+_SPECS_AI = Path("10. Raw Sources") / "17. Specs" / "AI Harness"
+_REGISTRY = Path("20. Wiki") / "24. Maps" / "SDD Spec Registry.md"
+
+
+def _find_raw(kompound: Path, slug: str) -> list:
+    """`<날짜>-<slug>.md`를 raw 루트 아래 어디서든 찾는다(박제일은 실행 날짜)."""
+    return list((kompound / _RAW_ROOT).rglob(f"*-{slug}.md"))
+
 
 # ── git/fixture 헬퍼 (다른 kompound_snapshot 테스트 파일과 동일한 관례) ──────
 
@@ -76,14 +86,15 @@ def _seed_worktree_repo(
 
 
 def _inject_bad_raw_subdir(kompound: Path) -> None:
-    """`raw/`에 `assets/` 외 서브디렉토리를 심고 커밋한다 — `check_flat_structure`
-    (F8 게이트)가 항상 실패하도록 만드는, 우리 문서와 무관한 구조적 위반
-    (test_kompound_snapshot_apply.py와 동일한 기법)."""
-    bad_dir = kompound / "raw" / "badsubdir"
-    bad_dir.mkdir(parents=True, exist_ok=True)
-    (bad_dir / "placeholder.md").write_text("placeholder\n", encoding="utf-8")
+    """스냅샷 raw 1건을 도메인 폴더 없이 유형 폴더 바로 아래에 심고 커밋한다 —
+    `check_raw_layout`(F8 게이트 3, v1 flat_structure의 v2판)이 항상 실패하도록
+    만드는, 우리 문서와 무관한 구조적 위반(test_kompound_snapshot_apply.py와
+    동일한 기법)."""
+    stray = kompound / _RAW_ROOT / "17. Specs" / "2026-07-01-acme-stray-layout-spec.md"
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_text("# stray\n\n## Original Content\n\nstray\n", encoding="utf-8")
     _git("add", "-A", cwd=kompound)
-    _git("commit", "-q", "-m", "test setup: inject raw/ subdirectory to fail flat_structure gate", cwd=kompound)
+    _git("commit", "-q", "-m", "test setup: inject raw layout violation", cwd=kompound)
 
 
 def _write_config_file(path: Path, cfg: Dict[str, Any]) -> Path:
@@ -384,8 +395,7 @@ def test_gate_warns_and_passes_on_full_snapshot_success(
     assert "박제된 문서" in proc.stderr
     assert "acme-gate-script-snapshot-spec.md" in proc.stderr
     assert "✔" in proc.stderr
-    raw_file = gate_env["kompound"] / "raw" / "acme-gate-script-snapshot-spec.md"
-    assert raw_file.is_file()
+    assert _find_raw(gate_env["kompound"], "acme-gate-script-snapshot-spec")
 
 
 # ── 분기3-b: raw만 성공, 카탈로그 뒤처짐(verify_failed/catalog_unparsed) ────
@@ -395,7 +405,7 @@ def test_gate_warns_and_passes_on_full_snapshot_success(
 def test_gate_warns_and_passes_on_verify_failed_f8_gate_failure(
     configured_env: Dict[str, str], gate_env: Dict[str, Any]
 ) -> None:
-    """F8 검증 게이트(flat_structure) 실패 — raw는 이미 커밋됐으므로 차단하지
+    """F8 검증 게이트(raw_layout) 실패 — raw는 이미 커밋됐으므로 차단하지
     않는다(exit 50, A-5 핵심)."""
     _inject_bad_raw_subdir(gate_env["kompound"])
     wt = _seed_worktree_repo(
@@ -408,14 +418,15 @@ def test_gate_warns_and_passes_on_verify_failed_f8_gate_failure(
     assert report.blocks_deletion("verify_failed") is False
     assert "✔" in proc.stderr
     assert "raw" in proc.stderr and "카탈로그" in proc.stderr
-    raw_file = gate_env["kompound"] / "raw" / "acme-gate-script-verifyfailed-spec.md"
-    assert raw_file.is_file(), "verify_failed여도 raw는 이미 커밋되어 있어야 한다"
+    assert _find_raw(gate_env["kompound"], "acme-gate-script-verifyfailed-spec"), (
+        "verify_failed여도 raw는 이미 커밋되어 있어야 한다"
+    )
 
 
 def test_gate_warns_and_passes_on_catalog_unparsed(configured_env: Dict[str, str], gate_env: Dict[str, Any]) -> None:
     """registry 신규 섹션 신설 앵커("## 결정과 근거")가 없으면 카탈로그
     갱신을 파싱하지 못한다 — raw는 이미 커밋됐으므로 차단하지 않는다(exit 55)."""
-    registry_path = gate_env["kompound"] / "wiki" / "sdd-spec-registry.md"
+    registry_path = gate_env["kompound"] / _REGISTRY
     original_text = registry_path.read_text(encoding="utf-8")
     broken_text = original_text.replace("## 결정과 근거", "## Decisions (renamed)")
     registry_path.write_text(broken_text, encoding="utf-8")
@@ -431,8 +442,9 @@ def test_gate_warns_and_passes_on_catalog_unparsed(configured_env: Dict[str, str
     assert proc.returncode == 0, f"catalog_unparsed(55)이 차단됐다 — A-5 위반. stderr={proc.stderr!r}"
     assert report.blocks_deletion("catalog_unparsed") is False
     assert "✔" in proc.stderr
-    raw_file = gate_env["kompound"] / "raw" / "delta-gate-script-catalogunparsed-spec.md"
-    assert raw_file.is_file(), "catalog_unparsed여도 raw는 이미 커밋되어 있어야 한다"
+    assert _find_raw(gate_env["kompound"], "delta-gate-script-catalogunparsed-spec"), (
+        "catalog_unparsed여도 raw는 이미 커밋되어 있어야 한다"
+    )
 
 
 # ── 분기4: 자동박제 실패 차단 ────────────────────────────────────────────────
@@ -441,7 +453,7 @@ def test_gate_warns_and_passes_on_catalog_unparsed(configured_env: Dict[str, str
 def test_gate_blocks_precondition_failed_f9_with_dirty_file_list(
     configured_env: Dict[str, str], gate_env: Dict[str, Any]
 ) -> None:
-    (gate_env["kompound"] / "raw" / "untracked-dirty-file.md").write_text("dirty\n", encoding="utf-8")
+    (gate_env["kompound"] / _RAW_ROOT / "untracked-dirty-file.md").write_text("dirty\n", encoding="utf-8")
     wt = _seed_worktree_repo(
         gate_env["scope_root"], "acme-widget", "wt-dirty", "gate-script-dirty", kinds=("spec",)
     )
@@ -469,8 +481,9 @@ def test_gate_blocks_unmapped_blocking_f12_with_unmapped_list(
 
 
 def test_gate_blocks_write_failed_raw_copy_failure(configured_env: Dict[str, str], gate_env: Dict[str, Any]) -> None:
-    """`raw/`를 쓰기 불가로 만들어 (i) raw 복사 자체가 실패하게 한다(exit 60)."""
-    raw_dir = gate_env["kompound"] / "raw"
+    """신규 raw가 갈 도메인 폴더(`17. Specs/AI Harness`)를 쓰기 불가로 만들어 (i) raw
+    박제 자체가 실패하게 한다(exit 60)."""
+    raw_dir = gate_env["kompound"] / _SPECS_AI
     wt = _seed_worktree_repo(
         gate_env["scope_root"], "acme-widget", "wt-write-failed", "gate-script-writefailed", kinds=("spec",)
     )

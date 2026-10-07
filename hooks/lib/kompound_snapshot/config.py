@@ -59,9 +59,14 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from hooks.lib.kompound_snapshot import vault
 from hooks.lib.self_improve.state_io import load_state
 
-__all__ = ["DEFAULT_PREFIX_MAP", "resolve_config"]
+__all__ = ["DEFAULT_PREFIX_MAP", "DEFAULT_DOMAIN_MAP", "resolve_config"]
+
+# 프리픽스 → 신규 raw 도메인 기본 매핑. 데이터의 단일 진실은 `vault.py`(레이아웃
+# 계약과 같은 곳)이고, 여기서는 병합의 최하위 소스로 재노출한다.
+DEFAULT_DOMAIN_MAP: Dict[str, str] = dict(vault.DEFAULT_DOMAIN_MAP)
 
 PathLike = Union[str, "Path"]
 
@@ -107,11 +112,19 @@ _SCALAR_FIELDS: Tuple[str, ...] = (
     "state_max_age_hours",
 )
 
-# kompound 서명(arch §6.1 ③-2) — 이름이 아니라 구조로 식별한다.
-_SIGNATURE_GIT = ".git"
-_SIGNATURE_RAW_DIR = "raw"
-_SIGNATURE_WIKI_INDEX = Path("wiki") / "index.md"
-_SIGNATURE_WIKI_LOG = Path("wiki") / "log.md"
+# kompound 서명(arch §6.1 ③-2) — 이름이 아니라 구조로 식별한다. 2026-10-07
+# v2 볼트 이관 이후 서명은 v2 레이아웃(`10. Raw Sources/` + `20. Wiki/` + 루트
+# `index.md`/`log.md` + `.git`)이다 — 단일 진실은 `vault.is_vault()`. v1
+# (`raw/` + `wiki/index.md`) 레이아웃은 더 이상 서명을 통과하지 않으므로, 같은
+# 부모 아래 v1 보관본(`marvelous_kompound`)과 v2(`moon_kompound`)가 공존해도
+# 후보는 v2 하나로 좁혀진다.
+
+# ③-b 잘 알려진 기본 위치 — 형제 탐색이 실패했을 때(예: 프로젝트가
+# `<repo>/worktrees/<wt>`라 부모의 형제가 볼트가 아닐 때) 마지막으로 시도한다.
+# 서명을 통과할 때만 채택한다. `HARNESS_KOMPOUND_DEFAULT_REPO`로 위치를 바꿀 수
+# 있고, 빈 문자열이면 이 단계를 끈다(테스트 격리용).
+_ENV_DEFAULT_REPO = "HARNESS_KOMPOUND_DEFAULT_REPO"
+_WELL_KNOWN_RELATIVE_TO_HOME = Path("workspace") / "moon_kompound"
 
 
 # ── 내부 헬퍼 ────────────────────────────────────────────────────────────────
@@ -148,26 +161,26 @@ def _read_env_scalars() -> Dict[str, Optional[str]]:
 
 
 def _kompound_signature_ok(candidate: Path) -> bool:
-    """`candidate`가 kompound 서명(arch §6.1 ③-2 4조건)을 만족하는가.
+    """`candidate`가 kompound(v2 볼트) 서명을 만족하는가 — `vault.is_vault()` 위임.
 
-    이름이 아니라 구조로 판정한다 — AGENTS.md가 규정한 kompound의 필수
-    구조(git 저장소 + `raw/` + `wiki/index.md` + `wiki/log.md`)를 그대로
-    검사한다. 파일시스템 오류(권한 등)는 미충족으로 처리한다.
+    이름이 아니라 구조로 판정한다. 파일시스템 오류(권한 등)는 미충족으로 처리한다.
     """
-    try:
-        if not candidate.is_dir():
-            return False
-        if not (candidate / _SIGNATURE_GIT).exists():
-            return False
-        if not (candidate / _SIGNATURE_RAW_DIR).is_dir():
-            return False
-        if not (candidate / _SIGNATURE_WIKI_INDEX).is_file():
-            return False
-        if not (candidate / _SIGNATURE_WIKI_LOG).is_file():
-            return False
-        return True
-    except OSError:
-        return False
+    return vault.is_vault(candidate)
+
+
+def _well_known_default() -> Optional[Path]:
+    """③-b 잘 알려진 기본 볼트 위치(`~/workspace/moon_kompound`). 서명 통과 시만 채택."""
+    override = os.environ.get(_ENV_DEFAULT_REPO)
+    if override is not None:
+        if not override.strip():
+            return None
+        candidate = Path(override).expanduser()
+    else:
+        try:
+            candidate = Path.home() / _WELL_KNOWN_RELATIVE_TO_HOME
+        except (RuntimeError, OSError):
+            return None
+    return candidate if _kompound_signature_ok(candidate) else None
 
 
 def _discover_kompound(project_root: Path) -> Optional[Path]:
@@ -246,6 +259,29 @@ def _merge_prefix_map(sources_low_to_high: List[Optional[Dict[str, Any]]]) -> Di
     return merged
 
 
+def _merge_domain_map(sources_low_to_high: List[Optional[Dict[str, Any]]]) -> Dict[str, str]:
+    """`domain_map`(프리픽스 → v2 도메인)을 `prefix_map`과 같은 규칙으로 병합한다.
+
+    `DEFAULT_DOMAIN_MAP`이 최하위 소스. 값이 `null`이면 키 삭제(→ 기본 폴백
+    도메인). 볼트 도메인 10종(`vault.DOMAINS`) 밖의 값은 무시한다 — 볼트 규칙상
+    새 도메인은 사용자 확인 후에만 만들 수 있으므로 훅이 임의로 폴더를 만들지
+    않는다.
+    """
+    merged: Dict[str, str] = dict(DEFAULT_DOMAIN_MAP)
+    for data in sources_low_to_high:
+        if not data:
+            continue
+        domain_map = data.get("domain_map")
+        if not isinstance(domain_map, dict):
+            continue
+        for key, value in domain_map.items():
+            if value is None:
+                merged.pop(key, None)
+            elif value in vault.DOMAINS:
+                merged[key] = value
+    return merged
+
+
 def _default_project_root() -> Path:
     """`project_root` 미지정 시 기본값 — `CLAUDE_PROJECT_DIR` 우선, 없으면 cwd.
 
@@ -264,10 +300,12 @@ def _empty_result(error: Optional[str] = None) -> Dict[str, Any]:
         "max_anchor_depth": _DEFAULT_MAX_ANCHOR_DEPTH,
         "state_max_age_hours": _DEFAULT_STATE_MAX_AGE_HOURS,
         "prefix_map": dict(DEFAULT_PREFIX_MAP),
+        "domain_map": dict(DEFAULT_DOMAIN_MAP),
         "source": {
             "max_anchor_depth": "default",
             "state_max_age_hours": "default",
             "prefix_map": "default",
+            "domain_map": "default",
         },
     }
     if error is not None:
@@ -333,14 +371,18 @@ def _resolve_config_impl(project_root: Optional[PathLike]) -> Dict[str, Any]:
     # scan_root도 미해석인 경우에 한해 같이 채운다(arch §6.1 ③-4).
     if resolved.get("kompound_repo") is None:
         discovered = _discover_kompound(root)
+        discovered_source = "discovery"
+        if discovered is None:
+            discovered = _well_known_default()
+            discovered_source = "default"
         if discovered is not None:
             resolved["kompound_repo"] = str(discovered)
-            source["kompound_repo"] = "discovery"
+            source["kompound_repo"] = discovered_source
             if resolved.get("scan_root") is None:
                 scan_root_candidate = discovered.parent
                 if not _reject_scan_root(scan_root_candidate):
                     resolved["scan_root"] = str(scan_root_candidate)
-                    source["scan_root"] = "discovery"
+                    source["scan_root"] = discovered_source
 
     # ④ 코드 기본값 — max_anchor_depth/state_max_age_hours만 해당한다.
     # kompound_repo/scan_root는 "기본값"이 없다(미해석 = 미해석).
@@ -359,6 +401,13 @@ def _resolve_config_impl(project_root: Optional[PathLike]) -> Dict[str, Any]:
     resolved["prefix_map"] = _merge_prefix_map([home_file, project_file])
     source["prefix_map"] = "merged" if prefix_overridden else "default"
 
+    domain_overridden = any(
+        isinstance(data, dict) and isinstance(data.get("domain_map"), dict) and data.get("domain_map")
+        for data in (home_file, project_file)
+    )
+    resolved["domain_map"] = _merge_domain_map([home_file, project_file])
+    source["domain_map"] = "merged" if domain_overridden else "default"
+
     resolved["ok"] = resolved.get("kompound_repo") is not None
     resolved["source"] = source
 
@@ -370,5 +419,6 @@ def _resolve_config_impl(project_root: Optional[PathLike]) -> Dict[str, Any]:
         "max_anchor_depth": resolved["max_anchor_depth"],
         "state_max_age_hours": resolved["state_max_age_hours"],
         "prefix_map": resolved["prefix_map"],
+        "domain_map": resolved["domain_map"],
         "source": resolved["source"],
     }

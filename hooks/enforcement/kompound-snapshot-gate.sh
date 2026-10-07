@@ -161,7 +161,7 @@ if [ "$BLOCKS" = "1" ]; then
       ;;
   esac
   gate_block "KOMPOUND-SNAPSHOT-GATE" "${HUMAN:-워크트리 삭제를 차단했습니다 ($VERDICT)}${DETAIL}" \
-    "수동 절차: SDD 산출물(spec/arch/ui/api/result 등)을 marvelous_kompound의 raw/에 verbatim 복사하고 registry/index.md/log.md를 직접 갱신한 뒤 다시 시도하세요. 이 기능이 필요 없다면 HARNESS_KOMPOUND_REPO 환경변수를 비워서 끌 수 있습니다."
+    "수동 절차: SDD 산출물(spec/arch/ui/api/result 등)을 kompound 볼트의 '10. Raw Sources/17. Specs/<도메인>/YYYY-MM-DD-<project>-<feature>-<kind>.md'로 박제(## Original Content에 verbatim)하고 '20. Wiki/24. Maps/SDD Spec Registry.md'·index.md·log.md를 직접 갱신한 뒤 다시 시도하세요. 이 기능이 필요 없다면 HARNESS_KOMPOUND_REPO 환경변수를 비워서 끌 수 있습니다."
   exit 2
 fi
 

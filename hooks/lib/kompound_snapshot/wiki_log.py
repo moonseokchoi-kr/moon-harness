@@ -1,12 +1,13 @@
 """hooks/lib/kompound_snapshot/wiki_log.py — F7/F10 index.md·log.md 갱신 (arch §6.3).
 
-``wiki/index.md``와 ``wiki/log.md``에 대한 쓰기 형태 규율(arch §6.3):
+v2 볼트(2026-10-07~) 루트 ``index.md``와 ``log.md``에 대한 쓰기 형태 규율:
 
-- ``index.md``: Entries의 ``sdd-spec-registry`` 훅 문장 **그 한 줄만** 교체하고,
-  최근 변경 섹션에는 새 항목을 **prepend**한다. Entries의 다른 줄과
-  ``미해결 모순`` 섹션은 건드리지 않는다.
-- ``log.md``: **append-only**로 배치 요약 1줄만 추가한다(AGENTS.md Bulk
-  Ingest "배치 1건 = 로그 1줄").
+- ``index.md``: ``- [[SDD Spec Registry]] — ...`` 훅 문장 **그 한 줄만** 교체하고,
+  ``## 📥 Recent Ingests`` 섹션의 첫 목록 항목 앞에 새 항목을 **prepend**한다
+  (``- YYYY-MM-DD [snapshot] ...``, 최신순). 다른 줄과 ``## ⚠️ Open
+  Contradictions`` 섹션은 건드리지 않는다.
+- ``log.md``: **append-only**로 배치 1건 = 엔트리 1개만 추가한다
+  (``## [YYYY-MM-DD] snapshot | <제목>`` + 빈 줄 + ``- <요약>``).
 
 F10 "동시 편집 충돌 — 양쪽 보존"은 이 쓰기 형태 자체로 성립한다: ``log.md``는
 append-only, ``index.md`` 최근 변경은 prepend-only이고 기존 줄은 수정하지
@@ -36,57 +37,51 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-__all__ = ["update_index", "append_log", "build_snapshot_log_line"]
+__all__ = ["update_index", "append_log", "build_snapshot_log_line", "build_log_entry"]
 
-_ENTRIES_HEADING = "## Entries"
-_RECENT_CHANGES_HEADING = "## 최근 변경"
-_HOOK_TARGET = "sdd-spec-registry"
-_HOOK_LINK_ANCHOR = f"[{_HOOK_TARGET}]("
+_RECENT_CHANGES_TITLE = "Recent Ingests"  # `## 📥 Recent Ingests` (이모지 유무 무관)
+_HOOK_TARGET = "SDD Spec Registry"
+_HOOK_LINK_ANCHOR = f"- [[{_HOOK_TARGET}]]"
 
 
 def _find_hook_line(lines: Sequence[str]) -> Optional[int]:
-    """Entries 섹션 안에서 ``sdd-spec-registry`` 항목의 **링크 앵커** 줄만 찾는다.
+    """``- [[SDD Spec Registry]]`` 로 **시작하는** 목록 줄 하나를 찾는다.
 
-    두 조건을 함께 적용해야 arch §6.3 "Entries의 다른 줄은 건드리지 않는다"가
-    실제로 보장된다(리뷰 [P1], it.2):
-
-    1. **섹션 경계** — ``## Entries``와 다음 ``## `` 헤딩 사이만 스캔한다.
-       Entries 밖(예: 다른 섹션이 산문으로 이 이름을 언급하는 줄)은 애초에
-       후보가 아니다.
-    2. **링크 앵커 매칭** — 줄 전체의 부분 문자열이 아니라
-       ``- [sdd-spec-registry](`` 형태의 실제 마크다운 링크 앵커만 매칭한다.
-       "이 줄이 sdd-spec-registry를 산문으로 언급"하는 다른 Entries 항목(실제
-       ``wiki/index.md``에 흔한 스타일 — Entries 항목끼리 서로를 참조하는
-       설명)과 진짜 훅 항목을 구별하지 못하면, 알파벳순으로 앞서는 그런 줄이
-       대신 치환돼 사람이 쓴 설명이 사라지고 진짜 훅 줄은 옛 카운트로 남아
-       링크가 중복되는 결함이 생긴다(리뷰어 재현 케이스).
+    줄 시작 앵커 매칭이라, 다른 항목이 설명 문장 안에서 ``[[SDD Spec Registry]]``
+    를 언급하는 줄은 대상이 아니다(v1 리뷰 [P1] 함정과 같은 원칙 — 사람이 쓴
+    설명 줄을 덮어쓰지 않는다). ``[[SDD Spec Registry|별칭]]`` 형태도 허용한다.
     """
-    entries_idx = None
+    alias_anchor = f"- [[{_HOOK_TARGET}|"
     for i, line in enumerate(lines):
-        if line.strip() == _ENTRIES_HEADING:
-            entries_idx = i
-            break
-    if entries_idx is None:
-        return None
-
-    end = len(lines)
-    for i in range(entries_idx + 1, len(lines)):
-        if lines[i].startswith("## "):
-            end = i
-            break
-
-    for i in range(entries_idx + 1, end):
-        stripped = lines[i].strip()
-        if stripped.startswith("-") and _HOOK_LINK_ANCHOR in stripped:
+        stripped = line.strip()
+        if stripped.startswith(_HOOK_LINK_ANCHOR) or stripped.startswith(alias_anchor):
             return i
     return None
 
 
 def _find_recent_changes_heading(lines: Sequence[str]) -> Optional[int]:
     for i, line in enumerate(lines):
-        if line.strip() == _RECENT_CHANGES_HEADING:
+        stripped = line.strip()
+        if stripped.startswith("## ") and stripped.endswith(_RECENT_CHANGES_TITLE):
             return i
     return None
+
+
+def _recent_insert_position(lines: Sequence[str], heading_idx: int) -> int:
+    """Recent Ingests 섹션의 첫 목록 항목 위치(최신순 prepend). 항목이 없으면
+    섹션 머리말(빈 줄·인용문) 뒤."""
+    end = len(lines)
+    for i in range(heading_idx + 1, len(lines)):
+        if lines[i].startswith("## ") or lines[i].strip() == "---":
+            end = i
+            break
+    for i in range(heading_idx + 1, end):
+        if lines[i].lstrip().startswith("- "):
+            return i
+    pos = heading_idx + 1
+    while pos < end and (lines[pos].strip() == "" or lines[pos].lstrip().startswith(">")):
+        pos += 1
+    return pos
 
 
 def update_index(
@@ -98,19 +93,16 @@ def update_index(
     """``index.md``의 Entries 훅 문장 교체 + 최근 변경 prepend(arch §6.3).
 
     Args:
-        index_text: 현재 ``wiki/index.md`` 전체 텍스트.
-        hook_line: Entries의 ``sdd-spec-registry`` 훅 문장을 교체할 완성된
-            한 줄(개행 없이). 이 모듈은 내용을 검사하지 않고 그대로 그
-            줄을 치환한다. 교체 대상은 ``## Entries`` 섹션 **안에서**
-            ``[sdd-spec-registry](`` 링크 앵커를 가진 줄 하나로 좁혀 찾는다
-            (섹션 밖 또는 다른 항목이 이 이름을 산문으로만 언급하는 줄은
-            대상이 아니다 — 리뷰 [P1] 수정, it.2).
-        recent_change_line: 최근 변경 섹션 맨 위에 prepend할 완성된 한 줄.
+        index_text: 현재 볼트 루트 ``index.md`` 전체 텍스트.
+        hook_line: ``- [[SDD Spec Registry]] — ...`` 훅 문장을 교체할 완성된
+            한 줄(개행 없이). 교체 대상은 ``- [[SDD Spec Registry]]``로 시작하는
+            줄 하나다.
+        recent_change_line: ``## 📥 Recent Ingests`` 첫 항목 앞에 prepend할
+            완성된 한 줄.
 
     Returns:
         성공: ``{"ok": True, "text": str}``.
-        실패(``## Entries`` 섹션 안에서 ``sdd-spec-registry`` 링크 앵커 줄
-        또는 ``## 최근 변경`` 헤딩을 찾지 못함):
+        실패(훅 줄 또는 ``Recent Ingests`` 헤딩을 찾지 못함):
         ``{"ok": False, "reason": "catalog_unparsed", "detail": str}``.
         예외를 던지지 않는다(F13 fail-safe).
     """
@@ -129,7 +121,7 @@ def _update_index_impl(index_text: str, *, hook_line: str, recent_change_line: s
         return {
             "ok": False,
             "reason": "catalog_unparsed",
-            "detail": f"index.md Entries hook line for '{_HOOK_TARGET}' not found",
+            "detail": f"index.md hook line '{_HOOK_LINK_ANCHOR}' not found",
         }
 
     recent_idx = _find_recent_changes_heading(lines)
@@ -137,44 +129,47 @@ def _update_index_impl(index_text: str, *, hook_line: str, recent_change_line: s
         return {
             "ok": False,
             "reason": "catalog_unparsed",
-            "detail": f"index.md '{_RECENT_CHANGES_HEADING}' heading not found",
+            "detail": f"index.md '## ... {_RECENT_CHANGES_TITLE}' heading not found",
         }
 
     new_lines = list(lines)
     new_lines[hook_idx] = hook_line
 
-    insert_at = recent_idx + 1
-    while insert_at < len(new_lines) and new_lines[insert_at].strip() == "":
-        insert_at += 1
+    insert_at = _recent_insert_position(new_lines, recent_idx)
     new_lines.insert(insert_at, recent_change_line)
 
     text = "\n".join(new_lines) + ("\n" if trailing_newline else "")
     return {"ok": True, "text": text}
 
 
+def build_log_entry(date: str, op: str, title: str, summary: str) -> str:
+    """v2 ``log.md`` 엔트리 블록(순수 함수, 끝 개행 없음)::
+
+        ## [YYYY-MM-DD] <op> | <title>
+
+        - <summary>
+    """
+    return f"## [{date}] {op} | {title}\n\n- {summary}"
+
+
 def append_log(log_text: str, *, line: str) -> Dict[str, Any]:
-    """``log.md``에 정확히 한 줄을 append한다(AGENTS.md Bulk Ingest 규율).
+    """``log.md`` 끝에 엔트리 **하나**를 append한다(배치 1건 = 엔트리 1개).
 
+    ``line``은 :func:`build_log_entry`가 만든 블록(여러 줄)이거나 한 줄 문자열이다.
     기존 내용은 전혀 수정하지 않는다(append-only) — F10 "양쪽 보존"의 근거.
-
-    Args:
-        log_text: 현재 ``wiki/log.md`` 전체 텍스트(빈 문자열 허용).
-        line: 추가할 한 줄(개행 없이 전달해도, 있어도 무방 — 정확히 하나의
-            개행으로 정규화해 붙인다).
+    기존 텍스트와 새 엔트리 사이에는 빈 줄 하나를 둔다(v2 log.md 형식 —
+    엔트리가 ``##`` 헤딩이므로 구분이 필요하다).
 
     Returns:
-        ``{"ok": True, "text": str}``. 이 함수는 실패 경로가 없다(순수 문자열
-        접합) — 다만 패키지 전체 규약에 맞춰 예외는 던지지 않는다.
+        ``{"ok": True, "text": str}``. 예외는 던지지 않는다.
     """
     try:
-        clean_line = line[:-1] if line.endswith("\n") else line
-        if log_text == "":
+        entry = line.rstrip("\n")
+        if log_text.strip() == "":
             base = ""
-        elif log_text.endswith("\n"):
-            base = log_text
         else:
-            base = log_text + "\n"
-        text = base + clean_line + "\n"
+            base = log_text.rstrip("\n") + "\n\n"
+        text = base + entry + "\n"
         return {"ok": True, "text": text}
     except Exception as exc:  # noqa: BLE001 — fail-safe
         return {"ok": False, "reason": "catalog_unparsed", "detail": f"unexpected error: {exc}"}
@@ -186,6 +181,8 @@ def build_snapshot_log_line(
     raw_commits: Sequence[Tuple[str, str]],
     catalog_commit: Tuple[str, str],
     retries: int,
+    *,
+    with_prefix: bool = True,
 ) -> str:
     """§6.3.0 "raw/카탈로그 두 시점 표기" log.md 배치 줄을 조립한다(순수 함수).
 
@@ -202,6 +199,8 @@ def build_snapshot_log_line(
             1개). 여러 개면 총계 표기가 ``<총 N raw>``로 바뀐다.
         catalog_commit: 카탈로그 커밋의 ``(sha7, date)``.
         retries: 카탈로그 재시도 횟수(0 이상).
+        with_prefix: False면 ``YYYY-MM-DD [snapshot] `` 접두 없이 요약만 낸다
+            (v2 log.md 엔트리의 ``- <요약>`` 줄용).
 
     Returns:
         완성된 한 줄 문자열(개행 없음). 순수 함수 — 예외를 던지지 않는
@@ -212,7 +211,10 @@ def build_snapshot_log_line(
     total_marker = f"총 {total_raw}" if is_multi else f"{total_raw}"
     raw_part = "·".join(f"{sha}({d})" for sha, d in raw_commits)
     catalog_sha, catalog_date = catalog_commit
-    return (
-        f"{date} [snapshot] <{total_marker} raw> — raw 커밋 {raw_part} · "
+    body = (
+        f"<{total_marker} raw> — raw 커밋 {raw_part} · "
         f"카탈로그 {catalog_sha}({catalog_date}) · 재시도 {retries}회"
     )
+    # v2 log.md는 날짜·op를 엔트리 헤딩(`## [date] snapshot | ...`)이 담으므로
+    # 요약 줄에는 접두를 빼고 넣는다(`with_prefix=False`).
+    return f"{date} [snapshot] {body}" if with_prefix else body

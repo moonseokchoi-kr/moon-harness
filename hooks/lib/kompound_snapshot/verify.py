@@ -1,4 +1,4 @@
-"""hooks/lib/kompound_snapshot/verify.py — F8 검증 게이트 3종 (read-only).
+r"""hooks/lib/kompound_snapshot/verify.py — F8 검증 게이트 3종 (read-only).
 
 설계 SSOT: `docs/sdd/design/arch/2026-07-29-kompound-snapshot-hook.md`
 (이하 "arch") §6.3.1(`snapshot_set_rule` — 이 모듈 계약의 전제, CRITICAL 대응)
@@ -9,11 +9,20 @@
 
 박제 실행((i) raw 복사) 후, 카탈로그 커밋((ii)) 전에 3개 게이트를 판정한다:
 
-1. **링크 무결성** — registry가 가리키는 **스냅샷 집합 한정** 링크가 실재
-   파일을 가리키는가.
+1. **링크 무결성** — registry가 가리키는 **스냅샷 집합 한정** wikilink가 실재
+   raw 파일(``10. Raw Sources/**/<raw 이름>.md``)을 가리키는가.
 2. **양방향 카운트 일치** — registry 스냅샷 링크 집합과 raw 스냅샷 파일
    집합의 **양방향 차집합이 정확히 0**인가(단순 개수 비교 아님).
-3. **flat 유지** — `raw/` 하위에 `assets/` 외 디렉토리가 없는가.
+3. **raw 레이아웃** — 스냅샷 raw가 전부 ``10. Raw Sources/<NN. 유형>/<도메인>/``
+   바로 아래에 있고 도메인이 볼트 10종 중 하나인가(v1의 "flat 유지" 게이트를
+   v2 2단 분류 규칙으로 대체 — 2026-10-07).
+
+## v2 볼트 (2026-10-07)
+
+모집단과 링크는 **raw 이름**(파일 stem, ``YYYY-MM-DD-<slug>``) 단위로 비교한다.
+스냅샷 규칙 판정은 날짜 접두를 뗀 ``<slug>``에 적용한다. registry 링크는
+Obsidian wikilink(``[[<raw 이름>]]``, 표 안에서는 ``[[<raw 이름>\|✓]]``)이며
+frontmatter(``source:`` 목록)는 링크 추출 대상에서 제외한다 — 표 본문이 SSOT다.
 
 이 모듈은 **판정만** 한다 — `verify_failed`(exit 50)가 T2 삭제를 차단해야
 하는지는 정책이고, 그 정책은 이미 `report.blocks_deletion()`이 계산한다
@@ -23,7 +32,7 @@
 
 ## `snapshot_set_rule` — 모집단의 정의 (arch §6.3.1, CRITICAL 대응)
 
-SDD 스냅샷 집합 = ``raw/<P>-<feature>-<kind>.md`` where
+SDD 스냅샷 집합 = slug가 ``<P>-<feature>-<kind>``인 raw (v1: ``raw/<P>-<feature>-<kind>.md``, v2: ``10. Raw Sources/**/YYYY-MM-DD-<P>-<feature>-<kind>.md``) where
 
 - ``P`` ∈ ``prefix_map.values()`` (설정 병합 후 유효 프리픽스 집합, `null`
   제거)
@@ -51,11 +60,16 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
+from hooks.lib.kompound_snapshot import vault
+
 __all__ = [
     "KINDS",
     "GATE_LINK_INTEGRITY",
     "GATE_BIDIRECTIONAL_COUNT",
     "GATE_FLAT_STRUCTURE",
+    "GATE_RAW_LAYOUT",
+    "snapshot_population_paths",
+    "check_raw_layout",
     "effective_prefixes",
     "matches_snapshot_rule",
     "snapshot_set_rule",
@@ -80,15 +94,15 @@ KINDS: Tuple[str, ...] = ("spec", "arch", "ui", "api", "context", "result")
 # ── 게이트 이름 (T-10이 참조하는 상수 — 문자열 리터럴 중복 방지) ───────────
 GATE_LINK_INTEGRITY = "link_integrity"
 GATE_BIDIRECTIONAL_COUNT = "bidirectional_count"
-GATE_FLAT_STRUCTURE = "flat_structure"
+GATE_RAW_LAYOUT = "raw_layout"
+# v1 이름 호환 별칭 — v2에서 "flat 유지" 게이트는 "raw 레이아웃" 게이트로 대체됐다.
+GATE_FLAT_STRUCTURE = GATE_RAW_LAYOUT
 
-_ALLOWED_RAW_SUBDIR = "assets"
-_REGISTRY_RELATIVE = Path("wiki") / "sdd-spec-registry.md"
+_REGISTRY_RELATIVE = vault.REGISTRY_RELATIVE
 
-# registry 마크다운 링크 중 `../raw/<name>.md` 형태만 추출한다. 중첩 경로
-# (`sub/dir-x.md`)가 캡처돼도 `matches_snapshot_rule`이 자연히 걸러낸다 —
-# 유효 프리픽스에 `/`가 포함된 값이 없는 한 매칭될 수 없다.
-_RAW_LINK_RE = re.compile(r"\]\(\.\./raw/([^)\s]+\.md)\)")
+# Obsidian wikilink 대상 추출: `[[target]]`, `[[target|alias]]`, 표 안의
+# `[[target\|alias]]`, `[[target#heading]]`. 대상만 캡처한다.
+_WIKILINK_RE = re.compile(r"\[\[([^\]\|\\#\n]+)")
 
 
 # ── snapshot_set_rule 계약 (arch §6.3.1) ────────────────────────────────────
@@ -155,53 +169,82 @@ def snapshot_set_rule(prefix_map: Optional[Mapping[str, Optional[str]]]) -> Dict
 # ── 모집단 수집 (raw/ 실제 파일 · registry 링크) ────────────────────────────
 
 
-def snapshot_population(raw_dir: PathLike, prefixes: Sequence[str]) -> Set[str]:
-    """`raw_dir`(보통 `<kompound_repo>/raw`) 직속 자식 중 `snapshot_set_rule`을
-    만족하는 파일명 집합을 반환한다(하위 디렉토리는 재귀하지 않는다 — 규칙
-    자체가 flat 구조를 전제한다). read-only, 예외를 던지지 않는다.
-    """
-    population: Set[str] = set()
+def _slug_filename(stem: str) -> str:
+    return f"{vault.slug_of(stem)}.md"
+
+
+def snapshot_population_paths(raw_root: PathLike, prefixes: Sequence[str]) -> Dict[str, Path]:
+    """``{raw 이름(stem): Path}`` — `raw_root`(보통 ``<볼트>/10. Raw Sources``)
+    아래 **재귀** 전체에서 slug가 `snapshot_set_rule`을 만족하는 raw. 날짜 접두
+    (``YYYY-MM-DD-``)가 있는 파일만 대상이다(볼트 raw 명명 규칙). read-only."""
+    out: Dict[str, Path] = {}
     try:
-        directory = Path(raw_dir)
-        if not directory.is_dir():
-            return population
-        for entry in directory.iterdir():
-            try:
-                if not entry.is_file():
-                    continue
-            except OSError:
-                continue
-            if matches_snapshot_rule(entry.name, prefixes):
-                population.add(entry.name)
+        root = Path(raw_root)
+        if not root.is_dir():
+            return out
+        for path in _iter_md(root):
+            stem = path.stem
+            if stem == vault.slug_of(stem):
+                continue  # 날짜 접두 없음 — 규칙 밖
+            if matches_snapshot_rule(_slug_filename(stem), prefixes):
+                out.setdefault(stem, path)
     except OSError:
-        return population
-    return population
+        return out
+    return out
+
+
+def _iter_md(root: Path):
+    for path in sorted(root.rglob("*.md")):
+        if any(part.startswith(".") for part in path.relative_to(root).parts):
+            continue
+        yield path
+
+
+def snapshot_population(raw_root: PathLike, prefixes: Sequence[str]) -> Set[str]:
+    """스냅샷 raw 이름(stem) 집합. :func:`snapshot_population_paths`의 키."""
+    return set(snapshot_population_paths(raw_root, prefixes))
+
+
+def _strip_frontmatter(text: str) -> str:
+    if not text.startswith("---"):
+        return text
+    m = re.search(r"^---[ \t]*$", text[3:], re.MULTILINE)
+    if not m:
+        return text
+    return text[3 + m.end():]
 
 
 def extract_registry_raw_links(registry_text: str) -> Set[str]:
-    """registry 텍스트에서 ``[...](../raw/<name>.md)`` 형태 링크의 `<name>.md`
-    전부를 추출한다(스냅샷 집합 한정 아님 — 전체 raw 링크). 예외를 던지지
-    않는다.
-    """
+    """registry **본문**(frontmatter 제외)의 wikilink 대상 전부(스냅샷 집합 한정
+    아님). 예외를 던지지 않는다."""
     try:
         if not registry_text:
             return set()
-        return set(_RAW_LINK_RE.findall(registry_text))
+        body = _strip_frontmatter(registry_text)
+        return {t.strip() for t in _WIKILINK_RE.findall(body) if t.strip()}
     except (TypeError, re.error):
         return set()
 
 
 def snapshot_registry_links(registry_text: str, prefixes: Sequence[str]) -> Set[str]:
-    """registry가 가리키는 raw 링크 중 `snapshot_set_rule`을 만족하는 것만
-    반환한다(arch F8 게이트 (1)(2)의 검사 범위 한정 — S-8). 링크가 가리키는
-    파일이 실재하는지는 여기서 확인하지 않는다(그건 게이트 (1)의 일).
-    """
-    all_links = extract_registry_raw_links(registry_text)
-    return {name for name in all_links if matches_snapshot_rule(name, prefixes)}
+    """registry wikilink 중 날짜 접두가 있고 slug가 `snapshot_set_rule`을 만족하는
+    raw 이름만(arch F8 게이트 (1)(2)의 검사 범위 한정 — S-8). 실재 여부는 보지
+    않는다(게이트 (1)의 일)."""
+    out: Set[str] = set()
+    for name in extract_registry_raw_links(registry_text):
+        if name == vault.slug_of(name):
+            continue
+        if matches_snapshot_rule(_slug_filename(name), prefixes):
+            out.add(name)
+    return out
+
+
+def _all_raw_stems(kompound_repo: PathLike) -> Set[str]:
+    return {p.stem for p in vault.iter_raw_files(kompound_repo)}
 
 
 def _read_registry_text(kompound_repo: PathLike) -> str:
-    """`<kompound_repo>/wiki/sdd-spec-registry.md`를 읽는다. 부재/오류 시
+    """`<kompound_repo>/20. Wiki/24. Maps/SDD Spec Registry.md`를 읽는다. 부재/오류 시
     빈 문자열(예외를 던지지 않는다 — read-only 게이트의 입력 실패는 각
     게이트가 스스로 "실패"로 보고한다)."""
     try:
@@ -225,9 +268,9 @@ def check_link_integrity(
         rule = snapshot_set_rule(prefix_map)
         registry_text = _read_registry_text(repo)
         links = snapshot_registry_links(registry_text, rule["prefixes"])
-        raw_dir = repo / "raw"
+        existing = _all_raw_stems(repo)
 
-        broken = sorted(name for name in links if not (raw_dir / name).is_file())
+        broken = sorted(name for name in links if name not in existing)
         ok = not broken
         detail = (
             f"prefixes={list(rule['prefixes'])}; 스냅샷 링크 {len(links)}건 중 "
@@ -257,7 +300,7 @@ def check_bidirectional_count(
         rule = snapshot_set_rule(prefix_map)
         registry_text = _read_registry_text(repo)
         links = snapshot_registry_links(registry_text, rule["prefixes"])
-        files = snapshot_population(repo / "raw", rule["prefixes"])
+        files = snapshot_population(repo / vault.RAW_ROOT, rule["prefixes"])
 
         missing_links = sorted(files - links)  # raw엔 있지만 registry에 링크 없음(=이 훅의 존재 이유)
         ghost_links = sorted(links - files)  # registry엔 있지만 raw에 파일 없음
@@ -283,34 +326,47 @@ def check_bidirectional_count(
         }
 
 
-def check_flat_structure(kompound_repo: PathLike) -> Dict[str, Any]:
-    """게이트 (3) — `raw/` 하위에 `assets/` 외 디렉토리가 없는가. `prefix_map`이
-    필요 없다(순수 구조 검사). 예외를 던지지 않는다.
-    """
+def check_raw_layout(
+    kompound_repo: PathLike, prefix_map: Optional[Mapping[str, Optional[str]]] = None
+) -> Dict[str, Any]:
+    """게이트 (3) — 스냅샷 raw가 전부 ``10. Raw Sources/<유형>/<도메인>/<파일>``
+    깊이에 있고 ``<도메인>``이 `vault.DOMAINS` 중 하나인가. `prefix_map`이 없으면
+    기본 프리픽스(config.DEFAULT_PREFIX_MAP 값)로 모집단을 잡는다. 예외를 던지지
+    않는다."""
     try:
-        raw_dir = Path(kompound_repo) / "raw"
+        repo = Path(kompound_repo)
+        if prefix_map is None:
+            from hooks.lib.kompound_snapshot.config import DEFAULT_PREFIX_MAP
+
+            prefix_map = DEFAULT_PREFIX_MAP
+        rule = snapshot_set_rule(prefix_map)
+        raw_root = repo / vault.RAW_ROOT
         offending: List[str] = []
-        if raw_dir.is_dir():
-            for entry in raw_dir.iterdir():
-                try:
-                    if entry.is_dir() and entry.name != _ALLOWED_RAW_SUBDIR:
-                        offending.append(entry.name)
-                except OSError:
-                    continue
-        offending.sort()
+        for stem, path in sorted(snapshot_population_paths(raw_root, rule["prefixes"]).items()):
+            try:
+                rel = path.relative_to(raw_root)
+            except ValueError:
+                offending.append(stem)
+                continue
+            if len(rel.parts) != 3 or rel.parts[1] not in vault.DOMAINS:
+                offending.append(str(rel))
         ok = not offending
         detail = (
-            "raw/ 하위 서브디렉토리 없음(assets/ 제외 허용)"
+            "스냅샷 raw 전부 10. Raw Sources/<유형>/<도메인>/ 아래"
             if ok
-            else f"raw/ 하위에 허용되지 않은 서브디렉토리: {offending}"
+            else f"레이아웃 위반(유형/도메인 2단 밖 또는 미등록 도메인): {offending}"
         )
-        return {"gate": GATE_FLAT_STRUCTURE, "ok": ok, "detail": detail}
+        return {"gate": GATE_RAW_LAYOUT, "ok": ok, "detail": detail}
     except Exception as exc:  # noqa: BLE001 - fail-safe
         return {
-            "gate": GATE_FLAT_STRUCTURE,
+            "gate": GATE_RAW_LAYOUT,
             "ok": False,
             "detail": f"내부 오류: {exc}",
         }
+
+
+# v1 이름 호환 별칭.
+check_flat_structure = check_raw_layout
 
 
 # ── 실행 여부 판단 / 실행 (분리 — T-10이 스킵을 결정할 수 있도록) ───────────
@@ -350,7 +406,7 @@ def run_gates(
     return [
         check_link_integrity(kompound_repo, prefix_map),
         check_bidirectional_count(kompound_repo, prefix_map),
-        check_flat_structure(kompound_repo),
+        check_raw_layout(kompound_repo, prefix_map),
     ]
 
 
@@ -376,6 +432,6 @@ def build_verify_report(
             "gates": [
                 {"gate": GATE_LINK_INTEGRITY, "ok": False, "detail": f"내부 오류: {exc}"},
                 {"gate": GATE_BIDIRECTIONAL_COUNT, "ok": False, "detail": f"내부 오류: {exc}"},
-                {"gate": GATE_FLAT_STRUCTURE, "ok": False, "detail": f"내부 오류: {exc}"},
+                {"gate": GATE_RAW_LAYOUT, "ok": False, "detail": f"내부 오류: {exc}"},
             ],
         }

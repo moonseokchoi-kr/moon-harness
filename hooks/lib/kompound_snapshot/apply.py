@@ -9,8 +9,12 @@ F5(dedup mtime 채택)·F7(registry 갱신)·F8(검증 게이트)·F9(dirty/dive
 
 ## 이 모듈이 하는 일
 
-1. **(i) raw 복사** — canonical 문서를 `raw/<project>-<feature>-<kind>.md`로
-   verbatim 복사한다(F6: 없으면 신규 / 같으면 무동작·무로그 / 다르면 갱신).
+1. **(i) raw 복사** — canonical 문서를 v2 볼트 raw로 박제한다(F6: 없으면 신규 /
+   같으면 무동작·무로그 / 다르면 갱신). 신규 위치는
+   `10. Raw Sources/17. Specs/<Domain>/<YYYY-MM-DD>-<project>-<feature>-<kind>.md`
+   (v2 raw-source 형식, 원본은 `## Original Content`에 verbatim). 같은 slug의
+   raw가 볼트 어디에든 있으면 그 파일의 `## Original Content`만 제자리 교체한다
+   — 사본을 만들지 않는다(`vault` 모듈 계약, 2026-10-07 v2 이관).
    성공하면 **즉시 raw만 커밋**한다(`git_state.commit_raw`) — 워킹트리를
    clean하게 유지해 F9 자기 오염을 회피한다(arch §6.3.0).
 2. **(ii) 카탈로그 갱신** — registry(`registry.py`) + index/log(`wiki_log.py`)를
@@ -193,11 +197,11 @@ from __future__ import annotations
 
 import subprocess
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
-from hooks.lib.kompound_snapshot import git_state, naming, registry, runtime_state, verify, wiki_log
+from hooks.lib.kompound_snapshot import git_state, naming, registry, runtime_state, vault, verify, wiki_log
 
 __all__ = ["apply"]
 
@@ -344,49 +348,144 @@ def _prepare_raw_writes(
     return winners, unmapped, conflicts
 
 
+def _today() -> str:
+    """박제 날짜(로컬 날짜 — 볼트의 `YYYY-MM-DD-` 파일명·frontmatter 관례와 같다)."""
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _read_source_text(path: PathLike) -> str:
+    data = Path(path).read_bytes()
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("utf-8", errors="replace")
+
+
+def _source_label(record: Mapping[str, Any]) -> str:
+    """원본 위치 표기 — ``<home repo 디렉토리명>/<repo 기준 상대경로>``."""
+    repo_dir = Path(record["repo_dir"])
+    path = Path(record["path"])
+    try:
+        rel = path.resolve().relative_to(repo_dir.resolve())
+        return f"{repo_dir.name}/{rel.as_posix()}"
+    except (ValueError, OSError):
+        return str(path)
+
+
 def _write_raw_files(
-    kompound_repo: PathLike, winners: Mapping[str, Mapping[str, Any]]
+    kompound_repo: PathLike,
+    winners: Mapping[str, Mapping[str, Any]],
+    *,
+    prefix_map: Optional[Mapping[str, Optional[str]]] = None,
+    scan_root: Optional[str] = None,
+    domain_map: Optional[Mapping[str, Optional[str]]] = None,
+    today: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], List[_JournalEntry]]:
-    """승자 레코드들을 `raw/`에 F6 규칙대로 verbatim 쓴다(신규/무동작/갱신).
+    """승자 레코드들을 v2 볼트 raw로 F6 규칙대로 쓴다(신규/무동작/갱신).
+
+    - 같은 ``<slug>``의 raw가 ``10. Raw Sources/`` 아래 어디든 이미 있으면
+      (파일명 ``YYYY-MM-DD-<slug>.md`` 또는 frontmatter ``legacySlug``) 그 파일의
+      ``## Original Content`` 본문만 비교·교체한다(파일명·날짜·도메인 유지,
+      ``date modified``만 갱신). 본문이 같으면 완전 무동작.
+    - 없으면 ``10. Raw Sources/17. Specs/<Domain>/<today>-<slug>.md``를 v2
+      raw-source 형식으로 새로 만든다.
+    - 기존 raw에 ``## Original Content`` 구조가 없으면 사람이 만든 파일을 통째로
+      덮어쓰지 않고 실패로 보고한다(write_failed).
+
+    결과 dict에는 ``stems``(``{논리 이름: raw 이름(stem)}`` — 무동작 포함)와
+    ``touched``(볼트 기준 상대경로 — 커밋 pathspec)가 추가로 들어간다.
 
     실패(IO 오류 등 어떤 예외든)하면 **이 함수 내부에서 즉시 저널을
     롤백**하고 ``journal=[]``(이미 되돌렸다는 뜻)와 실패 shape를 반환한다 —
     호출자가 부분 저널을 들고 있다가 롤백을 깜빡할 위험을 원천 차단한다.
     """
-    raw_root = Path(kompound_repo) / "raw"
+    repo = Path(kompound_repo)
+    date = today or _today()
     journal: List[_JournalEntry] = []
     new_list: List[str] = []
     updated_list: List[str] = []
+    stems: Dict[str, str] = {}
+    touched: List[str] = []
     unchanged_count = 0
     try:
+        index = vault.build_raw_index(repo)
         for basename in sorted(winners):
             record = winners[basename]
-            target = raw_root / basename
-            source_bytes = Path(record["path"]).read_bytes()
+            slug = vault.slug_of(basename)
+            source_text = _read_source_text(record["path"])
+            _, desired_body = vault.split_source_doc(source_text)
 
-            existed = target.exists()
-            if existed:
-                original_bytes = target.read_bytes()
-                if original_bytes == source_bytes:
+            existing = index.get(slug)
+            if existing is not None:
+                original_bytes = existing.read_bytes()
+                text = original_bytes.decode("utf-8", errors="replace")
+                current = vault.extract_original_content(text)
+                if current is None:
+                    raise RuntimeError(
+                        f"{existing.relative_to(repo)}: '## Original Content' 섹션이 없어 "
+                        "본문만 교체할 수 없다(사람이 만든 파일을 통째로 덮어쓰지 않는다)"
+                    )
+                stems[basename] = existing.stem
+                if current == desired_body:
                     unchanged_count += 1
                     continue  # F6: 내용 동일 — 완전 무동작·무로그
-                journal.append((target, True, original_bytes))
-                target.write_bytes(source_bytes)
-                updated_list.append(basename)
-            else:
-                journal.append((target, False, None))
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(source_bytes)
-                new_list.append(basename)
+                new_text = vault.replace_original_content(text, desired_body, date_modified=date)
+                if new_text is None:  # pragma: no cover — 위 extract가 이미 구조를 확인
+                    raise RuntimeError(f"{existing.relative_to(repo)}: Original Content 교체 실패")
+                journal.append((existing, True, original_bytes))
+                existing.write_text(new_text, encoding="utf-8")
+                updated_list.append(existing.name)
+                touched.append(existing.relative_to(repo).as_posix())
+                continue
+
+            naming_result = naming.name_document(record, prefix_map or {}, scan_root)
+            project = naming_result.get("project") or slug.split("-", 1)[0]
+            feature = naming_result.get("feature") or slug
+            kind = naming_result.get("kind") or record["kind"]
+            domain = vault.domain_for_project(project, domain_map)
+            target = vault.new_raw_path(repo, domain, date, slug)
+            rendered = vault.render_raw(
+                slug=slug,
+                project=project,
+                feature=feature,
+                kind=kind,
+                domain=domain,
+                date=date,
+                source_text=source_text,
+                source_label=_source_label(record),
+                md5=record.get("md5"),
+            )
+            journal.append((target, False, None))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(rendered, encoding="utf-8")
+            new_list.append(target.name)
+            stems[basename] = target.stem
+            touched.append(target.relative_to(repo).as_posix())
 
         return (
-            {"ok": True, "new": new_list, "updated": updated_list, "unchanged": unchanged_count, "error": ""},
+            {
+                "ok": True,
+                "new": new_list,
+                "updated": updated_list,
+                "unchanged": unchanged_count,
+                "error": "",
+                "stems": stems,
+                "touched": touched,
+            },
             journal,
         )
     except Exception as exc:  # noqa: BLE001 - fail-safe(F13): 전량 롤백 후 write_failed
         _rollback_journal(journal)
         return (
-            {"ok": False, "new": [], "updated": [], "unchanged": 0, "error": f"raw write failed: {exc}"},
+            {
+                "ok": False,
+                "new": [],
+                "updated": [],
+                "unchanged": 0,
+                "error": f"raw write failed: {exc}",
+                "stems": {},
+                "touched": [],
+            },
             [],
         )
 
@@ -423,9 +522,13 @@ def _build_rich_map(
     winners: Mapping[str, Mapping[str, Any]],
     prefix_map: Mapping[str, Optional[str]],
     scan_root: Optional[str],
+    stems: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """이번 호출에서 실제로 처리된(신규·갱신·무동작 전부) 승자 레코드들로부터
-    registry 엔트리 스키마를 조립한다(모듈 docstring "rich 경로")."""
+    registry 엔트리 스키마를 조립한다(모듈 docstring "rich 경로").
+
+    키와 ``raw_name``은 v2 **raw 이름**(파일 stem, ``YYYY-MM-DD-<slug>``)이다 —
+    verify 모집단·registry wikilink와 같은 단위."""
     rich_map: Dict[str, Dict[str, Any]] = {}
     for basename, record in winners.items():
         project = naming.resolve_prefix(record["repo_dir"], prefix_map, scan_root)
@@ -435,12 +538,15 @@ def _build_rich_map(
         feature = _feature_from_basename(basename, project, kind)
         if feature is None:
             continue
-        rich_map[basename] = {
+        stem = (stems or {}).get(basename)
+        if stem is None:
+            continue  # raw가 쓰이지 않은 레코드 — 모집단에도 없다
+        rich_map[stem] = {
             "repo_dir": Path(record["repo_dir"]).name,
             "project": project,
             "feature": feature,
             "kind": kind,
-            "raw_name": f"raw/{basename}",
+            "raw_name": stem,
             "worktree": _worktree_name_from_path(record["path"]),
         }
     return rich_map
@@ -451,16 +557,33 @@ def _run_raw_stage(
     canonical_records: Sequence[Mapping[str, Any]],
     prefix_map: Mapping[str, Optional[str]],
     scan_root: Optional[str],
+    domain_map: Optional[Mapping[str, Optional[str]]] = None,
+    today: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], List[str], List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     """(i) raw 복사 전체 — 준비 → write → 커밋. 실패 시 write_failed +
     전량 롤백(arch §6.3.0)."""
     winners, unmapped, conflicts = _prepare_raw_writes(canonical_records, prefix_map, scan_root)
-    write_result, journal = _write_raw_files(kompound_repo, winners)
+    write_result, journal = _write_raw_files(
+        kompound_repo,
+        winners,
+        prefix_map=prefix_map,
+        scan_root=scan_root,
+        domain_map=domain_map,
+        today=today,
+    )
 
     if not write_result["ok"]:
         return _failed_raw_stage(write_result["error"]), unmapped, conflicts, {}
 
-    commit_result = git_state.commit_raw(kompound_repo, len(write_result["new"]), len(write_result["updated"]))
+    touched = write_result.get("touched") or []
+    if touched:
+        # 건드린 raw 파일만 pathspec으로 커밋한다(경로에 공백이 있어도 인자
+        # 리스트라 안전). 볼트의 다른 변경은 F9 선행 확인이 이미 막았다.
+        commit_result = git_state.commit_raw(
+            kompound_repo, len(write_result["new"]), len(write_result["updated"]), paths=touched
+        )
+    else:
+        commit_result = {"ok": True, "committed": False, "commit": None, "reason": "no_changes"}
     if not commit_result["ok"]:
         _rollback_journal(journal)
         return (
@@ -479,7 +602,7 @@ def _run_raw_stage(
         "commit": commit_result["commit"],
         "error": "",
     }
-    rich_map = _build_rich_map(winners, prefix_map, scan_root)
+    rich_map = _build_rich_map(winners, prefix_map, scan_root, write_result.get("stems"))
     return raw_stage, unmapped, conflicts, rich_map
 
 
@@ -512,12 +635,14 @@ def _decompose_raw_name(basename: str, prefixes: Sequence[str]) -> Optional[Tupl
     return prefix, kind
 
 
-def _reverse_parse_entry(basename: str, prefixes: Sequence[str]) -> Optional[Dict[str, Any]]:
+def _reverse_parse_entry(raw_stem: str, prefixes: Sequence[str]) -> Optional[Dict[str, Any]]:
     """rich 맵에 없는 raw 파일명을 registry 엔트리 스키마로 역파싱한다
     (D-impl-1 self-heal 폴백 — 다른 실행에서 이미 커밋됐거나 사람이 수동으로
     넣은 raw). `repo_dir`/`worktree`는 알 수 없으므로 `repo_dir=project`,
     `worktree=None`으로 대체한다(registry._candidates가 이미 project를
-    후보로 쓰므로 헤딩 매칭은 정상 동작한다)."""
+    후보로 쓰므로 헤딩 매칭은 정상 동작한다). 입력은 v2 raw 이름(stem,
+    ``YYYY-MM-DD-<slug>``)이며 판정은 slug로 한다."""
+    basename = f"{vault.slug_of(raw_stem)}.md"
     decomposed = _decompose_raw_name(basename, prefixes)
     if decomposed is None:
         return None
@@ -530,7 +655,7 @@ def _reverse_parse_entry(basename: str, prefixes: Sequence[str]) -> Optional[Dic
         "project": project,
         "feature": feature,
         "kind": kind,
-        "raw_name": f"raw/{basename}",
+        "raw_name": raw_stem,
         "worktree": None,
     }
 
@@ -541,7 +666,8 @@ def _compute_totals(population: Set[str], prefixes: Sequence[str]) -> Dict[str, 
     어긋나지 않는다."""
     counts: Dict[str, int] = {kind: 0 for kind in verify.KINDS}
     features: Set[Tuple[str, str]] = set()
-    for basename in population:
+    for raw_stem in population:
+        basename = f"{vault.slug_of(raw_stem)}.md"
         decomposed = _decompose_raw_name(basename, prefixes)
         if decomposed is None:
             continue  # population은 이미 matches_snapshot_rule을 만족 — 도달 불가, 방어적
@@ -564,19 +690,27 @@ def _compute_totals(population: Set[str], prefixes: Sequence[str]) -> Dict[str, 
 
 
 def _build_hook_line(totals: Mapping[str, int]) -> str:
-    """index.md Entries의 `sdd-spec-registry` 훅 문장(기계적 사실만, 주제
-    합성 없음 — arch §1 원칙 2)."""
+    """index.md의 ``[[SDD Spec Registry]]`` 훅 문장(기계적 사실만, 주제 합성
+    없음 — arch §1 원칙 2)."""
     return (
-        f"- [sdd-spec-registry](sdd-spec-registry.md) — SDD spec/design/result 카탈로그. "
+        f"- [[SDD Spec Registry]] — SDD spec/design/result 카탈로그. "
         f"{totals['features']} feature · raw {totals['raw']}개."
     )
 
 
-def _build_recent_change_line(date: str, new_docs: Sequence[Mapping[str, Any]], totals: Mapping[str, int]) -> str:
-    """index.md 최근 변경 섹션에 prepend할 한 줄(기계적 사실만)."""
+def _projects_text(new_docs: Sequence[Mapping[str, Any]]) -> str:
     projects = sorted({doc["project"] for doc in new_docs})
-    proj_text = ", ".join(projects) if projects else "-"
-    return f"- {date} [snapshot] {len(new_docs)}건 카탈로그 편입 ({proj_text}) — raw 총 {totals['raw']}개"
+    return ", ".join(projects) if projects else "-"
+
+
+def _build_recent_change_line(date: str, new_docs: Sequence[Mapping[str, Any]], totals: Mapping[str, int]) -> str:
+    """index.md ``## 📥 Recent Ingests``에 prepend할 한 줄(기계적 사실만)."""
+    links = ", ".join(f"[[{doc['raw_name']}]]" for doc in sorted(new_docs, key=lambda d: str(d["raw_name"])))
+    links_text = f" {links}" if links else ""
+    return (
+        f"- {date} [snapshot] SDD 스냅샷 {len(new_docs)}건 카탈로그 편입 ({_projects_text(new_docs)}) → "
+        f"[[SDD Spec Registry]]{links_text} — raw 총 {totals['raw']}개"
+    )
 
 
 def _find_uncataloged_raw_commits(kompound_repo: PathLike) -> List[Tuple[str, str]]:
@@ -615,6 +749,7 @@ def _run_catalog_stage(
     kompound_repo: PathLike,
     prefix_map: Mapping[str, Optional[str]],
     rich_map: Mapping[str, Dict[str, Any]],
+    today: Optional[str] = None,
 ) -> Dict[str, Any]:
     """(ii) 카탈로그 갱신 전체 — missing 집합 도출(D-impl-1) → 텍스트 변환
     (in-memory) → write → F8 게이트 → 커밋. 텍스트 변환 실패는 파일을 전혀
@@ -625,19 +760,18 @@ def _run_catalog_stage(
         repo = Path(kompound_repo)
         prefixes = verify.effective_prefixes(prefix_map)
 
-        registry_path = repo / "wiki" / "sdd-spec-registry.md"
-        index_path = repo / "wiki" / "index.md"
-        log_path = repo / "wiki" / "log.md"
+        registry_path = repo / vault.REGISTRY_RELATIVE
+        index_path = repo / vault.INDEX_RELATIVE
+        log_path = repo / vault.LOG_RELATIVE
 
         try:
             registry_text = registry_path.read_text(encoding="utf-8")
             index_text = index_path.read_text(encoding="utf-8")
             log_text = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
         except OSError as exc:
-            return _catalog_unparsed(f"wiki 파일 읽기 실패: {exc}")
+            return _catalog_unparsed(f"카탈로그 파일 읽기 실패: {exc}")
 
-        raw_dir = repo / "raw"
-        population = verify.snapshot_population(raw_dir, prefixes)
+        population = verify.snapshot_population(repo / vault.RAW_ROOT, prefixes)
         registry_links = verify.snapshot_registry_links(registry_text, prefixes)
         missing = sorted(population - registry_links)  # D-impl-1 재정의
 
@@ -648,21 +782,23 @@ def _run_catalog_stage(
             return _empty_catalog_stage()
 
         new_docs: List[Dict[str, Any]] = []
-        for basename in missing:
-            entry = rich_map.get(basename)
+        for raw_stem in missing:
+            entry = rich_map.get(raw_stem)
             if entry is None:
-                entry = _reverse_parse_entry(basename, prefixes)
+                entry = _reverse_parse_entry(raw_stem, prefixes)
             if entry is None:
                 continue  # 이론상 도달 불가(missing은 matches_snapshot_rule을 만족) — fail-safe 스킵
             new_docs.append(entry)
 
         totals = _compute_totals(population, prefixes)  # C-7: 항상 계산
 
-        registry_result = registry.update_registry(registry_text, new_docs, prefix_map=prefix_map, totals=totals)
+        today = today or _today()
+        registry_result = registry.update_registry(
+            registry_text, new_docs, prefix_map=prefix_map, totals=totals, today=today
+        )
         if not registry_result["ok"]:
             return _catalog_unparsed(registry_result.get("detail", registry_result.get("reason", "")))
 
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         hook_line = _build_hook_line(totals)
         recent_change_line = _build_recent_change_line(today, new_docs, totals)
 
@@ -672,14 +808,21 @@ def _run_catalog_stage(
 
         raw_commits = _find_uncataloged_raw_commits(repo)
         retries = max(0, len(raw_commits) - 1)
-        log_line = wiki_log.build_snapshot_log_line(
+        summary = wiki_log.build_snapshot_log_line(
             date=today,
             total_raw=len(new_docs),
             raw_commits=raw_commits if raw_commits else [("HEAD", today)],
             catalog_commit=("HEAD", today),
             retries=retries,
+            with_prefix=False,
         )
-        log_result = wiki_log.append_log(log_text, line=log_line)
+        log_entry = wiki_log.build_log_entry(
+            today,
+            "snapshot",
+            f"SDD 스냅샷 {len(new_docs)}건 카탈로그 편입 ({_projects_text(new_docs)})",
+            summary,
+        )
+        log_result = wiki_log.append_log(log_text, line=log_entry)
         if not log_result["ok"]:
             return _catalog_unparsed(log_result.get("detail", log_result.get("reason", "")))
 
@@ -702,7 +845,15 @@ def _run_catalog_stage(
             return _catalog_gate_failure([g["gate"] for g in failed], detail)
 
         detail = f"{len(new_docs)}건 링크·카운트 갱신 (raw 총 {totals['raw']}개)"
-        commit_result = git_state.commit_catalog(kompound_repo, detail)
+        commit_result = git_state.commit_catalog(
+            kompound_repo,
+            detail,
+            paths=[
+                vault.REGISTRY_RELATIVE.as_posix(),
+                vault.INDEX_RELATIVE.as_posix(),
+                vault.LOG_RELATIVE.as_posix(),
+            ],
+        )
         if not commit_result["ok"]:
             _rollback_journal(journal)
             return _catalog_unparsed(f"commit failed: {commit_result['reason']}")
@@ -766,7 +917,40 @@ def _apply_impl(
     prefix_map: Mapping[str, Optional[str]],
     scan_root: Optional[str],
     project_root: Optional[PathLike],
+    domain_map: Optional[Mapping[str, Optional[str]]] = None,
 ) -> Dict[str, Any]:
+    if not vault.is_vault(kompound_repo):
+        # v2 볼트가 아닌 곳(예: v1 marvelous_kompound 보관본을 가리키는 오래된
+        # 설정)에 v2 경로를 만들어 쓰지 않는다 — 문서를 보존하지 못하므로 F9와
+        # 같은 선행 조건 실패로 보고한다(T2 삭제 차단 대상).
+        hint = " (v1 레이아웃 — v2 볼트 경로로 설정을 갱신하라)" if vault.is_v1_layout(kompound_repo) else ""
+        reason = (
+            f"not_v2_vault: {kompound_repo} 에 '{vault.RAW_ROOT}/'·'{vault.WIKI_ROOT}/'·"
+            f"index.md·log.md·.git 가 모두 있어야 한다{hint}"
+        )
+        precondition = {
+            "ok": False,
+            "dirty": False,
+            "dirty_files": [],
+            "diverged": False,
+            "ahead": 0,
+            "behind": 0,
+            "upstream": None,
+            "reason": reason,
+            "precondition_failed": True,
+        }
+        return _finalize(
+            project_root,
+            _failed_raw_stage(f"precondition_failed: {reason}"),
+            _empty_catalog_stage(),
+            busy=False,
+            precondition_failed=True,
+            precondition=precondition,
+            unmapped=[],
+            dirty=[],
+            raw_name_conflicts=[],
+        )
+
     lock_result = git_state.acquire_lock(kompound_repo)
     if not lock_result.get("ok") or not lock_result.get("acquired"):
         raw_stage = _failed_raw_stage(f"busy: {lock_result.get('reason', 'unknown')}")
@@ -801,8 +985,9 @@ def _apply_impl(
                     raw_name_conflicts=[],
                 )
 
+            today = _today()
             raw_stage, unmapped, conflicts, rich_map = _run_raw_stage(
-                kompound_repo, canonical_records, prefix_map, scan_root
+                kompound_repo, canonical_records, prefix_map, scan_root, domain_map, today
             )
             if not raw_stage["ok"]:
                 return _finalize(
@@ -817,7 +1002,7 @@ def _apply_impl(
                     raw_name_conflicts=conflicts,
                 )
 
-            catalog_stage = _run_catalog_stage(kompound_repo, prefix_map, rich_map)
+            catalog_stage = _run_catalog_stage(kompound_repo, prefix_map, rich_map, today)
             return _finalize(
                 project_root,
                 raw_stage,
@@ -852,6 +1037,7 @@ def apply(
     prefix_map: Mapping[str, Optional[str]],
     scan_root: Optional[str] = None,
     project_root: Optional[PathLike] = None,
+    domain_map: Optional[Mapping[str, Optional[str]]] = None,
 ) -> Dict[str, Any]:
     """F6 멱등 적용 — (i) raw 복사 + (ii) 카탈로그 갱신, 커밋 경계 분리
     (arch §6.3.0). 모듈 docstring 참조.
@@ -863,6 +1049,8 @@ def apply(
         scan_root: naming.py 완화 재조회용(arch §5.4.2 규칙5). 생략 가능.
         project_root: 주어지면 `runtime_state.record_apply_outcome()`으로
             (i)/(ii) 결과를 반영한다(완료조건 8). 생략하면 상태 기록 스킵.
+        domain_map: `config.resolve_config()["domain_map"]` — 신규 raw의
+            도메인 폴더 결정(프리픽스 → 도메인). 생략하면 `vault.DEFAULT_DOMAIN_MAP`.
 
     Returns:
         모듈 docstring "공개 API" 절의 스키마. 예외를 던지지 않는다(F13).
@@ -875,6 +1063,7 @@ def apply(
             prefix_map=prefix_map,
             scan_root=scan_root,
             project_root=project_root,
+            domain_map=domain_map,
         )
     except Exception as exc:  # noqa: BLE001 - fail-safe(F13) 최종 방어선
         return {

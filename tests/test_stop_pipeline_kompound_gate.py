@@ -173,7 +173,8 @@ def test_gate_passes_when_pending_zero(stop_pipeline, fake_kompound_env, monkeyp
     # 계산하고, 그 경로에 원본 바이트를 그대로 복사해 F6 "동일" 상태로
     # 맞춘다(내용 기반 비교이므로 raw_name만 맞고 바이트가 다르면 여전히
     # pending으로 남는다).
-    kompound_raw = fake_kompound_env["kompound"] / "raw"
+    kompound = fake_kompound_env["kompound"]
+    from hooks.lib.kompound_snapshot import vault as _vault
     from hooks.lib.kompound_snapshot import config as _cfg
     from hooks.lib.kompound_snapshot import scan as _scan
     from hooks.lib.kompound_snapshot import dedup as _dedup
@@ -186,10 +187,27 @@ def test_gate_passes_when_pending_zero(stop_pipeline, fake_kompound_env, monkeyp
         naming_result = _naming.name_document(record, cfg["prefix_map"], cfg["scan_root"])
         if "unmapped" in naming_result:
             continue
-        basename = Path(naming_result["raw_name"]).name
-        target = kompound_raw / basename
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(Path(record["path"]).read_bytes())
+        # v2 볼트(2026-10-07): 같은 slug의 기존 raw가 있으면 `## Original Content`
+        # 본문만 원본과 같게 맞추고, 없으면 v2 raw-source 한 장을 새로 만든다.
+        slug = naming_result["slug"]
+        source_text = Path(record["path"]).read_text(encoding="utf-8")
+        existing = _vault.find_raw(kompound, slug)
+        if existing is not None:
+            _, body = _vault.split_source_doc(source_text)
+            existing.write_text(
+                _vault.replace_original_content(existing.read_text(encoding="utf-8"), body), encoding="utf-8"
+            )
+        else:
+            target = _vault.new_raw_path(kompound, "AI Harness", "2026-07-01", slug)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                _vault.render_raw(
+                    slug=slug, project=naming_result["project"], feature=naming_result["feature"],
+                    kind=naming_result["kind"], domain="AI Harness", date="2026-07-01",
+                    source_text=source_text, source_label="test",
+                ),
+                encoding="utf-8",
+            )
 
     result = _decide(stop_pipeline, project_root)
 

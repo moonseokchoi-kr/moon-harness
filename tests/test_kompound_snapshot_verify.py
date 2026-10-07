@@ -6,9 +6,13 @@
 `fake_kompound_env`(tests/conftest.py, T-2 소유)를 재사용한다 — 새로 정의하지
 않는다. 전부 `tmp_path` 기반이므로 실제 kompound에는 절대 쓰지 않는다.
 
+2026-10-07 v2 볼트 이관으로 모집단은 ``10. Raw Sources/**``의 raw 이름(stem,
+``YYYY-MM-DD-<slug>``), 링크는 registry 본문의 wikilink, 게이트 (3)은 "flat
+유지" 대신 "raw 레이아웃(유형/도메인 2단)"이다 — 기대값을 그에 맞춰 갱신했다.
+
 fixture 베이스라인(변경 없이 그대로 쓰면):
 - ``prefix_map`` 유효 프리픽스 = ``{"acme", "beta", "gamma"}``
-- ``raw/``에 스냅샷 집합 6개(acme 2 · beta 3 · gamma 1) + 경계 케이스 1개
+- raw에 스냅샷 집합 6개(acme 2 · beta 3 · gamma 1) + 경계 케이스 1개
   (``notaproject-standalone-topic-ui.md`` — prefix `notaproject`는 유효
   프리픽스 밖이라 스냅샷 집합에서 제외돼야 한다, §6.3.1 CRITICAL 대응)
 - registry가 그 6개 전부를 링크한다 → 손대지 않으면 게이트 3종 전부 통과.
@@ -26,6 +30,20 @@ from hooks.lib.kompound_snapshot import verify
 
 _VALID_PREFIXES = ("acme", "beta", "gamma")
 _BASELINE_RAW_COUNT = 6  # acme 2 + beta 3 + gamma 1 (경계 케이스 제외)
+_RAW = "10. Raw Sources"
+_REGISTRY = ("20. Wiki", "24. Maps", "SDD Spec Registry.md")
+_SPECS_AI = ("10. Raw Sources", "17. Specs", "AI Harness")
+
+
+def _registry_path(kompound: Path) -> Path:
+    return kompound.joinpath(*_REGISTRY)
+
+
+def _write_raw(kompound: Path, name: str, text: str = "x\n", parts=_SPECS_AI) -> Path:
+    path = kompound.joinpath(*parts) / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 # ── snapshot_set_rule / 순수 함수 단위 테스트 ───────────────────────────────
@@ -81,13 +99,22 @@ def test_snapshot_set_rule_returns_prefixes_kinds_and_matcher() -> None:
 
 def test_extract_registry_raw_links_finds_all_raw_links() -> None:
     text = (
-        "| [✓](../raw/acme-widget-onboarding-spec.md) | "
-        "[✓](../raw/acme-widget-onboarding-arch.md) |\n"
+        "| [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | "
+        "[[2026-07-01-acme-widget-onboarding-arch\\|✓]] | [[Some Wiki Page]] |\n"
     )
     assert verify.extract_registry_raw_links(text) == {
-        "acme-widget-onboarding-spec.md",
-        "acme-widget-onboarding-arch.md",
+        "2026-07-01-acme-widget-onboarding-spec",
+        "2026-07-01-acme-widget-onboarding-arch",
+        "Some Wiki Page",
     }
+
+
+def test_extract_registry_raw_links_ignores_frontmatter() -> None:
+    text = (
+        "---\nsource:\n  - \"[[2026-07-01-acme-only-in-frontmatter-spec]]\"\n---\n\n"
+        "| [[2026-07-01-acme-widget-onboarding-spec\\|✓]] |\n"
+    )
+    assert verify.extract_registry_raw_links(text) == {"2026-07-01-acme-widget-onboarding-spec"}
 
 
 def test_extract_registry_raw_links_empty_text() -> None:
@@ -96,25 +123,35 @@ def test_extract_registry_raw_links_empty_text() -> None:
 
 def test_snapshot_registry_links_filters_to_population_rule() -> None:
     text = (
-        "[✓](../raw/acme-widget-onboarding-spec.md) "
-        "[✓](../raw/notaproject-standalone-topic-ui.md)"
+        "[[2026-07-01-acme-widget-onboarding-spec\\|✓]] "
+        "[[2026-07-01-notaproject-standalone-topic-ui\\|ui]] "
+        "[[acme-undated-feature-spec]] [[Loop Engineering]]"
     )
     links = verify.snapshot_registry_links(text, _VALID_PREFIXES)
-    assert links == {"acme-widget-onboarding-spec.md"}
+    assert links == {"2026-07-01-acme-widget-onboarding-spec"}
 
 
-# ── snapshot_population (raw/ 실측) ──────────────────────────────────────────
+# ── snapshot_population (raw 실측) ───────────────────────────────────────────
 
 
 def test_snapshot_population_excludes_unregistered_prefix_boundary_case(
     fake_kompound_env: Dict[str, Any],
 ) -> None:
-    """§6.3.1 CRITICAL 대응 회귀 테스트 — 프리픽스 미등록 파일이 raw/에
+    """§6.3.1 CRITICAL 대응 회귀 테스트 — 프리픽스 미등록 파일이 raw에
     물리적으로 존재해도(kind 접미사만 우연히 일치) 모집단 집계에서 제외된다.
+    v2: 유형/도메인 폴더 어디에 있든 재귀로 모은다.
     """
     kompound = fake_kompound_env["kompound"]
-    population = verify.snapshot_population(kompound / "raw", _VALID_PREFIXES)
-    assert "notaproject-standalone-topic-ui.md" not in population
+    population = verify.snapshot_population(kompound / _RAW, _VALID_PREFIXES)
+    assert "2026-07-01-notaproject-standalone-topic-ui" not in population
+    assert len(population) == _BASELINE_RAW_COUNT
+    assert "2026-07-01-gamma-metrics-spec" in population  # 19. Decisions & Lessons/CLOFab 에 있음
+
+
+def test_snapshot_population_ignores_undated_files(fake_kompound_env: Dict[str, Any]) -> None:
+    kompound = fake_kompound_env["kompound"]
+    _write_raw(kompound, "acme-undated-feature-spec.md")
+    population = verify.snapshot_population(kompound / _RAW, _VALID_PREFIXES)
     assert len(population) == _BASELINE_RAW_COUNT
 
 
@@ -140,15 +177,15 @@ def test_gate1_fails_on_broken_link_fixture(fake_kompound_env: Dict[str, Any]) -
     않는 raw 파일을 registry가 가리킴)."""
     kompound = fake_kompound_env["kompound"]
     prefix_map = fake_kompound_env["config"]["prefix_map"]
-    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
+    registry_path = _registry_path(kompound)
 
     text = registry_path.read_text(encoding="utf-8")
-    text += "\n[broken](../raw/acme-ghost-feature-spec.md)\n"
+    text += "\n[[2026-07-01-acme-ghost-feature-spec\\|✓]]\n"
     registry_path.write_text(text, encoding="utf-8")
 
     result = verify.check_link_integrity(kompound, prefix_map)
     assert result["ok"] is False
-    assert "acme-ghost-feature-spec.md" in result["detail"]
+    assert "2026-07-01-acme-ghost-feature-spec" in result["detail"]
 
 
 def test_gate1_ignores_broken_link_outside_snapshot_set(fake_kompound_env: Dict[str, Any]) -> None:
@@ -156,11 +193,11 @@ def test_gate1_ignores_broken_link_outside_snapshot_set(fake_kompound_env: Dict[
     (1)은 실패하지 않는다(C-1과 동일 구조 함정 회피)."""
     kompound = fake_kompound_env["kompound"]
     prefix_map = fake_kompound_env["config"]["prefix_map"]
-    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
+    registry_path = _registry_path(kompound)
 
     text = registry_path.read_text(encoding="utf-8")
     # "notaproject"는 prefix_map.values() 밖 → 스냅샷 집합 밖 링크.
-    text += "\n[broken, out of scope](../raw/notaproject-ghost-topic-ui.md)\n"
+    text += "\n[[2026-07-01-notaproject-ghost-topic-ui\\|broken, out of scope]]\n"
     registry_path.write_text(text, encoding="utf-8")
 
     result = verify.check_link_integrity(kompound, prefix_map)
@@ -173,11 +210,11 @@ def test_gate1_ignores_broken_link_outside_snapshot_set(fake_kompound_env: Dict[
 def test_gate2_passes_on_pristine_fixture_despite_boundary_file_present(
     fake_kompound_env: Dict[str, Any],
 ) -> None:
-    """모집단 한정이 실효적인가 — 경계 케이스 파일이 raw/에 물리적으로
+    """모집단 한정이 실효적인가 — 경계 케이스 파일이 raw에 물리적으로
     존재해도(§6.3.1) 게이트 (2)는 정상 통과한다(C-1 회귀 방지 핵심 테스트)."""
     kompound = fake_kompound_env["kompound"]
     prefix_map = fake_kompound_env["config"]["prefix_map"]
-    assert any((kompound / "raw").glob("notaproject-*"))  # 경계 파일이 실제로 있음을 전제 확인
+    assert any((kompound / _RAW).rglob("*-notaproject-*"))  # 경계 파일이 실제로 있음을 전제 확인
 
     result = verify.check_bidirectional_count(kompound, prefix_map)
     assert result["ok"] is True
@@ -192,16 +229,14 @@ def test_gate2_fails_on_count_mismatch_fixture_missing_link(
     kompound = fake_kompound_env["kompound"]
     prefix_map = fake_kompound_env["config"]["prefix_map"]
 
-    (kompound / "raw" / "acme-extra-feature-spec.md").write_text(
-        "# extra feature (미링크)\n", encoding="utf-8"
-    )
+    _write_raw(kompound, "2026-07-02-acme-extra-feature-spec.md", "# extra feature (미링크)\n")
 
     gate1 = verify.check_link_integrity(kompound, prefix_map)
     assert gate1["ok"] is True  # 게이트 1은 영향 없음(등록된 링크만 검사)
 
     gate2 = verify.check_bidirectional_count(kompound, prefix_map)
     assert gate2["ok"] is False
-    assert "acme-extra-feature-spec.md" in gate2["detail"]
+    assert "2026-07-02-acme-extra-feature-spec" in gate2["detail"]
 
 
 def test_gate2_cross_case_equal_count_but_mismatched_sets(
@@ -212,27 +247,25 @@ def test_gate2_cross_case_equal_count_but_mismatched_sets(
     차집합 검사가 정확히 잡아야 한다."""
     kompound = fake_kompound_env["kompound"]
     prefix_map = fake_kompound_env["config"]["prefix_map"]
-    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
+    registry_path = _registry_path(kompound)
 
     # 유령 링크 1건 추가(파일 없음) + raw에 미링크 파일 1건 추가(누락) →
     # 링크 개수(7)와 raw 파일 개수(7)가 같아진다. 하지만 두 집합은 다르다.
     text = registry_path.read_text(encoding="utf-8")
-    text += "\n[ghost](../raw/acme-phantom-feature-spec.md)\n"
+    text += "\n[[2026-07-01-acme-phantom-feature-spec\\|ghost]]\n"
     registry_path.write_text(text, encoding="utf-8")
-    (kompound / "raw" / "beta-untracked-feature-arch.md").write_text(
-        "# untracked (미링크)\n", encoding="utf-8"
-    )
+    _write_raw(kompound, "2026-07-01-beta-untracked-feature-arch.md", "# untracked (미링크)\n")
 
     rule = verify.snapshot_set_rule(prefix_map)
     links = verify.snapshot_registry_links(text, rule["prefixes"])
-    files = verify.snapshot_population(kompound / "raw", rule["prefixes"])
+    files = verify.snapshot_population(kompound / _RAW, rule["prefixes"])
     assert len(links) == len(files), "이 테스트의 전제(개수 동일)가 깨짐 — fixture 재확인 필요"
     assert links != files, "이 테스트의 전제(집합 불일치)가 깨짐 — fixture 재확인 필요"
 
     result = verify.check_bidirectional_count(kompound, prefix_map)
     assert result["ok"] is False
-    assert "acme-phantom-feature-spec.md" in result["detail"]
-    assert "beta-untracked-feature-arch.md" in result["detail"]
+    assert "2026-07-01-acme-phantom-feature-spec" in result["detail"]
+    assert "2026-07-01-beta-untracked-feature-arch" in result["detail"]
 
 
 def test_gate2_prefix_map_null_removes_symmetrically_from_both_sides(
@@ -251,44 +284,64 @@ def test_gate2_prefix_map_null_removes_symmetrically_from_both_sides(
     assert result["ok"] is True  # acme 쪽 2개가 링크·파일 양쪽에서 동시에 빠짐
 
 
-# ── 게이트 (3) flat 유지 ─────────────────────────────────────────────────────
+# ── 게이트 (3) raw 레이아웃 (v1 "flat 유지"의 v2 대체) ────────────────────────
 
 
 def test_gate3_passes_on_pristine_fixture(fake_kompound_env: Dict[str, Any]) -> None:
     kompound = fake_kompound_env["kompound"]
-    result = verify.check_flat_structure(kompound)
+    result = verify.check_raw_layout(kompound, fake_kompound_env["config"]["prefix_map"])
+    assert result["gate"] == verify.GATE_RAW_LAYOUT
     assert result["ok"] is True
 
 
-def test_gate3_allows_assets_subdir(fake_kompound_env: Dict[str, Any]) -> None:
+def test_gate3_v1_alias_still_callable(fake_kompound_env: Dict[str, Any]) -> None:
     kompound = fake_kompound_env["kompound"]
-    (kompound / "raw" / "assets").mkdir()
-    result = verify.check_flat_structure(kompound)
+    assert verify.GATE_FLAT_STRUCTURE == verify.GATE_RAW_LAYOUT
+    assert verify.check_flat_structure(kompound, fake_kompound_env["config"]["prefix_map"])["ok"] is True
+
+
+def test_gate3_ignores_non_snapshot_files_outside_layout(fake_kompound_env: Dict[str, Any]) -> None:
+    """스냅샷 집합 밖 파일(사람이 둔 README 등)은 깊이가 달라도 게이트 대상이 아니다."""
+    kompound = fake_kompound_env["kompound"]
+    _write_raw(kompound, "README.md", parts=(_RAW,))
+    result = verify.check_raw_layout(kompound, fake_kompound_env["config"]["prefix_map"])
     assert result["ok"] is True
 
 
-def test_gate3_fails_on_rogue_subdirectory_fixture(fake_kompound_env: Dict[str, Any]) -> None:
-    """독립 실패 fixture — raw/ 하위 서브디렉토리 1건 주입. 게이트 (1)(2)에는
-    영향 없음(파일 순회 대상이 아니므로)."""
+def test_gate3_fails_on_snapshot_raw_outside_type_domain_layout(fake_kompound_env: Dict[str, Any]) -> None:
+    """독립 실패 fixture — 유형 폴더 바로 아래(도메인 폴더 없음)에 스냅샷 raw 1건.
+    링크도 추가해 게이트 (1)(2)는 통과시키고 (3)만 실패하게 한다."""
     kompound = fake_kompound_env["kompound"]
     prefix_map = fake_kompound_env["config"]["prefix_map"]
-    (kompound / "raw" / "rogue_subdir").mkdir()
-    (kompound / "raw" / "rogue_subdir" / "file.md").write_text("x\n", encoding="utf-8")
+    _write_raw(kompound, "2026-07-01-acme-stray-feature-spec.md", parts=(_RAW, "17. Specs"))
+    registry_path = _registry_path(kompound)
+    registry_path.write_text(
+        registry_path.read_text(encoding="utf-8") + "\n[[2026-07-01-acme-stray-feature-spec\\|✓]]\n",
+        encoding="utf-8",
+    )
 
-    gate1 = verify.check_link_integrity(kompound, prefix_map)
-    gate2 = verify.check_bidirectional_count(kompound, prefix_map)
-    assert gate1["ok"] is True
-    assert gate2["ok"] is True
+    assert verify.check_link_integrity(kompound, prefix_map)["ok"] is True
+    assert verify.check_bidirectional_count(kompound, prefix_map)["ok"] is True
 
-    gate3 = verify.check_flat_structure(kompound)
+    gate3 = verify.check_raw_layout(kompound, prefix_map)
     assert gate3["ok"] is False
-    assert "rogue_subdir" in gate3["detail"]
+    assert "acme-stray-feature-spec" in gate3["detail"]
+
+
+def test_gate3_fails_on_unknown_domain_folder(fake_kompound_env: Dict[str, Any]) -> None:
+    kompound = fake_kompound_env["kompound"]
+    prefix_map = fake_kompound_env["config"]["prefix_map"]
+    _write_raw(kompound, "2026-07-01-acme-rogue-feature-spec.md", parts=(_RAW, "17. Specs", "Rogue Domain"))
+
+    gate3 = verify.check_raw_layout(kompound, prefix_map)
+    assert gate3["ok"] is False
+    assert "Rogue Domain" in gate3["detail"]
 
 
 def test_gate3_missing_raw_dir_passes(tmp_path: Path) -> None:
-    """raw/ 자체가 없으면(비정상이지만) 서브디렉토리도 없으므로 통과 —
-    다른 게이트가 이 상황을 별도로 취급한다."""
-    result = verify.check_flat_structure(tmp_path)
+    """raw 루트 자체가 없으면 스냅샷 raw도 없으므로 통과 — 다른 게이트가 이
+    상황을 별도로 취급한다."""
+    result = verify.check_raw_layout(tmp_path, {"a": "acme"})
     assert result["ok"] is True
 
 
@@ -321,7 +374,7 @@ def test_run_gates_not_called_when_should_run_gates_is_false(tmp_path: Path) -> 
     스킵을 결정할 수 있음을 증명하는 오케스트레이션 계약 테스트."""
     with patch.object(verify, "check_link_integrity") as m1, patch.object(
         verify, "check_bidirectional_count"
-    ) as m2, patch.object(verify, "check_flat_structure") as m3:
+    ) as m2, patch.object(verify, "check_raw_layout") as m3:
         raw_stage = {"new": [], "updated": []}
         if verify.should_run_gates(raw_stage):
             verify.run_gates(tmp_path, {})
@@ -336,10 +389,10 @@ def test_run_gates_called_exactly_once_each_when_should_run_gates_is_true(
 ) -> None:
     with patch.object(verify, "check_link_integrity") as m1, patch.object(
         verify, "check_bidirectional_count"
-    ) as m2, patch.object(verify, "check_flat_structure") as m3:
+    ) as m2, patch.object(verify, "check_raw_layout") as m3:
         m1.return_value = {"gate": verify.GATE_LINK_INTEGRITY, "ok": True, "detail": ""}
         m2.return_value = {"gate": verify.GATE_BIDIRECTIONAL_COUNT, "ok": True, "detail": ""}
-        m3.return_value = {"gate": verify.GATE_FLAT_STRUCTURE, "ok": True, "detail": ""}
+        m3.return_value = {"gate": verify.GATE_RAW_LAYOUT, "ok": True, "detail": ""}
 
         raw_stage = {"new": ["raw/x-y-spec.md"], "updated": []}
         result: List[Dict[str, Any]] = []
@@ -364,7 +417,7 @@ def test_run_gates_all_pass_on_pristine_fixture_and_returns_contract_shape(
     assert {r["gate"] for r in results} == {
         verify.GATE_LINK_INTEGRITY,
         verify.GATE_BIDIRECTIONAL_COUNT,
-        verify.GATE_FLAT_STRUCTURE,
+        verify.GATE_RAW_LAYOUT,
     }
     for r in results:
         assert set(r.keys()) == {"gate", "ok", "detail"}

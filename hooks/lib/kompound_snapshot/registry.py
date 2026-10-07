@@ -1,6 +1,13 @@
-"""hooks/lib/kompound_snapshot/registry.py — F7 registry 외과적 갱신 (arch §6.3.2/§6.3.3)
+r"""hooks/lib/kompound_snapshot/registry.py — F7 registry 외과적 갱신 (arch §6.3.2/§6.3.3)
 
-``wiki/sdd-spec-registry.md``를 **재생성하지 않고** 허용된 연산만 적용한다
+v2 볼트(2026-10-07~): 대상은 ``20. Wiki/24. Maps/SDD Spec Registry.md``이고 셀
+링크는 Obsidian wikilink다 — 직접 열 ``[[<raw 이름>\|✓]]``, ``기타`` 열
+``[[<raw 이름>\|api]] · [[<raw 이름>\|context]]``(표 안이라 ``|``를 ``\|``로
+이스케이프). 표 셀 분해는 이스케이프된 ``\|``를 구분자로 보지 않는다. 허용 연산에
+더해 frontmatter ``source:`` wikilink 목록에 새 raw를 추가하고 ``date modified``를
+오늘로 올린다(목록 동기화 — 표가 SSOT, frontmatter는 그 사본).
+
+``wiki/sdd-spec-registry.md``(v1)를 **재생성하지 않고** 허용된 연산만 적용한다
 (arch §6.3): ① 행 추가 ② 셀의 ``—`` → 링크 교체(``기타`` 열은 `` · `` 합성)
 ③ 열거된 카운트 문장 갱신, ④ (사용자 승인 2026-07-29 — arch §6.3.2 "방향 반전")
 없는 kind 열 추가. 그 외 어떤 바이트도 건드리지 않는다 — 표 스키마가
@@ -55,9 +62,9 @@ docstring).
      매칭의 두 번째 후보다.
    - ``feature``/``kind``: naming.py가 소비한 것과 동일한 값(kind는 scan.py의
      ``KINDS`` 매핑 후 값 — spec/arch/ui/api/context/result 6종).
-   - ``raw_name``: naming.py ``name_document()``가 반환한 값
-     (``"raw/<project>-<feature>-<kind>.md"``, 접두 ``raw/`` 유무 무관 —
-     이 모듈이 ``Path(...).name``으로 정규화한다).
+   - ``raw_name``: wikilink 대상 raw 이름(v2: 파일 stem ``YYYY-MM-DD-<slug>``).
+     경로 접두·``.md`` 유무 무관 — 이 모듈이 basename에서 ``.md``를 떼어
+     정규화한다(``_raw_link_target``).
    - ``worktree``: 이 사본이 워크트리에서 왔으면 워크트리 디렉토리 이름,
      아니면 ``None``.
 3. **카운트 문장 갱신은 opt-in.** ``totals``(kwarg)를 생략(``None``)하면 이
@@ -131,19 +138,27 @@ _CURRENT_STATUS_HEADING = "## 현재 상태"
 _RELATED_DOCS_HEADING = "## 관련 문서"
 
 _SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
-_EXTRA_ENTRY_RE = re.compile(r"\[(ui|api|context)\]\(([^)]+)\)")
+# `기타` 셀 항목: v2 wikilink `[[<raw>\|api]]` (v1 마크다운 `[api](../raw/x.md)`도 읽기는 허용).
+_EXTRA_ENTRY_RE = re.compile(r"\[\[([^\]\|\\]+)\\?\|(ui|api|context)\]\]")
+_EXTRA_ENTRY_V1_RE = re.compile(r"\[(ui|api|context)\]\(([^)]+)\)")
+# 이스케이프되지 않은 `|` — 표 셀 구분자. wikilink alias의 `\|`는 셀 내용이다.
+_CELL_SPLIT_RE = re.compile(r"(?<!\\)\|")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # §6.3.3 화이트리스트 정규식 2종 — 이 2개 형태에만 매칭되고, 매칭되면 그 줄만
 # 손댄다. 그 외 줄(날짜 박힌 스냅샷 서술·산문 카운트 등)은 애초에 매칭되지
 # 않으므로 불변이다.
+# 괄호 안 6종 뒤에 이 훅이 세지 않는 종류(예: ` · learnings 1`)가 붙어 있을 수
+# 있다 — 그 꼬리(group "extra")는 사람이 관리하는 값이므로 바이트 그대로 보존한다.
 _CURRENT_STATUS_RE = re.compile(
     r"^(\d+) feature · raw (\d+)개\(spec (\d+) · arch (\d+) · result (\d+) · "
-    r"api (\d+) · ui (\d+) · context (\d+)\)\. 범례: ✓=있음, —=산출물 없음\.$"
+    r"api (\d+) · ui (\d+) · context (\d+)(?P<extra>(?: · [a-z]+ \d+)*)\)\. 범례: ✓=있음, —=산출물 없음\.$"
 )
+# 백틱 안의 경로 표기(v1 `raw/<project>-<feature>-<kind>.md` 또는 v2 표기)는 보존한다.
 _RAW_TOTAL_RE = re.compile(
-    r"^- raw: `raw/<project>-<feature>-<kind>\.md` (\d+)개 \(위 표 링크\)$"
+    r"^- raw: `(?P<pattern>[^`]+<kind>\.md)` (\d+)개 \(위 표 링크\)$"
 )
+_FM_DATE_MODIFIED_RE = re.compile(r"^date modified:.*$", re.MULTILINE)
 
 
 # ── 내부 자료구조 ────────────────────────────────────────────────────────────
@@ -172,7 +187,7 @@ def _split_row(line: str) -> List[str]:
     읽기(매칭)용 — 재구성에는 :func:`_replace_cell_in_line`/
     :func:`_insert_column_in_line`(원본 세그먼트 보존)을 쓴다.
     """
-    parts = line.strip().split("|")
+    parts = _CELL_SPLIT_RE.split(line.strip())
     if parts and parts[0] == "":
         parts = parts[1:]
     if parts and parts[-1] == "":
@@ -189,7 +204,7 @@ def _is_separator_row(line: str) -> bool:
 
 def _replace_cell_in_line(line: str, col_index: int, new_value: str) -> str:
     """``col_index`` 번째 셀만 교체한다. 다른 셀의 원본 공백/문자는 보존."""
-    segments = line.split("|")
+    segments = _CELL_SPLIT_RE.split(line)
     inner = segments[1:-1]
     inner[col_index] = f" {new_value} "
     return segments[0] + "|" + "|".join(inner) + "|" + segments[-1]
@@ -197,7 +212,7 @@ def _replace_cell_in_line(line: str, col_index: int, new_value: str) -> str:
 
 def _insert_column_in_line(line: str, col_index: int, new_cell_text: str) -> str:
     """``col_index`` 위치에 새 셀을 삽입한다(열 추가 — 헤더/구분선/데이터 행 공용)."""
-    segments = line.split("|")
+    segments = _CELL_SPLIT_RE.split(line)
     inner = segments[1:-1]
     inner.insert(col_index, new_cell_text)
     return segments[0] + "|" + "|".join(inner) + "|" + segments[-1]
@@ -344,22 +359,32 @@ def _locate_table(
 # ── 셀 합성 헬퍼 ─────────────────────────────────────────────────────────────
 
 
+def _raw_link_target(raw_name: str) -> str:
+    """``raw_name``(경로·``.md`` 유무 무관) → wikilink 대상(raw 이름 = 파일 stem)."""
+    name = Path(str(raw_name)).name
+    return name[: -len(".md")] if name.endswith(".md") else name
+
+
 def _direct_cell(raw_name: str) -> str:
-    return f"[✓](../raw/{raw_name})"
+    return f"[[{_raw_link_target(raw_name)}\\|✓]]"
 
 
 def _merge_extra_cell(existing_cell: str, new_links: Mapping[str, str]) -> str:
-    """``기타`` 셀에 ui/api/context 링크를 고정 순서로 합성한다(§6.3의 ` · ` 합성)."""
+    """``기타`` 셀에 ui/api/context 링크를 고정 순서로 합성한다(§6.3의 ` · ` 합성).
+
+    기존 항목은 원문 그대로 보존한다(v1 마크다운 링크가 남아 있어도 바꾸지 않는다)."""
     entries: Dict[str, str] = {}
     if existing_cell and existing_cell != "—":
         for m in _EXTRA_ENTRY_RE.finditer(existing_cell):
-            entries[m.group(1)] = m.group(2)
+            entries[m.group(2)] = m.group(0)
+        for m in _EXTRA_ENTRY_V1_RE.finditer(existing_cell):
+            entries.setdefault(m.group(1), m.group(0))
     for kind, raw_name in new_links.items():
-        entries[kind] = f"../raw/{raw_name}"
+        entries[kind] = f"[[{_raw_link_target(raw_name)}\\|{kind}]]"
     if not entries:
         return "—"
     ordered = [k for k in MERGED_KINDS if k in entries]
-    return " · ".join(f"[{k}]({entries[k]})" for k in ordered)
+    return " · ".join(entries[k] for k in ordered)
 
 
 def _home_repo_value(repo_dir: str, worktree: Optional[str]) -> str:
@@ -528,7 +553,8 @@ def _update_current_status(lines: List[str], totals: Mapping[str, int]) -> Tuple
         return lines, "not_found"
 
     line = lines[j]
-    if not _CURRENT_STATUS_RE.match(line.strip()):
+    status_match = _CURRENT_STATUS_RE.match(line.strip())
+    if not status_match:
         return lines, "not_found"
     if _DATE_RE.search(line):
         # 화이트리스트에 매칭되더라도 날짜가 있으면 불변(보조 방어, §6.3.3 우선순위②).
@@ -538,7 +564,8 @@ def _update_current_status(lines: List[str], totals: Mapping[str, int]) -> Tuple
     new_text = (
         f"{totals['features']} feature · raw {totals['raw']}개"
         f"(spec {totals['spec']} · arch {totals['arch']} · result {totals['result']} · "
-        f"api {totals['api']} · ui {totals['ui']} · context {totals['context']}). "
+        f"api {totals['api']} · ui {totals['ui']} · context {totals['context']}"
+        f"{status_match.group('extra') or ''}). "
         f"범례: ✓=있음, —=산출물 없음."
     )
     new_lines = list(lines)
@@ -563,12 +590,13 @@ def _update_raw_total(lines: List[str], totals: Mapping[str, int]) -> Tuple[List
 
     for i in range(heading_idx + 1, end):
         line = lines[i]
-        if not _RAW_TOTAL_RE.match(line.strip()):
+        total_match = _RAW_TOTAL_RE.match(line.strip())
+        if not total_match:
             continue
         if _DATE_RE.search(line):
             return lines, None
         leading_ws = line[: len(line) - len(line.lstrip())]
-        new_line = leading_ws + f"- raw: `raw/<project>-<feature>-<kind>.md` {totals['raw']}개 (위 표 링크)"
+        new_line = leading_ws + f"- raw: `{total_match.group('pattern')}` {totals['raw']}개 (위 표 링크)"
         new_lines = list(lines)
         new_lines[i] = new_line
         return new_lines, "updated"
@@ -586,7 +614,7 @@ def _group_entries(new_docs: Sequence[Mapping[str, Any]]) -> "Dict[str, Dict[str
         project = doc["project"]
         feature = doc["feature"]
         kind = doc["kind"]
-        raw_name = Path(doc["raw_name"]).name
+        raw_name = _raw_link_target(doc["raw_name"])
         worktree = doc.get("worktree")
 
         g = groups.setdefault(repo_dir, {"project": project, "features": {}})
@@ -606,11 +634,15 @@ def update_registry(
     *,
     prefix_map: Mapping[str, Optional[str]],
     totals: Optional[Mapping[str, int]] = None,
+    today: Optional[str] = None,
 ) -> Dict[str, Any]:
     """registry 텍스트를 외과적으로 갱신한다(arch §6.3/§6.3.2/§6.3.3).
 
+    ``today``(``YYYY-MM-DD``)가 주어지면 frontmatter ``date modified``를 그 값으로
+    올린다(v2). 생략하면 날짜는 건드리지 않는다(순수성 — 테스트 결정성).
+
     Args:
-        registry_text: 현재 ``wiki/sdd-spec-registry.md`` 전체 텍스트.
+        registry_text: 현재 ``20. Wiki/24. Maps/SDD Spec Registry.md`` 전체 텍스트.
         new_docs: **카탈로그 링크가 아직 없는** raw 문서 목록(모듈 docstring
             "설계 결정" #1 재정의 — F6 "신규(new)" 분류가 아니라
             ``verify.snapshot_population - verify.snapshot_registry_links``
@@ -631,9 +663,62 @@ def update_registry(
         실패 모양으로 흡수한다.
     """
     try:
-        return _update_registry_impl(registry_text, new_docs, totals=totals)
+        return _update_registry_impl(registry_text, new_docs, totals=totals, today=today)
     except Exception as exc:  # noqa: BLE001 — fail-safe, 밖으로 던지지 않는다
         return {"ok": False, "reason": "catalog_unparsed", "detail": f"unexpected error: {exc}"}
+
+
+def _frontmatter_bounds(lines: Sequence[str]) -> Optional[Tuple[int, int]]:
+    """``(시작 '---' 줄, 끝 '---' 줄)`` 인덱스. frontmatter가 없으면 None."""
+    if not lines or lines[0].strip() != "---":
+        return None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return 0, i
+    return None
+
+
+def _sync_frontmatter(
+    lines: List[str], new_docs: Sequence[Mapping[str, Any]], *, today: Optional[str]
+) -> List[str]:
+    """frontmatter ``source:`` wikilink 목록에 새 raw를 추가하고 ``date modified``를
+    ``today``로 올린다. frontmatter·``source:`` 블록이 없으면 아무것도 하지 않는다
+    (실패가 아니다 — 표가 SSOT이고 이 동기화는 부가 연산이다). 기존 항목 순서가
+    정렬돼 있었으면 정렬을 유지하고, 아니면 끝에 덧붙인다."""
+    bounds = _frontmatter_bounds(lines)
+    if bounds is None:
+        return lines
+    start, end = bounds
+    out = list(lines)
+
+    src_idx = None
+    for i in range(start + 1, end):
+        if out[i].rstrip() == "source:":
+            src_idx = i
+            break
+    if src_idx is not None:
+        j = src_idx + 1
+        items: List[str] = []
+        while j < end and out[j].startswith("  - "):
+            items.append(out[j])
+            j += 1
+        new_items = list(items)
+        for doc in new_docs:
+            item = f'  - "[[{_raw_link_target(doc["raw_name"])}]]"'
+            if item not in new_items:
+                new_items.append(item)
+        if new_items != items:
+            if items == sorted(items):
+                new_items = sorted(new_items)
+            out[src_idx + 1 : j] = new_items
+            end += len(new_items) - len(items)
+
+    if today:
+        for i in range(start + 1, end):
+            if _FM_DATE_MODIFIED_RE.match(out[i]):
+                out[i] = f"date modified: {today}"
+                break
+    return out
 
 
 def _update_registry_impl(
@@ -641,6 +726,7 @@ def _update_registry_impl(
     new_docs: Sequence[Mapping[str, Any]],
     *,
     totals: Optional[Mapping[str, int]],
+    today: Optional[str] = None,
 ) -> Dict[str, Any]:
     if not new_docs:
         return {"ok": True, "text": registry_text, "rows_added": 0, "cells_updated": 0, "columns_added": []}
@@ -747,6 +833,8 @@ def _update_registry_impl(
                 "reason": "catalog_unparsed",
                 "detail": "raw-total count sentence not recognized",
             }
+
+    lines = _sync_frontmatter(lines, new_docs, today=today)
 
     text = "\n".join(lines) + ("\n" if trailing_newline else "")
     return {

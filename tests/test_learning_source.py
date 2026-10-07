@@ -614,3 +614,38 @@ class TestEntryCountMultipleStoreFiles:
         assert has_cross_project(counter, "test-adequacy") is True, (
             f"3 distinct repos must yield True. counter={counter}"
         )
+
+
+# ── kompound v2 볼트 store 위치 (2026-10-07 이관) ────────────────────────────
+
+
+class TestV2VaultStoreLocation:
+    """교차-repo store가 v1 `marvelous_kompound/harness-learning/`에서 v2
+    `moon_kompound/70. Outputs/harness-learning/`로 옮겨졌다. 경로에 공백이
+    있어도 config(`.harness/config.json`의 `cross_project_store`) → `load_and_merge`
+    결선이 그대로 동작해야 한다(포맷 불변)."""
+
+    def test_config_points_to_v2_outputs_store_with_spaces(self, tmp_path: Path) -> None:
+        import json
+
+        from hooks.lib.self_improve import state_io
+
+        store_dir = tmp_path / "moon_kompound" / "70. Outputs" / "harness-learning"
+        store_dir.mkdir(parents=True)
+        (store_dir / "Marvelous.md").write_text(
+            _make_learning_md("test-adequacy", "Marvelous", "2026-07-01 — marvelous-x / T-1"), encoding="utf-8"
+        )
+        local = tmp_path / "LEARNING.md"
+        local.write_text(_make_learning_md("test-adequacy", "moon-harness", "2026-07-02 — harness-y / T-2"), encoding="utf-8")
+        cfg_path = tmp_path / ".harness" / "config.json"
+        cfg_path.parent.mkdir(parents=True)
+        cfg_path.write_text(json.dumps({"cross_project_store": str(store_dir)}), encoding="utf-8")
+
+        # SKILL.md Phase B 호출 시퀀스 그대로.
+        cfg = state_io.load_state(cfg_path)
+        resolved_store = (cfg or {}).get("cross_project_store") or None
+        merged = load_and_merge(local, resolved_store)
+
+        counter = count_signals(merged)
+        assert has_cross_project(counter, "test-adequacy") is True
+        assert {e["tags"]["provenance_repo"] for e in merged} == {"Marvelous", "moon-harness"}

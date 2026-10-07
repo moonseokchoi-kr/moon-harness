@@ -65,7 +65,7 @@ def _record(repo_dir: str, path: str, kind: str) -> dict:
 def test_name_document_covers_all_default_prefixes(repo_dir: str, expected_prefix: str) -> None:
     record = _record(repo_dir, f"/x/{repo_dir}/docs/sdd/spec/2026-07-29-widget-spec.md", "spec")
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": f"raw/{expected_prefix}-widget-spec.md"}
+    assert result["raw_name"] == f"{expected_prefix}-widget-spec.md"
 
 
 # ── 날짜 프리픽스 · 접미사 제거 ──────────────────────────────────────────────
@@ -82,7 +82,7 @@ def test_date_prefix_and_suffix_are_stripped() -> None:
         "spec",
     )
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/harness-kompound-snapshot-hook-spec.md"}
+    assert result["raw_name"] == "harness-kompound-snapshot-hook-spec.md"
 
 
 def test_kind_suffix_other_than_spec_dev_result_is_not_stripped() -> None:
@@ -94,19 +94,19 @@ def test_kind_suffix_other_than_spec_dev_result_is_not_stripped() -> None:
         "arch",
     )
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/harness-something-arch-arch.md"}
+    assert result["raw_name"] == "harness-something-arch-arch.md"
 
 
 def test_dev_suffix_is_stripped() -> None:
     record = _record("rein", "/x/rein/docs/sdd/development/2026-01-01-feature-dev.md", "arch")
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/rein-feature-arch.md"}
+    assert result["raw_name"] == "rein-feature-arch.md"
 
 
 def test_no_date_prefix_present_is_a_noop() -> None:
     record = _record("moon-harness", "/x/moon-harness/docs/sdd/spec/plain-name-spec.md", "spec")
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/harness-plain-name-spec.md"}
+    assert result["raw_name"] == "harness-plain-name-spec.md"
 
 
 # ── 프리픽스 중복 접기 ───────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ def test_duplicate_project_prefix_is_folded() -> None:
         "result",
     )
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/codegraph-internal-mcp-result.md"}
+    assert result["raw_name"] == "codegraph-internal-mcp-result.md"
 
 
 def test_trailing_duplicate_project_token_is_folded() -> None:
@@ -133,7 +133,7 @@ def test_trailing_duplicate_project_token_is_folded() -> None:
         "spec",
     )
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/harness-self-improving-spec.md"}
+    assert result["raw_name"] == "harness-self-improving-spec.md"
 
 
 def test_project_token_in_the_middle_is_not_folded() -> None:
@@ -144,7 +144,7 @@ def test_project_token_in_the_middle_is_not_folded() -> None:
         "spec",
     )
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/harness-pre-harness-post-spec.md"}
+    assert result["raw_name"] == "harness-pre-harness-post-spec.md"
 
 
 def test_feature_equal_to_project_token_is_not_folded() -> None:
@@ -153,7 +153,7 @@ def test_feature_equal_to_project_token_is_not_folded() -> None:
         "moon-harness", "/x/moon-harness/docs/sdd/spec/harness-spec.md", "spec"
     )
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/harness-harness-spec.md"}
+    assert result["raw_name"] == "harness-harness-spec.md"
 
 
 def test_no_duplicate_prefix_is_unaffected() -> None:
@@ -163,7 +163,7 @@ def test_no_duplicate_prefix_is_unaffected() -> None:
         "result",
     )
     result = name_document(record, _PREFIX_MAP)
-    assert result == {"raw_name": "raw/codegraph-unrelated-feature-result.md"}
+    assert result["raw_name"] == "codegraph-unrelated-feature-result.md"
 
 
 # ── 미등록 repo → unmapped (F12) ─────────────────────────────────────────────
@@ -192,7 +192,7 @@ def test_unmapped_and_raw_name_shapes_are_mutually_exclusive() -> None:
     unmapped = name_document(
         _record("nope", "/x/nope/docs/sdd/spec/b-spec.md", "spec"), _PREFIX_MAP
     )
-    assert set(mapped.keys()) == {"raw_name"}
+    assert set(mapped.keys()) == {"raw_name", "slug", "project", "feature", "kind"}
     assert set(unmapped.keys()) == {"unmapped"}
 
 

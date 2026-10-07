@@ -1,8 +1,11 @@
 """hooks.lib.kompound_snapshot — kompound 박제(snapshot) 결정적 코어 패키지.
 
 `hooks/lib/self_improve/`의 형제 패키지다. SDD 사이클이 만든 spec/arch/ui/api
-/context/result 문서를 marvelous_kompound(`raw/` + `wiki/sdd-spec-registry.md`
-+ `wiki/index.md` + `wiki/log.md`)에 verbatim 박제하는 로직을 담는다.
+/context/result 문서를 kompound v2 볼트(기본 `~/workspace/moon_kompound` —
+`10. Raw Sources/17. Specs/<Domain>/` + `20. Wiki/24. Maps/SDD Spec Registry.md`
++ 루트 `index.md` + 루트 `log.md`)에 verbatim 박제하는 로직을 담는다. 볼트
+레이아웃·raw 형식의 단일 진실은 ``vault`` 모듈이다(2026-10-07 v1
+`marvelous_kompound` flat `raw/`+`wiki/` → v2 이관).
 
 설계 SSOT: docs/sdd/design/arch/2026-07-29-kompound-snapshot-hook.md
 (이하 "arch"로 인용) §3(모듈 분해) · §6(영속화/IO 경계) · §9.3(공용 fixture).
@@ -24,12 +27,13 @@ stdlib만 사용하며 네트워크/LLM 호출을 하지 않는다(F13). `git` �
 | ``naming`` | F4 네이밍 변환 + F12 미등록 프리픽스 판정 (순수 함수) |
 | ``dedup`` | F5 md5 그룹핑 · canonical 선택 (순수 함수) |
 | ``apply`` | F6 멱등 적용 — (i) raw 복사 (ii) 카탈로그 갱신의 2단 트랜잭션 + 단계별 저널/롤백 |
-| ``registry`` | F7 `sdd-spec-registry.md` 표 탐색 3단 · 행/열 외과적 수정 · 카운트 문장 갱신 |
-| ``wiki_log`` | F7·F10 `index.md` prepend · `log.md` append (append/prepend-only) |
-| ``verify`` | F8 검증 게이트 3종 (read-only) — ``snapshot_set_rule`` 전제 |
+| ``registry`` | F7 `20. Wiki/24. Maps/SDD Spec Registry.md` 표 탐색 3단 · 행/열 외과적 수정 · 카운트 문장 갱신 |
+| ``wiki_log`` | F7·F10 루트 `index.md`(훅 줄 · `## 📥 Recent Ingests` prepend) · 루트 `log.md` 엔트리 append |
+| ``verify`` | F8 검증 게이트 3종(링크 무결성·양방향 카운트·raw 레이아웃, read-only) — ``snapshot_set_rule`` 전제 |
 | ``git_state`` | F9 dirty/divergence 판정(네트워크 없이) · 커밋 · 배타 락 |
 | ``wt_target`` | F2 Bash 명령 문자열 → 워크트리 경로 파싱 (순수 함수) |
 | ``report`` | F11 verdict/종료 코드 분리 · human/JSON 리포트 — 종료 코드 표(arch §6.2)의 단일 진실 |
+| ``vault`` | v2 볼트 레이아웃 계약 — 경로 상수 · 도메인 매핑 · 기존 raw 색인(slug/legacySlug) · raw-source 렌더링/본문 교체 |
 | ``runtime_state`` | T1 멱등·무장·안내 1회 판정 — 런타임 상태 값 6종(arch §5.1.2)의 단일 진실, `.claude/state/kompound-snapshot.json` |
 
 **주의**: 종료 코드 표(0/10/20/30/40/45/50/55/60/70)와 런타임 상태 값 6종
@@ -74,7 +78,8 @@ write·ISO 시간 유틸 재사용). 역방향 의존은 없다 — ``self_impro
 
 from __future__ import annotations
 
-from hooks.lib.kompound_snapshot.config import DEFAULT_PREFIX_MAP, resolve_config
+from hooks.lib.kompound_snapshot import vault
+from hooks.lib.kompound_snapshot.config import DEFAULT_DOMAIN_MAP, DEFAULT_PREFIX_MAP, resolve_config
 from hooks.lib.kompound_snapshot.naming import name_document, resolve_prefix
 # scan/dedup는 함수가 아니라 모듈 자체를 재노출한다 — 위 "📌" 문단 참조.
 from hooks.lib.kompound_snapshot import dedup, scan
@@ -144,7 +149,10 @@ from hooks.lib.kompound_snapshot import apply
 from hooks.lib.kompound_snapshot.cli import build_parser, main
 
 __all__ = [
+    # vault (v2 레이아웃 계약 — 모듈 재노출)
+    "vault",
     # config
+    "DEFAULT_DOMAIN_MAP",
     "DEFAULT_PREFIX_MAP",
     "resolve_config",
     # scan

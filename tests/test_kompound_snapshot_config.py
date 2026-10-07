@@ -53,11 +53,22 @@ def _make_project_root(tmp_path: Path, name: str = "project") -> Path:
 
 
 def _seed_kompound_signature(path: Path) -> None:
-    """kompound 서명 4조건(.git, raw/, wiki/index.md, wiki/log.md)을 심는다.
+    """kompound(v2 볼트) 서명 5조건(.git, `10. Raw Sources/`, `20. Wiki/`, 루트
+    index.md, 루트 log.md)을 심는다(2026-10-07 v2 이관 — v1 서명 `raw/` +
+    `wiki/index.md` + `wiki/log.md`는 더 이상 통과하지 않는다).
 
     실제 `git init`은 하지 않는다 — 서명 판정은 `.git` "존재"만 보므로
     (arch §6.1 ③-2), 디렉토리 하나면 충분하고 fixture 생성이 빨라진다.
     """
+    (path / ".git").mkdir(parents=True, exist_ok=True)
+    (path / "10. Raw Sources").mkdir(parents=True, exist_ok=True)
+    (path / "20. Wiki").mkdir(parents=True, exist_ok=True)
+    (path / "index.md").write_text("# index\n", encoding="utf-8")
+    (path / "log.md").write_text("# log\n", encoding="utf-8")
+
+
+def _seed_v1_signature(path: Path) -> None:
+    """v1(marvelous_kompound) 레이아웃 — 이제 서명 미충족이어야 한다."""
     (path / ".git").mkdir(parents=True, exist_ok=True)
     (path / "raw").mkdir(parents=True, exist_ok=True)
     (path / "wiki").mkdir(parents=True, exist_ok=True)
@@ -233,8 +244,9 @@ def test_auto_discovery_adopts_single_signature_match(monkeypatch, tmp_path) -> 
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
     project_root = workspace_root  # project_root의 부모(tmp_path)에서 탐색한다
-    kompound_dir = tmp_path / "marvelous_kompound"
+    kompound_dir = tmp_path / "moon_kompound"
     _seed_kompound_signature(kompound_dir)
+    _seed_v1_signature(tmp_path / "marvelous_kompound")  # v1 보관본이 형제로 공존해도 후보 아님
 
     result = resolve_config(project_root=project_root)
 
@@ -428,6 +440,7 @@ def test_source_map_reflects_every_scalar_origin(monkeypatch, tmp_path) -> None:
         "max_anchor_depth": "project",
         "state_max_age_hours": "home",
         "prefix_map": "default",
+        "domain_map": "default",
     }
 
 
@@ -469,3 +482,101 @@ def test_resolve_config_never_raises_on_garbage_config_json(monkeypatch, tmp_pat
 
     assert result["ok"] is False
     assert result["kompound_repo"] is None
+
+
+# ── v2 이관(2026-10-07): ③-b 잘 알려진 기본 위치 · domain_map ────────────────
+
+
+def test_v1_layout_alone_is_not_discovered(monkeypatch, tmp_path) -> None:
+    _isolated_env(monkeypatch, tmp_path)
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    _seed_v1_signature(tmp_path / "marvelous_kompound")
+
+    result = resolve_config(project_root=workspace_root)
+
+    assert result["ok"] is False
+    assert result["kompound_repo"] is None
+
+
+def test_well_known_default_used_when_sibling_discovery_fails(monkeypatch, tmp_path) -> None:
+    """프로젝트가 `<repo>/worktrees/<wt>`라 부모의 형제에 볼트가 없을 때, 잘 알려진
+    기본 위치(`HARNESS_KOMPOUND_DEFAULT_REPO`로 대체 가능)가 서명을 통과하면 채택한다."""
+    _isolated_env(monkeypatch, tmp_path)
+    vault_dir = tmp_path / "elsewhere" / "moon_kompound"
+    _seed_kompound_signature(vault_dir)
+    monkeypatch.setenv("HARNESS_KOMPOUND_DEFAULT_REPO", str(vault_dir))
+    project_root = tmp_path / "repo" / "worktrees" / "wt"
+    project_root.mkdir(parents=True)
+
+    result = resolve_config(project_root=project_root)
+
+    assert result["ok"] is True
+    assert result["kompound_repo"] == str(vault_dir)
+    assert result["source"]["kompound_repo"] == "default"
+    assert result["scan_root"] == str(vault_dir.parent)
+    assert result["source"]["scan_root"] == "default"
+
+
+def test_well_known_default_without_signature_is_ignored(monkeypatch, tmp_path) -> None:
+    _isolated_env(monkeypatch, tmp_path)
+    not_a_vault = tmp_path / "moon_kompound"
+    _seed_v1_signature(not_a_vault)
+    monkeypatch.setenv("HARNESS_KOMPOUND_DEFAULT_REPO", str(not_a_vault))
+    project_root = tmp_path / "repo" / "worktrees" / "wt"
+    project_root.mkdir(parents=True)
+
+    result = resolve_config(project_root=project_root)
+
+    assert result["ok"] is False
+
+
+def test_well_known_default_defaults_to_home_workspace_moon_kompound(monkeypatch, tmp_path) -> None:
+    _isolated_env(monkeypatch, tmp_path)
+    monkeypatch.delenv("HARNESS_KOMPOUND_DEFAULT_REPO", raising=False)
+    fake_home = tmp_path / "home"
+    _seed_kompound_signature(fake_home / "workspace" / "moon_kompound")
+    monkeypatch.setenv("HOME", str(fake_home))
+    project_root = tmp_path / "repo" / "worktrees" / "wt"
+    project_root.mkdir(parents=True)
+
+    result = resolve_config(project_root=project_root)
+
+    assert result["kompound_repo"] == str(fake_home / "workspace" / "moon_kompound")
+
+
+def test_sibling_discovery_wins_over_well_known_default(monkeypatch, tmp_path) -> None:
+    _isolated_env(monkeypatch, tmp_path)
+    other = tmp_path / "other" / "moon_kompound"
+    _seed_kompound_signature(other)
+    monkeypatch.setenv("HARNESS_KOMPOUND_DEFAULT_REPO", str(other))
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    sibling = tmp_path / "sibling_vault"
+    _seed_kompound_signature(sibling)
+
+    result = resolve_config(project_root=workspace_root)
+
+    assert result["kompound_repo"] == str(sibling)
+    assert result["source"]["kompound_repo"] == "discovery"
+
+
+def test_domain_map_default_and_override_merge(monkeypatch, tmp_path) -> None:
+    home_config_dir = _isolated_env(monkeypatch, tmp_path)
+    project_root = _make_project_root(tmp_path)
+
+    default = resolve_config(project_root=project_root)
+    assert default["domain_map"]["marvelous"] == "Marvelous App"
+    assert default["domain_map"]["harness"] == "AI Harness"
+    assert default["domain_map"]["clofab"] == "CLOFab"
+    assert default["source"]["domain_map"] == "default"
+
+    _write_json(
+        _home_config_path(home_config_dir),
+        {"schema_version": 1, "domain_map": {"marvelous": "Pattern API", "acme": "Not A Domain", "rein": None}},
+    )
+    merged = resolve_config(project_root=project_root)
+    assert merged["domain_map"]["marvelous"] == "Pattern API"
+    assert "acme" not in merged["domain_map"]  # 볼트 10종 밖 도메인은 무시
+    assert "rein" not in merged["domain_map"]  # null → 삭제(폴백 도메인)
+    assert merged["source"]["domain_map"] == "merged"

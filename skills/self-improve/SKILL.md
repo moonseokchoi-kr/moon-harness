@@ -81,6 +81,7 @@ description: "누적된 LEARNING.md 교훈을 읽고 하네스/프로젝트를 �
 Phase B 진입 전, 집계 로더 호출 시퀀스:
 1. `cfg = state_io.load_state(".harness/config.json")` — None 가능 (파일 없음/파싱 실패).
 2. `store_dir = (cfg or {}).get("cross_project_store") or None` — 키 없음/null/"" → None.
+   - 교차-repo store는 kompound v2 볼트의 `70. Outputs/harness-learning/` 디렉터리다(엔트리 포맷은 `parser.py` 계약 그대로). 예: `{"cross_project_store": "/Users/<user>/workspace/moon_kompound/70. Outputs/harness-learning"}` — 경로에 공백이 있으므로 JSON 문자열 그대로 두고 셸 인용 없이 `Path`로 넘긴다. v1 경로(`marvelous_kompound/harness-learning`)는 2026-10-07 이관으로 읽기 전용 보관본이 됐으니 설정에 남아 있으면 v2 경로로 바꾼다.
 3. `merged = learning_source.load_and_merge(local=<harness_dir>/LEARNING.md, store_dir=store_dir)` — 로컬+store 합친 entries. import: `from hooks.lib.self_improve.learning_source import load_and_merge`.
 4. `counter = recurrence.count_signals(merged)` — 합쳐진 entries 입력.
 5. `recurrence.has_cross_project(counter, cluster_key)` — 이제 True 가능. store 미설정 시 로컬-only(하위호환).

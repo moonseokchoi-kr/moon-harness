@@ -33,7 +33,7 @@ _MINI_PREFIX_MAP = {"acme-widget": "acme", "beta-service": "beta", "gamma-tool":
 
 
 def test_stage1_heading_match_adds_row_to_existing_project_table(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     new_docs = [
@@ -52,7 +52,7 @@ def test_stage1_heading_match_adds_row_to_existing_project_table(fake_kompound_e
     assert result["rows_added"] == 1
     assert "### beta-service" not in result["text"] or True  # 다른 섹션 신설 금지 확인은 아래로
     assert result["text"].count("### acme-widget") == 1  # 새 섹션 신설 안 됨(같은 표에 행 추가)
-    assert "| widget-checkout | [✓](../raw/acme-widget-checkout-spec.md) | — | — | — | — | acme-widget |" in (
+    assert "| widget-checkout | [[acme-widget-checkout-spec\\|✓]] | — | — | — | — | acme-widget |" in (
         result["text"]
     )
     # 기존 acme-widget 행은 그대로 보존
@@ -69,7 +69,7 @@ def test_case_insensitive_heading_match_marvelous_dev():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| existing-feature | [✓](../raw/marvelous-existing-feature-spec.md) | — | — | — | Marvelous |\n"
+        "| existing-feature | [[marvelous-existing-feature-spec\\|✓]] | — | — | — | Marvelous |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -89,7 +89,7 @@ def test_case_insensitive_heading_match_marvelous_dev():
 
     assert result["ok"] is True
     assert result["text"].count("### Marvelous") == 1  # 대소문자 무시로 기존 표에 귀속, 신설 없음
-    assert "| new-feature | [✓](../raw/marvelous-new-feature-spec.md) | — | — | — | Marvelous_dev |" in (
+    assert "| new-feature | [[marvelous-new-feature-spec\\|✓]] | — | — | — | Marvelous_dev |" in (
         result["text"]
     )
 
@@ -102,7 +102,7 @@ def test_clofab_web_key_and_value_both_matching_same_section_is_not_ambiguous():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| fabric-upload | [✓](../raw/clofab-fabric-upload-spec.md) | — | — | — | CLOFab_Web |\n"
+        "| fabric-upload | [[clofab-fabric-upload-spec\\|✓]] | — | — | — | CLOFab_Web |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -133,13 +133,13 @@ def test_two_distinct_sections_matching_resolves_by_longest_candidate():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| tool-a | [✓](../raw/marvelous-tool-a-spec.md) | — | — | — | Marvelous_dev |\n"
+        "| tool-a | [[marvelous-tool-a-spec\\|✓]] | — | — | — | Marvelous_dev |\n"
         "\n"
         "### Marvelous_graphify (그래프 뷰어)\n"
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| arch-layer-view | [✓](../raw/graphify-arch-layer-view-spec.md) | — | — | — | Marvelous_graphify |\n"
+        "| arch-layer-view | [[graphify-arch-layer-view-spec\\|✓]] | — | — | — | Marvelous_graphify |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -177,13 +177,13 @@ def test_ambiguous_two_sections_tied_match_length_fails():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| existing-a | [✓](../raw/marvelous-existing-a-spec.md) | — | — | — | Marvelous |\n"
+        "| existing-a | [[marvelous-existing-a-spec\\|✓]] | — | — | — | Marvelous |\n"
         "\n"
         "### Marvelous_graphify (그래프 뷰어)\n"
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| existing-b | [✓](../raw/graphify-existing-b-spec.md) | — | — | — | Marvelous_graphify |\n"
+        "| existing-b | [[graphify-existing-b-spec\\|✓]] | — | — | — | Marvelous_graphify |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -213,7 +213,7 @@ def test_ambiguous_two_sections_tied_match_length_fails():
 
 
 def test_stage2_project_column_attaches_to_existing_integrated_table(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     new_docs = [
@@ -246,7 +246,7 @@ def test_stage2_project_column_attaches_to_existing_integrated_table(fake_kompou
 
 
 def test_stage3_new_project_creates_shape_a_table(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     new_docs = [
@@ -269,7 +269,7 @@ def test_stage3_new_project_creates_shape_a_table(fake_kompound_env):
     assert "### delta-corp" in text
     assert "| feature | spec | arch | 기타 | result | 기존 위키 | home repo |" in text
     assert (
-        "| delta-feature | [✓](../raw/delta-delta-feature-spec.md) | — | — | — | — | delta-corp |" in text
+        "| delta-feature | [[delta-delta-feature-spec\\|✓]] | — | — | — | — | delta-corp |" in text
     )
     # 새 섹션이 "## 결정과 근거" 바로 앞에 신설됨
     decisions_idx = text.index("## 결정과 근거")
@@ -285,7 +285,7 @@ def test_stage3_new_project_placed_before_decisions_heading_not_after():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| f1 | [✓](../raw/existing-f1-spec.md) | — | — | — | existing-proj |\n"
+        "| f1 | [[existing-f1-spec\\|✓]] | — | — | — | existing-proj |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -322,7 +322,7 @@ def test_missing_decisions_heading_fails_new_section_creation():
 
 
 def test_column_add_ui_on_shape_b_fills_dash_and_preserves_other_bytes(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     # beta-service 표는 fixture상 형상 (b) — 6열, `기타` 열 없음.
@@ -349,15 +349,15 @@ def test_column_add_ui_on_shape_b_fills_dash_and_preserves_other_bytes(fake_komp
     # 기존 행: launch-flow의 spec/arch/result/기존위키/home repo 셀은 원본 그대로,
     # 새 `기타` 셀만 링크로 채워짐.
     assert (
-        "| launch-flow | [✓](../raw/beta-launch-flow-spec.md) | [✓](../raw/beta-launch-flow-arch.md) "
-        "| [ui](../raw/beta-launch-flow-ui.md) | [✓](../raw/beta-launch-flow-result.md) | — | beta-service |"
+        "| launch-flow | [[2026-07-01-beta-launch-flow-spec\\|✓]] | [[2026-07-01-beta-launch-flow-arch\\|✓]] "
+        "| [[beta-launch-flow-ui\\|ui]] | [[2026-07-01-beta-launch-flow-result\\|✓]] | — | beta-service |"
     ) in text
 
     # 다른 표(acme-widget)는 바이트 단위 완전 보존
     assert "### acme-widget (형상 (a) — 7열, `기타` 열 포함)" in text
     assert (
-        "| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | "
-        "[✓](../raw/acme-widget-onboarding-arch.md) | — | — | — | acme-widget |"
+        "| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | "
+        "[[2026-07-01-acme-widget-onboarding-arch\\|✓]] | — | — | — | acme-widget |"
     ) in text
 
 
@@ -369,7 +369,7 @@ def test_column_add_new_row_on_shape_b_fills_existing_rows_with_dash():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| old-feature | [✓](../raw/solo-old-feature-spec.md) | — | — | — | solo-project |\n"
+        "| old-feature | [[solo-old-feature-spec\\|✓]] | — | — | — | solo-project |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -391,11 +391,11 @@ def test_column_add_new_row_on_shape_b_fills_existing_rows_with_dash():
     text = result["text"]
     # 기존 행(old-feature)의 새 `기타` 칸은 `—`
     assert (
-        "| old-feature | [✓](../raw/solo-old-feature-spec.md) | — | — | — | — | solo-project |" in text
+        "| old-feature | [[solo-old-feature-spec\\|✓]] | — | — | — | — | solo-project |" in text
     )
     # 신규 행(new-feature)의 `기타` 칸은 링크
     assert (
-        "| new-feature | — | — | [api](../raw/solo-new-feature-api.md) | — | — | solo-project |" in text
+        "| new-feature | — | — | [[solo-new-feature-api\\|api]] | — | — | solo-project |" in text
     )
 
 
@@ -407,7 +407,7 @@ def test_column_add_safety_condition_unrecognized_shape_fails_as_catalog_unparse
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo | extra-col |\n"
         "|---------|:--:|:--:|:--:|------|-----------|-----------|\n"
-        "| f1 | [✓](../raw/odd-f1-spec.md) | — | — | — | odd-project | z |\n"
+        "| f1 | [[odd-f1-spec\\|✓]] | — | — | — | odd-project | z |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -434,7 +434,7 @@ def test_merged_kinds_appended_in_fixed_order_regardless_of_input_order():
         "\n"
         "| feature | spec | arch | 기타 | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|:--:|------|-----------|\n"
-        "| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | — | — | — | — | acme-widget |\n"
+        "| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | — | — | — | — | acme-widget |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -457,7 +457,7 @@ def test_merged_kinds_appended_in_fixed_order_regardless_of_input_order():
 
     assert result["ok"] is True
     assert (
-        "[ui](../raw/acme-widget-onboarding-ui.md) · [context](../raw/acme-widget-onboarding-context.md)"
+        "[[acme-widget-onboarding-ui\\|ui]] · [[acme-widget-onboarding-context\\|context]]"
     ) in result["text"]
 
 
@@ -469,7 +469,7 @@ def test_direct_kind_cell_with_existing_link_is_left_untouched():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | — | — | — | acme-widget |\n"
+        "| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | — | — | — | acme-widget |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -487,7 +487,7 @@ def test_direct_kind_cell_with_existing_link_is_left_untouched():
     assert result["ok"] is True
     assert result["cells_updated"] == 0
     # 원본 spec 셀 그대로(잘못 전달된 방어적 케이스 — 덮어쓰지 않음)
-    assert "[✓](../raw/acme-widget-onboarding-spec.md)" in result["text"]
+    assert "[[2026-07-01-acme-widget-onboarding-spec\\|✓]]" in result["text"]
     assert "acme-widget-onboarding-spec-v2.md" not in result["text"]
 
 
@@ -498,7 +498,7 @@ _TOTALS = {"features": 4, "raw": 7, "spec": 4, "arch": 2, "result": 1, "api": 0,
 
 
 def test_count_sentences_updated_when_totals_given(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     new_docs = [
@@ -520,7 +520,7 @@ def test_count_sentences_updated_when_totals_given(fake_kompound_env):
 
 
 def test_date_stamped_snapshot_sentence_is_byte_unchanged(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     assert "**2026-07-01 재스냅샷**: 3 feature · raw 6개. 직전 스냅샷(2026-06-01)은 1 feature · raw 2개였다." in (
@@ -553,7 +553,7 @@ def test_prose_count_sentence_without_date_stays_unchanged_whitelist_defense():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | — | — | — | acme-widget |\n"
+        "| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | — | — | — | acme-widget |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -585,7 +585,7 @@ def test_prose_count_sentence_without_date_stays_unchanged_whitelist_defense():
 
 
 def test_totals_omitted_skips_count_sentence_updates(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     new_docs = [
@@ -612,7 +612,7 @@ def test_missing_current_status_sentence_fails_catalog_unparsed():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | — | — | — | acme-widget |\n"
+        "| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | — | — | — | acme-widget |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -646,7 +646,7 @@ def test_missing_raw_total_sentence_fails_catalog_unparsed():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | — | — | — | acme-widget |\n"
+        "| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | — | — | — | acme-widget |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -674,7 +674,7 @@ def test_missing_raw_total_sentence_fails_catalog_unparsed():
 
 
 def test_zero_new_docs_returns_unchanged_text_byte_identical(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
 
@@ -701,7 +701,7 @@ def test_new_docs_accepts_f6_unchanged_document_still_missing_from_registry(fake
     넘기기만 하면 정상적으로 행이 추가됨을 고정한다(로직 결함이 아니라
     계약 공백이었음을 증명).
     """
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     # 이 문서는 F6 관점에서 "unchanged"(raw는 이미 존재·내용 동일)이지만
@@ -722,12 +722,12 @@ def test_new_docs_accepts_f6_unchanged_document_still_missing_from_registry(fake
     assert result["ok"] is True
     assert result["rows_added"] == 1
     assert (
-        "| widget-recovered | [✓](../raw/acme-widget-recovered-spec.md) | — | — | — | — | acme-widget |"
+        "| widget-recovered | [[acme-widget-recovered-spec\\|✓]] | — | — | — | — | acme-widget |"
     ) in result["text"]
 
 
 def test_unrecognized_kind_fails_catalog_unparsed(fake_kompound_env):
-    registry_text = (fake_kompound_env["kompound"] / "wiki" / "sdd-spec-registry.md").read_text(
+    registry_text = (fake_kompound_env["kompound"] / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_text(
         encoding="utf-8"
     )
     new_docs = [
@@ -752,7 +752,7 @@ def test_worktree_suffix_in_home_repo_cell():
         "\n"
         "| feature | spec | arch | result | 기존 위키 | home repo |\n"
         "|---------|:--:|:--:|:--:|------|-----------|\n"
-        "| widget-onboarding | [✓](../raw/acme-widget-onboarding-spec.md) | — | — | — | acme-widget |\n"
+        "| widget-onboarding | [[2026-07-01-acme-widget-onboarding-spec\\|✓]] | — | — | — | acme-widget |\n"
         "\n"
         "## 결정과 근거\n"
         "\n"
@@ -769,3 +769,118 @@ def test_worktree_suffix_in_home_repo_cell():
 
     assert result["ok"] is True
     assert "acme-widget + `worktrees/widget-preview-wt`" in result["text"]
+
+
+# ── v2 볼트 (2026-10-07): wikilink 셀 · 이스케이프 파이프 · frontmatter 동기화 ──
+
+
+_V2_REGISTRY = (
+    "---\n"
+    "type: moc\n"
+    "date modified: 2026-08-06\n"
+    "source:\n"
+    '  - "[[2026-06-30-harness-code-mapper-spec]]"\n'
+    '  - "[[2026-07-28-harness-code-mapper-result]]"\n'
+    "related:\n"
+    '  - "[[Loop Engineering]]"\n'
+    "---\n"
+    "\n"
+    "# SDD Spec Registry\n"
+    "\n"
+    "## 현재 상태\n"
+    "\n"
+    "1 feature · raw 2개(spec 1 · arch 0 · result 1 · api 0 · ui 0 · context 0 · learnings 1). 범례: ✓=있음, —=산출물 없음.\n"
+    "\n"
+    "### 그 외 프로젝트\n"
+    "\n"
+    "| 프로젝트 | feature | spec | arch | 기타 | result | 기존 위키 | home repo |\n"
+    "|---|---------|:--:|:--:|:--:|:--:|------|-----------|\n"
+    "| moon-harness | code-mapper | [[2026-06-30-harness-code-mapper-spec\\|✓]] | — | — | "
+    "[[2026-07-28-harness-code-mapper-result\\|✓]] | ([[Loop Engineering]]) | moon-harness |\n"
+    "\n"
+    "## 결정과 근거\n"
+    "\n"
+    "## 관련 문서\n"
+    "- raw: `raw/<project>-<feature>-<kind>.md` 2개 (위 표 링크)\n"
+)
+
+
+def test_v2_escaped_pipe_cells_are_not_split_and_new_cells_are_wikilinks():
+    new_docs = [
+        _entry(repo_dir="moon-harness", project="harness", feature="code-mapper", kind="arch",
+               raw_name="2026-10-07-harness-code-mapper-arch"),
+        _entry(repo_dir="moon-harness", project="harness", feature="code-mapper", kind="api",
+               raw_name="2026-10-07-harness-code-mapper-api.md"),
+    ]
+
+    result = update_registry(_V2_REGISTRY, new_docs, prefix_map={"moon-harness": "harness"})
+
+    assert result["ok"] is True, result
+    assert result["rows_added"] == 0
+    row = next(line for line in result["text"].splitlines() if line.startswith("| moon-harness | code-mapper"))
+    assert row == (
+        "| moon-harness | code-mapper | [[2026-06-30-harness-code-mapper-spec\\|✓]] | "
+        "[[2026-10-07-harness-code-mapper-arch\\|✓]] | [[2026-10-07-harness-code-mapper-api\\|api]] | "
+        "[[2026-07-28-harness-code-mapper-result\\|✓]] | ([[Loop Engineering]]) | moon-harness |"
+    )
+
+
+def test_v2_frontmatter_source_list_synced_sorted_and_date_modified_bumped():
+    new_docs = [
+        _entry(repo_dir="moon-harness", project="harness", feature="code-mapper", kind="arch",
+               raw_name="2026-10-07-harness-code-mapper-arch"),
+    ]
+
+    result = update_registry(
+        _V2_REGISTRY, new_docs, prefix_map={"moon-harness": "harness"}, today="2026-10-07"
+    )
+
+    assert result["ok"] is True
+    fm = result["text"].split("\n---\n", 1)[0]
+    assert "date modified: 2026-10-07" in fm
+    assert fm.count('  - "[[') == 4  # source 3 + related 1
+    src_block = fm.split("source:\n", 1)[1].split("related:", 1)[0]
+    assert src_block.splitlines() == [
+        '  - "[[2026-06-30-harness-code-mapper-spec]]"',
+        '  - "[[2026-07-28-harness-code-mapper-result]]"',
+        '  - "[[2026-10-07-harness-code-mapper-arch]]"',
+    ]
+    assert '  - "[[Loop Engineering]]"' in fm  # related 목록은 불변
+
+
+def test_v2_today_omitted_leaves_date_modified_untouched():
+    new_docs = [
+        _entry(repo_dir="moon-harness", project="harness", feature="code-mapper", kind="arch",
+               raw_name="2026-10-07-harness-code-mapper-arch"),
+    ]
+    result = update_registry(_V2_REGISTRY, new_docs, prefix_map={"moon-harness": "harness"})
+    assert "date modified: 2026-08-06" in result["text"]
+
+
+def test_v2_count_sentence_preserves_untracked_kind_tail_and_raw_total_pattern():
+    new_docs = [
+        _entry(repo_dir="moon-harness", project="harness", feature="code-mapper", kind="arch",
+               raw_name="2026-10-07-harness-code-mapper-arch"),
+    ]
+    totals = {"features": 1, "raw": 3, "spec": 1, "arch": 1, "result": 1, "api": 0, "ui": 0, "context": 0}
+
+    result = update_registry(_V2_REGISTRY, new_docs, prefix_map={"moon-harness": "harness"}, totals=totals)
+
+    assert result["ok"] is True, result
+    text = result["text"]
+    assert (
+        "1 feature · raw 3개(spec 1 · arch 1 · result 1 · api 0 · ui 0 · context 0 · learnings 1). "
+        "범례: ✓=있음, —=산출물 없음."
+    ) in text
+    assert "- raw: `raw/<project>-<feature>-<kind>.md` 3개 (위 표 링크)" in text
+
+
+def test_v2_new_project_section_uses_wikilinks():
+    new_docs = [
+        _entry(repo_dir="brand-new-repo", project="brandnew", feature="f1", kind="spec",
+               raw_name="2026-10-07-brandnew-f1-spec"),
+    ]
+    result = update_registry(_V2_REGISTRY, new_docs, prefix_map={"brand-new-repo": "brandnew"})
+    assert result["ok"] is True
+    assert "### brand-new-repo" in result["text"]
+    assert "| f1 | [[2026-10-07-brandnew-f1-spec\\|✓]] | — | — | — | — | brand-new-repo |" in result["text"]

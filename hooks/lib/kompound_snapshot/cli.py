@@ -73,7 +73,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
-from hooks.lib.kompound_snapshot import config, git_state, naming, report, runtime_state, wt_target
+from hooks.lib.kompound_snapshot import config, git_state, naming, report, runtime_state, vault, wt_target
 from hooks.lib.self_improve.state_io import atomic_write, load_state
 
 # scan/dedup/apply 모듈은 자기 이름과 똑같은 이름의 함수를 노출한다
@@ -275,7 +275,12 @@ def _dry_run_pending(
     if not kompound_repo:
         return pending, unmapped
 
-    raw_root = Path(kompound_repo) / "raw"
+    # v2 볼트: 같은 slug의 raw를 `10. Raw Sources/` 어디서든 찾고, 그 raw의
+    # `## Original Content` 본문을 원본 본문과 비교한다(apply와 같은 규칙).
+    try:
+        raw_index = vault.build_raw_index(kompound_repo)
+    except Exception:  # noqa: BLE001 - fail-safe: 색인 실패 = 전부 확인 못 함
+        raw_index = {}
     for record in canonical_records:
         naming_result = naming.name_document(record, prefix_map, scan_root)
         if "unmapped" in naming_result:
@@ -283,13 +288,15 @@ def _dry_run_pending(
             continue
 
         basename = Path(naming_result["raw_name"]).name
-        target = raw_root / basename
+        target = raw_index.get(vault.slug_of(basename))
         try:
-            if not target.is_file():
+            if target is None or not target.is_file():
                 pending.append(basename)
                 continue
             source_bytes = Path(record["path"]).read_bytes()
-            if target.read_bytes() != source_bytes:
+            _, desired_body = vault.split_source_doc(source_bytes.decode("utf-8", errors="replace"))
+            current = vault.extract_original_content(target.read_text(encoding="utf-8", errors="replace"))
+            if current != desired_body:
                 pending.append(basename)
         except OSError:
             # 읽기 실패(권한 등) — fail-safe: "확인 못 함"을 "이미 됐음"으로
@@ -480,6 +487,7 @@ def _cmd_apply(args: argparse.Namespace) -> int:
     apply_result = apply_mod.apply(
         cfg["kompound_repo"], canonical,
         prefix_map=cfg["prefix_map"], scan_root=cfg["scan_root"], project_root=project_root,
+        domain_map=cfg.get("domain_map"),
     )
     verdict, detail = _map_apply_result_to_verdict(apply_result)
 
@@ -571,6 +579,7 @@ def _cmd_gate(args: argparse.Namespace) -> int:
     apply_result = apply_mod.apply(
         cfg["kompound_repo"], canonical,
         prefix_map=cfg["prefix_map"], scan_root=cfg["scan_root"], project_root=project_root,
+        domain_map=cfg.get("domain_map"),
     )
     verdict, detail = _map_apply_result_to_verdict(apply_result)
 

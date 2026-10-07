@@ -1,6 +1,9 @@
 """hooks/lib/kompound_snapshot/naming.py — F4/F12 네이밍(순수 함수, arch §5.4.3)
 
-출력은 ``raw/<project>-<feature>-<kind>.md``. 4단계:
+출력은 논리 이름 ``<project>-<feature>-<kind>.md`` (= v2 볼트 raw의 ``<slug>`` +
+``.md``). 2026-10-07 v2 이관 이후 실제 파일 위치(``10. Raw Sources/17. Specs/
+<Domain>/<YYYY-MM-DD>-<slug>.md`` 또는 기존 raw의 제자리)는 이 모듈이 아니라
+``apply``가 ``vault`` 계약으로 결정한다 — 이 모듈은 여전히 순수 함수다. 4단계:
 
 1. ``<project>`` = ``prefix_map[repo_dir 디렉토리 이름]``. 조회 실패 또는 값이
    ``None``이면 예외를 던지지 않고 ``{"unmapped": repo_dir}``을 반환한다(F12).
@@ -116,7 +119,9 @@ def name_document(
     prefix_map: Mapping[str, Optional[str]],
     scan_root: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """문서 레코드를 ``raw/<project>-<feature>-<kind>.md``로 변환한다(순수 함수).
+    """문서 레코드를 논리 이름 ``<project>-<feature>-<kind>.md``로 변환한다(순수 함수).
+
+    반환(성공): ``{"raw_name": "<slug>.md", "slug", "project", "feature", "kind"}``.
 
     ``record``는 최소 ``{"kind", "path", "repo_dir"}``를 갖는 매핑이다(scan.py
     레코드 스키마와 호환). 프리픽스 조회 실패 시 예외 없이
@@ -134,4 +139,5 @@ def name_document(
     feature = _strip_feature(stem)
     feature = _fold_duplicate_prefix(project, feature)
 
-    return {"raw_name": f"raw/{project}-{feature}-{kind}.md"}
+    slug = f"{project}-{feature}-{kind}"
+    return {"raw_name": f"{slug}.md", "slug": slug, "project": project, "feature": feature, "kind": kind}

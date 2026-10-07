@@ -2,7 +2,13 @@
 
 F6(멱등 적용) + arch §6.3.0((i)/(ii) 2단 분리·커밋 경계)를 `fake_kompound_env`
 (tests/conftest.py, T-2) 위에서 검증한다. 전부 `tmp_path` 기반 — 실제
-kompound(`/Users/.../marvelous_kompound`)에는 절대 쓰지 않는다.
+kompound 볼트(`/Users/.../moon_kompound`)에는 절대 쓰지 않는다.
+
+2026-10-07 v2 볼트 이관으로 raw 위치·형식(``10. Raw Sources/17. Specs/<Domain>/
+YYYY-MM-DD-<slug>.md``, raw-source frontmatter + ``## Original Content``),
+registry 링크(wikilink), log 형식(``## [date] snapshot | ...`` 엔트리), 게이트
+(3)(flat → raw_layout)이 바뀌었다 — 이 파일의 기대값도 그에 맞춰 갱신했다
+(로직 계약 — 2단 커밋·롤백·멱등·자기치유 — 은 그대로).
 
 이 파일이 반드시 커버하는 것(task 문서 "테스트" 절 그대로):
 
@@ -15,7 +21,7 @@ kompound(`/Users/.../marvelous_kompound`)에는 절대 쓰지 않는다.
 - C-7 — `totals`가 실제로 계산·전달되어 카운트 문장이 갱신된다
 - C-6 — `raw_name` 충돌 검출(조용한 덮어쓰기 없음)
 - C-4 — 같은 `raw_name`으로 수렴하는 내용 상이 2건 → mtime 최신본 채택
-- F6 멱등 — 2회 연속 실행 시 두 번째 카운트 0 + `git status -- raw/` 빈 문자열
+- F6 멱등 — 2회 연속 실행 시 두 번째 카운트 0 + `git status -- "10. Raw Sources"` 빈 문자열
 - 배타 락 — 이미 잡힌 락이 있으면 시도조차 하지 않고 `busy`로 통과
 
 it.2 추가(리뷰어 [P1] #1 + compliance #2/#3, `.harness/LEARNING.md` 2026-07-30
@@ -46,7 +52,28 @@ from unittest.mock import patch
 import pytest
 
 from hooks.lib.kompound_snapshot import apply as apply_mod
-from hooks.lib.kompound_snapshot import git_state, runtime_state, verify, wiki_log
+from hooks.lib.kompound_snapshot import git_state, runtime_state, vault, verify, wiki_log
+
+# v2 볼트 경로(테스트 독립 재정의 — vault 상수를 그대로 쓰지 않고 문자열로 고정해
+# 레이아웃 계약 자체를 검증한다).
+_RAW_ROOT = "10. Raw Sources"
+_SPECS_AI = ("10. Raw Sources", "17. Specs", "AI Harness")
+_REGISTRY = ("20. Wiki", "24. Maps", "SDD Spec Registry.md")
+_TODAY = "2026-07-02"
+
+
+@pytest.fixture(autouse=True)
+def _fixed_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    """박제 날짜를 고정해 신규 raw 파일명(`<날짜>-<slug>.md`)을 결정적으로 만든다."""
+    monkeypatch.setattr(apply_mod, "_today", lambda: _TODAY)
+
+
+def _registry_path(kompound: Path) -> Path:
+    return kompound.joinpath(*_REGISTRY)
+
+
+def _new_raw_path(kompound: Path, slug: str, parts=_SPECS_AI) -> Path:
+    return kompound.joinpath(*parts) / f"{_TODAY}-{slug}.md"
 
 
 # ── 테스트 인프라 헬퍼 ───────────────────────────────────────────────────────
@@ -124,27 +151,28 @@ def _read_state(project_root: Path) -> Dict[str, Any]:
     return json.loads(state_file.read_text(encoding="utf-8"))
 
 
+_STRAY_REL = ("10. Raw Sources", "17. Specs", "2026-07-01-acme-stray-layout-spec.md")
+
+
 def _inject_bad_raw_subdir(kompound: Path) -> None:
-    """`raw/`에 `assets/` 외 서브디렉토리를 심고 커밋한다 — `check_flat_structure`
-    게이트가 **항상** 실패하도록 만드는 사전 조건(우리가 새로 추가하는 문서와
-    무관하게 실패시키므로, registry write가 정상 완료된 **이후**에 게이트가
-    걸린다 — pre-write `catalog_unparsed` 조기 리턴과 구분되는 지점)."""
-    bad_dir = kompound / "raw" / "badsubdir"
-    bad_dir.mkdir(parents=True, exist_ok=True)
-    (bad_dir / "placeholder.md").write_text("placeholder\n", encoding="utf-8")
+    """스냅샷 raw 1건을 도메인 폴더 없이 유형 폴더 바로 아래에 심고 커밋한다 —
+    `check_raw_layout` 게이트가 **항상** 실패하도록 만드는 사전 조건(v1의 "raw/
+    서브디렉토리" 위반의 v2판). 우리가 새로 추가하는 문서와 무관하게 실패시키므로,
+    registry write가 정상 완료된 **이후**에 게이트가 걸린다 — pre-write
+    `catalog_unparsed` 조기 리턴과 구분되는 지점."""
+    stray = kompound.joinpath(*_STRAY_REL)
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_text("---\ntype: raw-source\n---\n\n# stray\n\n## Original Content\n\nstray\n", encoding="utf-8")
     _git("add", "-A", cwd=kompound)
-    _git("commit", "-q", "-m", "test setup: inject raw/ subdirectory to fail flat_structure gate", cwd=kompound)
+    _git("commit", "-q", "-m", "test setup: inject raw layout violation", cwd=kompound)
 
 
 def _remove_bad_raw_subdir(kompound: Path) -> None:
-    """`_inject_bad_raw_subdir`이 심은 위반을 제거하고 커밋한다(사람이
-    flat_structure 위반을 고쳤다고 가정하는 재시도 시나리오의 전제)."""
-    bad_dir = kompound / "raw" / "badsubdir"
-    for child in bad_dir.iterdir():
-        child.unlink()
-    bad_dir.rmdir()
+    """`_inject_bad_raw_subdir`이 심은 위반을 제거하고 커밋한다(사람이 레이아웃
+    위반을 고쳤다고 가정하는 재시도 시나리오의 전제)."""
+    kompound.joinpath(*_STRAY_REL).unlink()
     _git("add", "-A", cwd=kompound)
-    _git("commit", "-q", "-m", "test setup: remove offending raw/ subdirectory", cwd=kompound)
+    _git("commit", "-q", "-m", "test setup: remove raw layout violation", cwd=kompound)
 
 
 def _raw_commit_shas_in_order(kompound: Path) -> List[str]:
@@ -185,7 +213,9 @@ def test_apply_full_success_commits_twice_and_records_done(
     config = fake_kompound_env["config"]
     before_commits = _commit_count(kompound)
 
-    src = _make_source_file(project_root, "2026-07-02-brandnew-spec.md", "# brand new spec\n")
+    src = _make_source_file(
+        project_root, "2026-07-02-brandnew-spec.md", "# brand new spec\n\n## 개요\n- body line\n"
+    )
     record = _record(src, kind="spec", repo_dir="acme-widget")
 
     result = apply_mod.apply(
@@ -201,7 +231,7 @@ def test_apply_full_success_commits_twice_and_records_done(
 
     raw_stage = result["raw_stage"]
     assert raw_stage["ok"] is True
-    assert raw_stage["new"] == ["acme-brandnew-spec.md"]
+    assert raw_stage["new"] == [f"{_TODAY}-acme-brandnew-spec.md"]
     assert raw_stage["updated"] == []
     assert raw_stage["committed"] is True
     assert raw_stage["commit"]
@@ -216,14 +246,31 @@ def test_apply_full_success_commits_twice_and_records_done(
     # 커밋 2개 (raw 1 + catalog 1)
     assert _commit_count(kompound) == before_commits + 2
 
-    # raw 파일이 verbatim으로 실제 존재
-    written = (kompound / "raw" / "acme-brandnew-spec.md").read_text(encoding="utf-8")
-    assert written == "# brand new spec\n"
+    # raw 파일이 v2 raw-source 형식으로 실제 존재 — 본문은 verbatim
+    written = _new_raw_path(kompound, "acme-brandnew-spec").read_text(encoding="utf-8")
+    assert written.startswith("---\ntype: raw-source\n")
+    assert 'domain: "AI Harness"' in written  # acme → 미등록 프리픽스 → 폴백 도메인
+    assert f"date created: {_TODAY}" in written
+    assert 'description: "SDD spec snapshot of acme brandnew."' in written
+    assert "\n# brand new spec\n" in written
+    assert "> [!info] Source" in written
+    assert vault.extract_original_content(written) == "## 개요\n- body line"
+    assert "\n## Metadata\n" in written
 
-    # C-7: 카운트 문장이 6 -> 7로 갱신됨
-    registry_text = (kompound / "wiki" / "sdd-spec-registry.md").read_text(encoding="utf-8")
+    # C-7: 카운트 문장이 6 -> 7로 갱신됨 + wikilink 셀
+    registry_text = _registry_path(kompound).read_text(encoding="utf-8")
     assert "raw 7개" in registry_text
-    assert "raw/acme-brandnew-spec.md" in registry_text
+    assert f"[[{_TODAY}-acme-brandnew-spec\\|✓]]" in registry_text
+    # frontmatter source 목록 동기화 + date modified 갱신
+    assert f'  - "[[{_TODAY}-acme-brandnew-spec]]"' in registry_text
+    assert f"date modified: {_TODAY}" in registry_text
+
+    # index.md 훅 줄 + Recent Ingests prepend, log.md 엔트리 append
+    index_text = (kompound / "index.md").read_text(encoding="utf-8")
+    assert "- [[SDD Spec Registry]] — SDD spec/design/result 카탈로그. 4 feature · raw 7개." in index_text
+    assert f"- {_TODAY} [snapshot] SDD 스냅샷 1건 카탈로그 편입 (acme)" in index_text
+    log_text = (kompound / "log.md").read_text(encoding="utf-8")
+    assert f"\n## [{_TODAY}] snapshot | SDD 스냅샷 1건 카탈로그 편입 (acme)\n\n- <1 raw> — raw 커밋 " in log_text
 
     # 날짜 박힌 과거 스냅샷 서술은 불변(§6.3.3)
     assert "**2026-07-01 재스냅샷**: 3 feature · raw 6개." in registry_text
@@ -251,7 +298,7 @@ def test_apply_catalog_only_failure_keeps_raw_committed_and_clean(
     # "## 결정과 근거" 헤딩을 제거해 새 프로젝트 섹션 신설(_create_new_section)이
     # 실패하도록 만든다 — 등록되지 않은 신규 프로젝트라 반드시 신설 경로를
     # 타게 하고, 그 신설에 필요한 앵커를 없애 catalog_unparsed를 유도한다.
-    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
+    registry_path = _registry_path(kompound)
     original_text = registry_path.read_text(encoding="utf-8")
     broken_text = original_text.replace("## 결정과 근거", "## Decisions (renamed)")
     registry_path.write_text(broken_text, encoding="utf-8")
@@ -276,7 +323,7 @@ def test_apply_catalog_only_failure_keeps_raw_committed_and_clean(
 
     raw_stage = result["raw_stage"]
     assert raw_stage["ok"] is True
-    assert raw_stage["new"] == ["delta-newfeature-spec.md"]
+    assert raw_stage["new"] == [f"{_TODAY}-delta-newfeature-spec.md"]
     assert raw_stage["committed"] is True
     assert raw_stage["commit"]
 
@@ -296,7 +343,7 @@ def test_apply_catalog_only_failure_keeps_raw_committed_and_clean(
     assert registry_path.read_text(encoding="utf-8") == broken_text
 
     # raw 파일 자체는 살아있다(문서 보존)
-    assert (kompound / "raw" / "delta-newfeature-spec.md").is_file()
+    assert _new_raw_path(kompound, "delta-newfeature-spec").is_file()
 
     state = _read_state(project_root)
     assert state["status"] == "CATALOG_PENDING"
@@ -358,7 +405,7 @@ def test_apply_precondition_failed_dirty_skips_everything(
     config = fake_kompound_env["config"]
 
     # kompound를 dirty하게 만든다(미커밋 변경).
-    (kompound / "raw" / "untracked-scratch.md").write_text("scratch\n", encoding="utf-8")
+    (kompound / _RAW_ROOT / "untracked-scratch.md").write_text("scratch\n", encoding="utf-8")
     assert _git_status_porcelain(kompound) != ""
 
     before_commits = _commit_count(kompound)
@@ -386,7 +433,7 @@ def test_apply_precondition_failed_dirty_skips_everything(
     assert result["catalog_stage"]["attempted"] is False
 
     # 박제 시도조차 하지 않음 — 새 raw 파일이 생기지 않았다.
-    assert not (kompound / "raw" / "acme-shouldnotwrite-spec.md").exists()
+    assert not _new_raw_path(kompound, "acme-shouldnotwrite-spec").exists()
     assert _commit_count(kompound) == before_commits
 
     state = _read_state(project_root)
@@ -404,13 +451,13 @@ def test_apply_self_heals_missing_registry_link_without_being_in_this_runs_recor
 
     # 과거 실행에서 raw만 커밋되고 카탈로그가 실패했던 상황을 직접 시뮬레이션:
     # registry에 링크가 없는 raw 파일을 미리 심고 커밋해 둔다.
-    orphan_name = "acme-orphaned-topic-spec.md"
-    (kompound / "raw" / orphan_name).write_text("# orphaned topic\n", encoding="utf-8")
+    orphan_name = "2026-07-01-acme-orphaned-topic-spec.md"
+    (kompound.joinpath(*_SPECS_AI) / orphan_name).write_text("# orphaned topic\n", encoding="utf-8")
     _git("add", "-A", cwd=kompound)
     _git("commit", "-q", "-m", "snapshot(raw): simulate prior cycle orphan", cwd=kompound)
 
-    registry_text_before = (kompound / "wiki" / "sdd-spec-registry.md").read_text(encoding="utf-8")
-    assert "acme-orphaned-topic-spec.md" not in registry_text_before
+    registry_text_before = _registry_path(kompound).read_text(encoding="utf-8")
+    assert "acme-orphaned-topic-spec" not in registry_text_before
 
     # 이번 실행의 canonical_records는 비어 있다 — 이 문서를 스캔하지 않았어도
     # 회수돼야 한다(자기 치유).
@@ -430,8 +477,8 @@ def test_apply_self_heals_missing_registry_link_without_being_in_this_runs_recor
     assert catalog_stage["attempted"] is True
     assert catalog_stage["ok"] is True, catalog_stage
 
-    registry_text_after = (kompound / "wiki" / "sdd-spec-registry.md").read_text(encoding="utf-8")
-    assert "acme-orphaned-topic-spec.md" in registry_text_after
+    registry_text_after = _registry_path(kompound).read_text(encoding="utf-8")
+    assert "[[2026-07-01-acme-orphaned-topic-spec\\|✓]]" in registry_text_after
     # 총계가 6 -> 7로 갱신됨(고아 문서도 카운트에 편입)
     assert "raw 7개" in registry_text_after
 
@@ -465,10 +512,11 @@ def test_apply_raw_name_conflict_picks_latest_mtime_and_reports_conflict(
 
     raw_stage = result["raw_stage"]
     assert raw_stage["ok"] is True
-    assert raw_stage["new"] == ["acme-collide-spec.md"]
+    assert raw_stage["new"] == [f"{_TODAY}-acme-collide-spec.md"]
 
-    written = (kompound / "raw" / "acme-collide-spec.md").read_text(encoding="utf-8")
-    assert written == "# newer content\n"  # C-4: mtime 최신본 채택
+    written = _new_raw_path(kompound, "acme-collide-spec").read_text(encoding="utf-8")
+    assert "\n# newer content\n" in written  # C-4: mtime 최신본 채택
+    assert "older content" not in written
 
     conflicts = result["raw_name_conflicts"]
     assert len(conflicts) == 1
@@ -493,7 +541,7 @@ def test_apply_idempotent_second_run_is_zero_and_git_clean(
         kompound, [record], prefix_map=config["prefix_map"], scan_root=config["scan_root"]
     )
     assert first["raw_stage"]["ok"] is True
-    assert first["raw_stage"]["new"] == ["acme-repeatable-spec.md"]
+    assert first["raw_stage"]["new"] == [f"{_TODAY}-acme-repeatable-spec.md"]
     assert first["catalog_stage"]["ok"] is True
 
     commits_after_first = _commit_count(kompound)
@@ -513,7 +561,7 @@ def test_apply_idempotent_second_run_is_zero_and_git_clean(
     assert catalog_stage["attempted"] is False  # 이미 링크되어 있어 스킵
 
     assert _commit_count(kompound) == commits_after_first
-    assert _git_status_porcelain(kompound, "raw") == ""
+    assert _git_status_porcelain(kompound, _RAW_ROOT) == ""
     assert _git_status_porcelain(kompound) == ""
 
 
@@ -546,8 +594,8 @@ def test_apply_busy_when_lock_already_held(fake_kompound_env: Dict[str, Any]) ->
 def test_apply_catalog_gate_failure_after_write_rolls_back_journal(
     fake_kompound_env: Dict[str, Any], project_root: Path
 ) -> None:
-    """`check_flat_structure`가 **registry/index/log write 이후** 실패하도록
-    만든다(`raw/`에 비허용 서브디렉토리를 사전에 커밋해 둠 — 우리 문서와
+    """`check_raw_layout`이 **registry/index/log write 이후** 실패하도록
+    만든다(도메인 폴더 밖 스냅샷 raw를 사전에 커밋해 둠 — 우리 문서와
     무관한 구조적 위반이므로 registry 텍스트 변환 자체는 정상 성공한 뒤에야
     걸린다). `apply.py:_run_catalog_stage`의 실제 `journal = [...]` 생성 →
     3파일 write → `run_gates` → 실패 → `_rollback_journal` 경로를 실행시켜
@@ -564,9 +612,9 @@ def test_apply_catalog_gate_failure_after_write_rolls_back_journal(
 
     _inject_bad_raw_subdir(kompound)
 
-    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
-    index_path = kompound / "wiki" / "index.md"
-    log_path = kompound / "wiki" / "log.md"
+    registry_path = _registry_path(kompound)
+    index_path = kompound / "index.md"
+    log_path = kompound / "log.md"
     registry_bytes_before = registry_path.read_bytes()
     index_bytes_before = index_path.read_bytes()
     log_bytes_before = log_path.read_bytes()
@@ -586,7 +634,7 @@ def test_apply_catalog_gate_failure_after_write_rolls_back_journal(
 
     raw_stage = result["raw_stage"]
     assert raw_stage["ok"] is True
-    assert raw_stage["new"] == ["acme-afterwrite-spec.md"]
+    assert raw_stage["new"] == [f"{_TODAY}-acme-afterwrite-spec.md"]
     assert raw_stage["committed"] is True
 
     catalog_stage = result["catalog_stage"]
@@ -594,7 +642,7 @@ def test_apply_catalog_gate_failure_after_write_rolls_back_journal(
     assert catalog_stage["ok"] is False
     # pre-write catalog_unparsed 분기와 구분되는 결정적 증거(모듈 docstring 참조).
     assert catalog_stage["unparsed"] is None
-    assert "flat_structure" in catalog_stage["failed_gates"]
+    assert "raw_layout" in catalog_stage["failed_gates"]
     assert catalog_stage["committed"] is False
     assert catalog_stage["commit"] is None
 
@@ -607,7 +655,7 @@ def test_apply_catalog_gate_failure_after_write_rolls_back_journal(
     # 커밋이 raw 1개만 증가(카탈로그 커밋 없음)
     assert _commit_count(kompound) == before_commits + 1
 
-    assert _git_status_porcelain(kompound, "wiki") == ""
+    assert _git_status_porcelain(kompound, "20. Wiki", "index.md", "log.md") == ""
     assert _git_status_porcelain(kompound) == ""
 
     state = _read_state(project_root)
@@ -632,8 +680,8 @@ def test_apply_retry_after_fixing_catalog_cause_succeeds_and_logs_multiple_raw_c
     """
     kompound = fake_kompound_env["kompound"]
     config = fake_kompound_env["config"]
-    registry_path = kompound / "wiki" / "sdd-spec-registry.md"
-    log_path = kompound / "wiki" / "log.md"
+    registry_path = _registry_path(kompound)
+    log_path = kompound / "log.md"
 
     log_lines_before = log_path.read_text(encoding="utf-8").splitlines()
 
@@ -650,7 +698,7 @@ def test_apply_retry_after_fixing_catalog_cause_succeeds_and_logs_multiple_raw_c
         project_root=project_root,
     )
     assert result1["raw_stage"]["ok"] is True
-    assert result1["raw_stage"]["new"] == ["acme-retry-a-spec.md"]
+    assert result1["raw_stage"]["new"] == [f"{_TODAY}-acme-retry-a-spec.md"]
     assert result1["raw_stage"]["committed"] is True
     assert result1["catalog_stage"]["ok"] is False
     assert _read_state(project_root)["status"] == "CATALOG_PENDING"
@@ -666,7 +714,7 @@ def test_apply_retry_after_fixing_catalog_cause_succeeds_and_logs_multiple_raw_c
         project_root=project_root,
     )
     assert result2["raw_stage"]["ok"] is True
-    assert result2["raw_stage"]["new"] == ["acme-retry-b-spec.md"]
+    assert result2["raw_stage"]["new"] == [f"{_TODAY}-acme-retry-b-spec.md"]
     assert result2["raw_stage"]["committed"] is True
     assert result2["catalog_stage"]["ok"] is False
     assert _read_state(project_root)["status"] == "CATALOG_PENDING"
@@ -708,34 +756,40 @@ def test_apply_retry_after_fixing_catalog_cause_succeeds_and_logs_multiple_raw_c
     assert _commit_count(kompound) == commits_before_retry + 1
 
     registry_text = registry_path.read_text(encoding="utf-8")
-    assert "acme-retry-a-spec.md" in registry_text
-    assert "acme-retry-b-spec.md" in registry_text
+    assert f"[[{_TODAY}-acme-retry-a-spec\\|✓]]" in registry_text
+    assert f"[[{_TODAY}-acme-retry-b-spec\\|✓]]" in registry_text
 
     # CATALOG_PENDING -> DONE 실제 전이.
     assert _read_state(project_root)["status"] == "DONE"
 
-    # F7 "배치 1건 = 로그 1줄" — 기존 내용은 재작성/정렬/중복제거 없이
-    # append-only로 보존되고, 정확히 1줄만 새로 추가된다.
+    # F7 "배치 1건 = 로그 엔트리 1개" — 기존 내용은 재작성/정렬/중복제거 없이
+    # append-only로 보존되고, v2 엔트리 블록(빈 줄 + `## [date] snapshot | ...`
+    # + 빈 줄 + `- <요약>`) 정확히 하나만 새로 추가된다.
     log_text_after = log_path.read_text(encoding="utf-8")
     log_lines_after = log_text_after.splitlines()
     assert log_lines_after[: len(log_lines_before)] == log_lines_before
     new_lines = log_lines_after[len(log_lines_before) :]
-    assert len(new_lines) == 1
-    new_line = new_lines[0]
+    assert new_lines[0] == ""
+    assert new_lines[1] == f"## [{_TODAY}] snapshot | SDD 스냅샷 2건 카탈로그 편입 (acme)"
+    assert new_lines[2] == ""
+    assert len(new_lines) == 4
+    new_line = new_lines[3]
 
     # 두 시점 표기 형식·다중 raw 커밋 열거·재시도 횟수를
     # `wiki_log.build_snapshot_log_line()`으로 독립 재구성해 바이트 단위로
-    # 대조한다(모듈 내부 함수를 재사용하지 않고 테스트가 직접 재현).
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    raw_commits: List[Tuple[str, str]] = [(sha, today) for sha in raw_shas_before_recovery]
-    expected_line = wiki_log.build_snapshot_log_line(
-        date=today,
+    # 대조한다(모듈 내부 함수를 재사용하지 않고 테스트가 직접 재현). raw 커밋
+    # 날짜는 git author date(로컬)이다.
+    commit_day = datetime.now().strftime("%Y-%m-%d")
+    raw_commits: List[Tuple[str, str]] = [(sha, commit_day) for sha in raw_shas_before_recovery]
+    expected_summary = wiki_log.build_snapshot_log_line(
+        date=_TODAY,
         total_raw=2,
         raw_commits=raw_commits,
-        catalog_commit=("HEAD", today),
+        catalog_commit=("HEAD", _TODAY),
         retries=len(raw_commits) - 1,
+        with_prefix=False,
     )
-    assert new_line == expected_line
+    assert new_line == f"- {expected_summary}"
     assert "재시도 1회" in new_line
     for sha in raw_shas_before_recovery:
         assert sha in new_line
@@ -800,3 +854,140 @@ def test_apply_skips_gate_functions_when_nothing_new_to_catalog(
 
         # 완료조건 #23 핵심 단정 — 박제 0건이면 게이트 함수가 전혀 호출되지 않는다.
         assert mocked_run_gates.call_count == 0
+
+
+# ── v2 볼트 계약 (2026-10-07) — 기존 raw 제자리 갱신 · legacySlug · 형식 보호 ──
+
+
+def test_apply_updates_existing_raw_in_place_wherever_it_lives(
+    fake_kompound_env: Dict[str, Any], project_root: Path
+) -> None:
+    """같은 slug의 raw가 다른 도메인 폴더(Pattern API)에 이미 있으면 그 파일의
+    `## Original Content`만 교체한다 — 파일명·날짜·도메인·frontmatter 유지,
+    `date modified`만 갱신, 두 번째 사본 없음."""
+    from tests.conftest import fake_raw_path
+
+    kompound = fake_kompound_env["kompound"]
+    config = fake_kompound_env["config"]
+    existing = fake_raw_path(kompound, "beta-launch-flow-spec.md")
+    before = existing.read_text(encoding="utf-8")
+
+    src = _make_source_file(project_root, "2026-07-02-launch-flow-spec.md", "# launch-flow spec v2\n\n새 본문\n")
+    record = _record(src, kind="spec", repo_dir="beta-service")
+
+    result = apply_mod.apply(kompound, [record], prefix_map=config["prefix_map"], scan_root=config["scan_root"])
+
+    raw_stage = result["raw_stage"]
+    assert raw_stage["ok"] is True
+    assert raw_stage["new"] == []
+    assert raw_stage["updated"] == ["2026-07-01-beta-launch-flow-spec.md"]
+    assert raw_stage["committed"] is True
+
+    after = existing.read_text(encoding="utf-8")
+    assert vault.extract_original_content(after) == "새 본문"
+    assert f"date modified: {_TODAY}" in after
+    assert "date created: 2026-07-01" in after  # 다른 frontmatter 보존
+    assert 'domain: "Pattern API"' in after
+    assert "# beta-launch-flow-spec\n" in after  # 파일 H1 보존(원본 H1로 바꾸지 않음)
+    assert after.split("## Original Content")[1].split("## Metadata")[1] == before.split("## Metadata")[1]
+
+    # 사본 없음 — 볼트 전체에서 이 slug 파일은 하나뿐
+    matches = [p for p in (kompound / _RAW_ROOT).rglob("*beta-launch-flow-spec.md")]
+    assert matches == [existing]
+    # 이미 링크된 문서라 카탈로그는 스킵
+    assert result["catalog_stage"]["attempted"] is False
+    assert _git_status_porcelain(kompound) == ""
+
+
+def test_apply_matches_existing_raw_by_legacy_slug(
+    fake_kompound_env: Dict[str, Any], project_root: Path
+) -> None:
+    kompound = fake_kompound_env["kompound"]
+    config = fake_kompound_env["config"]
+    legacy = kompound.joinpath(*_SPECS_AI) / "2026-06-30-renamed-by-human.md"
+    legacy.write_text(
+        "---\ntype: raw-source\nlegacySlug: acme-legacy-thing-spec\n---\n\n# legacy\n\n"
+        "## Original Content\n\nold body\n\n---\n\n## Metadata\n\n- x\n",
+        encoding="utf-8",
+    )
+    _git("add", "-A", cwd=kompound)
+    _git("commit", "-q", "-m", "seed legacy raw", cwd=kompound)
+
+    src = _make_source_file(project_root, "2026-07-02-legacy-thing-spec.md", "# legacy thing\n\nnew body\n")
+    record = _record(src, kind="spec", repo_dir="acme-widget")
+
+    result = apply_mod.apply(kompound, [record], prefix_map=config["prefix_map"], scan_root=config["scan_root"])
+
+    assert result["raw_stage"]["updated"] == ["2026-06-30-renamed-by-human.md"]
+    assert result["raw_stage"]["new"] == []
+    assert vault.extract_original_content(legacy.read_text(encoding="utf-8")) == "new body"
+    assert not _new_raw_path(kompound, "acme-legacy-thing-spec").exists()
+
+
+def test_apply_refuses_to_overwrite_raw_without_original_content_section(
+    fake_kompound_env: Dict[str, Any], project_root: Path
+) -> None:
+    kompound = fake_kompound_env["kompound"]
+    config = fake_kompound_env["config"]
+    human = kompound.joinpath(*_SPECS_AI) / "2026-06-30-acme-handwritten-spec.md"
+    human.write_text("# 사람이 쓴 문서\n\n구조 없음\n", encoding="utf-8")
+    _git("add", "-A", cwd=kompound)
+    _git("commit", "-q", "-m", "seed handwritten raw", cwd=kompound)
+    before_commits = _commit_count(kompound)
+
+    src = _make_source_file(project_root, "2026-07-02-handwritten-spec.md", "# x\n\ny\n")
+    record = _record(src, kind="spec", repo_dir="acme-widget")
+
+    result = apply_mod.apply(kompound, [record], prefix_map=config["prefix_map"], scan_root=config["scan_root"])
+
+    assert result["raw_stage"]["ok"] is False
+    assert "Original Content" in result["raw_stage"]["error"]
+    assert human.read_text(encoding="utf-8") == "# 사람이 쓴 문서\n\n구조 없음\n"
+    assert _commit_count(kompound) == before_commits
+    assert _git_status_porcelain(kompound) == ""
+
+
+def test_apply_domain_map_places_new_raw_in_configured_domain(
+    fake_kompound_env: Dict[str, Any], project_root: Path
+) -> None:
+    kompound = fake_kompound_env["kompound"]
+    config = fake_kompound_env["config"]
+    src = _make_source_file(project_root, "2026-07-02-placed-spec.md", "# placed\n\nbody\n")
+    record = _record(src, kind="spec", repo_dir="acme-widget")
+
+    result = apply_mod.apply(
+        kompound,
+        [record],
+        prefix_map=config["prefix_map"],
+        scan_root=config["scan_root"],
+        domain_map={"acme": "CLOFab"},
+    )
+
+    assert result["raw_stage"]["ok"] is True
+    target = _new_raw_path(kompound, "acme-placed-spec", parts=(_RAW_ROOT, "17. Specs", "CLOFab"))
+    assert target.is_file()
+    text = target.read_text(encoding="utf-8")
+    assert 'domain: "CLOFab"' in text
+    assert '  - "clofab"' in text
+    assert 'collectionPurpose: "Marvelous 개발 — SDD spec 스냅샷 보존"' in text
+    assert result["catalog_stage"]["ok"] is True
+
+
+def test_apply_on_non_v2_vault_is_precondition_failed_and_writes_nothing(tmp_path: Path) -> None:
+    """v1 레이아웃(`raw/` + `wiki/`)을 가리키는 오래된 설정 — v2 경로를 만들어 쓰지
+    않고 precondition_failed로 보고한다(T2 삭제 차단 대상)."""
+    v1 = tmp_path / "old_kompound"
+    (v1 / "raw").mkdir(parents=True)
+    (v1 / "wiki").mkdir()
+    (v1 / "wiki" / "index.md").write_text("# index\n", encoding="utf-8")
+    (v1 / "wiki" / "log.md").write_text("", encoding="utf-8")
+    _git("init", "-q", cwd=v1)
+    src = _make_source_file(tmp_path, "2026-07-02-x-spec.md", "# x\n")
+    record = _record(src, kind="spec", repo_dir="acme-widget")
+
+    result = apply_mod.apply(v1, [record], prefix_map={"acme-widget": "acme"})
+
+    assert result["precondition_failed"] is True
+    assert "not_v2_vault" in result["precondition"]["reason"]
+    assert "v1" in result["precondition"]["reason"]
+    assert not (v1 / _RAW_ROOT).exists()

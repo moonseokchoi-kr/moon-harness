@@ -250,10 +250,10 @@ def test_check_has_no_side_effects(cli_env: Dict[str, Any], capsys: pytest.Captu
 
     before_status = _git_status_porcelain(kompound)
     before_head = _git(*"rev-parse HEAD".split(), cwd=kompound).stdout
-    before_raw = sorted(p.name for p in (kompound / "raw").iterdir())
-    before_registry = (kompound / "wiki" / "sdd-spec-registry.md").read_bytes()
-    before_index = (kompound / "wiki" / "index.md").read_bytes()
-    before_log = (kompound / "wiki" / "log.md").read_bytes()
+    before_raw = sorted(str(p) for p in (kompound / "10. Raw Sources").rglob("*"))
+    before_registry = (kompound / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_bytes()
+    before_index = (kompound / "index.md").read_bytes()
+    before_log = (kompound / "log.md").read_bytes()
 
     rc = cli.main(["check", "--scope-root", str(cli_env["scope_root"]), "--json"])
     _capture(capsys)
@@ -261,10 +261,10 @@ def test_check_has_no_side_effects(cli_env: Dict[str, Any], capsys: pytest.Captu
 
     after_status = _git_status_porcelain(kompound)
     after_head = _git(*"rev-parse HEAD".split(), cwd=kompound).stdout
-    after_raw = sorted(p.name for p in (kompound / "raw").iterdir())
-    after_registry = (kompound / "wiki" / "sdd-spec-registry.md").read_bytes()
-    after_index = (kompound / "wiki" / "index.md").read_bytes()
-    after_log = (kompound / "wiki" / "log.md").read_bytes()
+    after_raw = sorted(str(p) for p in (kompound / "10. Raw Sources").rglob("*"))
+    after_registry = (kompound / "20. Wiki" / "24. Maps" / "SDD Spec Registry.md").read_bytes()
+    after_index = (kompound / "index.md").read_bytes()
+    after_log = (kompound / "log.md").read_bytes()
 
     assert after_status == before_status
     assert after_head == before_head
@@ -385,9 +385,10 @@ def test_apply_snapshots_new_document_and_commits(
 
     assert rc == report.EXIT_OK
     assert payload["verdict"] == "snapshotted"
-    assert payload["raw_stage"]["new"] == ["acme-cli-apply-new-spec.md"]
+    # v2: 신규 raw 이름 = `<박제일>-<slug>.md` — 날짜 접두를 떼고 비교한다.
+    assert [n[len("YYYY-MM-DD-"):] for n in payload["raw_stage"]["new"]] == ["acme-cli-apply-new-spec.md"]
     assert payload["raw_stage"]["committed"] is True
-    assert (kompound / "raw" / "acme-cli-apply-new-spec.md").is_file()
+    assert list((kompound / "10. Raw Sources" / "17. Specs").rglob("*-acme-cli-apply-new-spec.md"))
 
     after_commits = int(_git("rev-list", "--count", "HEAD", cwd=kompound).stdout.strip())
     assert after_commits > before_commits
@@ -447,7 +448,7 @@ def test_apply_precondition_failed_blocks_and_is_dirty(
     cli_env: Dict[str, Any], capsys: pytest.CaptureFixture
 ) -> None:
     _seed_repo(cli_env["scope_root"], "acme-widget", "cli-apply-dirty", kinds=("spec",))
-    (cli_env["kompound"] / "raw" / "untracked-dirty-file.md").write_text("dirty\n", encoding="utf-8")
+    (cli_env["kompound"] / "10. Raw Sources" / "untracked-dirty-file.md").write_text("dirty\n", encoding="utf-8")
 
     rc = cli.main(["apply", "--scope-root", str(cli_env["scope_root"]), "--json"])
     out = _capture(capsys)
@@ -519,11 +520,11 @@ def test_gate_snapshotted_success_for_real_pipeline(
     assert rc == report.EXIT_OK
     assert payload["verdict"] == "snapshotted"
     assert report.blocks_deletion("snapshotted") is False
-    assert set(payload["raw_stage"]["new"]) == {
+    assert {n[len("YYYY-MM-DD-"):] for n in payload["raw_stage"]["new"]} == {
         "acme-cli-gate-snapshot-spec.md",
         "acme-cli-gate-snapshot-arch.md",
     }
-    assert (cli_env["kompound"] / "raw" / "acme-cli-gate-snapshot-spec.md").is_file()
+    assert list((cli_env["kompound"] / "10. Raw Sources" / "17. Specs").rglob("*-acme-cli-gate-snapshot-spec.md"))
 
 
 def test_gate_never_returns_exit_10(cli_env: Dict[str, Any], capsys: pytest.CaptureFixture) -> None:
@@ -563,7 +564,7 @@ def test_gate_precondition_failed_blocks_before_calling_apply(
     cli_env: Dict[str, Any], capsys: pytest.CaptureFixture
 ) -> None:
     wt = _seed_worktree_repo(cli_env["scope_root"], "acme-widget", "wt-dirty", "cli-gate-dirty", kinds=("spec",))
-    (cli_env["kompound"] / "raw" / "untracked-dirty-file-gate.md").write_text("dirty\n", encoding="utf-8")
+    (cli_env["kompound"] / "10. Raw Sources" / "untracked-dirty-file-gate.md").write_text("dirty\n", encoding="utf-8")
 
     with patch.object(cli.apply_mod, "apply") as mock_apply:
         rc = cli.main(["gate", "--command", _worktree_removal_command(wt), "--json"])
