@@ -209,6 +209,30 @@ def test_taskmaster_tasks_mode_writes_plan_into_spec():
     assert _any_line(section, r"`## 구현 계획`", r"spec"), "tasks 모드가 spec에 구현 계획을 쓰지 않음"
 
 
+def test_taskmaster_plan_step_specifies_edit_section_only_and_forbids_spec_write():
+    section = _section(_body(TASKMASTER), "모드 1")
+    assert _any_line(section, r"Edit", r"`## 구현 계획`", r"(섹션만|범위만)"), (
+        "구현 계획 작성 단계가 Edit로 `## 구현 계획` 섹션만 갱신한다고 명시하지 않음"
+    )
+    assert _any_line(section, r"Write", r"spec", r"(쓰지 않|금지)"), (
+        "Write로 spec 전체를 재작성하지 않는다는 금지 문장 없음"
+    )
+
+
+def test_taskmaster_plan_written_once_per_tasks_mode_with_explicit_owner():
+    section = _section(_body(TASKMASTER), "모드 1")
+    assert _any_line(
+        section, r"`## 구현 계획`", r"(한 번만|1회)", r"(컨트롤러|오케스트레이터|리드|단일|하나의)"
+    ), "구현 계획은 tasks 모드 전체에서 1회만, 주체를 명시해 쓴다는 문장 없음"
+
+
+def test_taskmaster_batch_limit_section_keeps_parallel_instances_spec_read_only():
+    section = _section(_body(TASKMASTER), "배치 제한", level=3)
+    assert _any_line(section, r"spec", r"(읽기 전용|읽기만)", r"(쓰지 않|쓰기 금지|금지)"), (
+        "배치 제한 절에 병렬 인스턴스의 spec 읽기 전용(쓰기 금지) 문장 없음"
+    )
+
+
 def test_taskmaster_no_blocked_on_missing_arch():
     body = _body(TASKMASTER)
     offenders = [ln for ln in _lines(body) if re.search(r"arch.*BLOCKED|BLOCKED.*arch", ln)]
