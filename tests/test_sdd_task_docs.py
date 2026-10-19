@@ -62,6 +62,15 @@ def _section(text: str, heading: str, level: int = 2) -> str:
     return "\n".join(out)
 
 
+def _mode_section(text: str, name: str) -> str:
+    """`## 모드 N: {name}` 형태 헤딩의 절 본문. 번호는 가정하지 않는다."""
+    for line in text.splitlines():
+        m = re.match(r"## 모드 \S+:\s*" + re.escape(name) + r"\b", line)
+        if m:
+            return _section(text, line[3:].strip().split(":")[0])
+    raise AssertionError(f"모드 절 없음: {name}")
+
+
 def _lines(text: str) -> list[str]:
     return text.splitlines()
 
@@ -124,6 +133,9 @@ def test_taskmaster_input_is_single_spec_worktree_feature_mode():
     assert any("worktree 경로" in ln for ln in items)
     assert any("feature" in ln for ln in items)
     assert any(re.search(r"모드.*tasks.*dag", ln) for ln in items)
+    assert any(re.search(r"모드", ln) and re.search(r"`plan`", ln) for ln in items), (
+        "입력 절의 모드 값에 plan 없음"
+    )
     assert not [ln for ln in items if re.search(r"\b(arch|ui|api)\b.*(경로|명세)", ln)]
     assert len(items) == 4, f"입력 항목은 spec/worktree/feature/모드 4개: {items}"
 
@@ -204,13 +216,17 @@ def test_taskmaster_rules_state_plan_section_ownership():
     )
 
 
-def test_taskmaster_tasks_mode_writes_plan_into_spec():
-    section = _section(_body(TASKMASTER), "모드 1")
-    assert _any_line(section, r"`## 구현 계획`", r"spec"), "tasks 모드가 spec에 구현 계획을 쓰지 않음"
+def test_taskmaster_plan_mode_writes_plan_into_spec():
+    """갱신(구 test_taskmaster_tasks_mode_writes_plan_into_spec): 리드 결정으로 구현 계획 작성
+    주체가 tasks 모드에서 plan 모드로 이동했다. 같은 요구(spec에 `## 구현 계획`을 쓴다)를
+    plan 모드 절로 옮겨 유지한다."""
+    section = _mode_section(_body(TASKMASTER), "plan")
+    assert _any_line(section, r"`## 구현 계획`", r"spec"), "plan 모드가 spec에 구현 계획을 쓰지 않음"
 
 
 def test_taskmaster_plan_step_specifies_edit_section_only_and_forbids_spec_write():
-    section = _section(_body(TASKMASTER), "모드 1")
+    """갱신: Edit 섹션 한정 + Write 금지 단언을 plan 모드 절로 이동(작성 주체 변경)."""
+    section = _mode_section(_body(TASKMASTER), "plan")
     assert _any_line(section, r"Edit", r"`## 구현 계획`", r"(섹션만|범위만)"), (
         "구현 계획 작성 단계가 Edit로 `## 구현 계획` 섹션만 갱신한다고 명시하지 않음"
     )
@@ -219,11 +235,65 @@ def test_taskmaster_plan_step_specifies_edit_section_only_and_forbids_spec_write
     )
 
 
-def test_taskmaster_plan_written_once_per_tasks_mode_with_explicit_owner():
-    section = _section(_body(TASKMASTER), "모드 1")
-    assert _any_line(
-        section, r"`## 구현 계획`", r"(한 번만|1회)", r"(컨트롤러|오케스트레이터|리드|단일|하나의)"
-    ), "구현 계획은 tasks 모드 전체에서 1회만, 주체를 명시해 쓴다는 문장 없음"
+def test_taskmaster_plan_written_once_by_plan_mode_alone():
+    """갱신(구 test_taskmaster_plan_written_once_per_tasks_mode_with_explicit_owner).
+    구 단언은 'tasks 모드 안의 단일 인스턴스(첫 배치/컨트롤러 지정)'가 구현 계획을 1회 쓴다고
+    요구했으나, 병렬 tasks 인스턴스 중 누가 쓸지의 결정 주체·신호가 없다는 리뷰 P1 때문에
+    리드가 plan 모드(단독 1회 디스패치)로 분리했다. 따라서 '구현 계획은 plan 모드 단독 1회가
+    쓴다'는 한 줄 요구로 바꾼다. 작성 주체를 명시한다는 원래 의도는 유지된다."""
+    section = _mode_section(_body(TASKMASTER), "plan")
+    assert _any_line(section, r"`## 구현 계획`", r"(단독|한 번만|1회)"), (
+        "구현 계획은 plan 모드 단독 1회가 쓴다는 문장 없음"
+    )
+
+
+def test_taskmaster_plan_mode_does_not_create_task_documents():
+    section = _mode_section(_body(TASKMASTER), "plan")
+    assert _any_line(section, r"task 문서", r"(만들지 않|생성하지 않|작성하지 않)"), (
+        "plan 모드가 task 문서를 만들지 않는다는 문장 없음"
+    )
+
+
+def test_taskmaster_plan_mode_is_single_dispatch():
+    section = _mode_section(_body(TASKMASTER), "plan")
+    assert _any_line(section, r"단독", r"(디스패치|호출|실행)"), "plan 모드 단독 디스패치 문장 없음"
+
+
+def test_taskmaster_tasks_mode_spec_is_read_only():
+    section = _mode_section(_body(TASKMASTER), "tasks")
+    section = section.split("### 배치 제한")[0]  # 배치 제한 절의 기존 문장과 별개로 작업 순서 쪽에 있어야 함
+    assert _any_line(section, r"spec", r"(읽기 전용|읽기만)", r"(쓰지 않|쓰기 금지|금지)"), (
+        "tasks 모드 절에 spec 읽기 전용(쓰기 금지) 문장 없음"
+    )
+
+
+def test_taskmaster_tasks_mode_uses_existing_plan_as_input():
+    section = _mode_section(_body(TASKMASTER), "tasks")
+    assert _any_line(section, r"구현 계획", r"(입력|읽어|읽는다)"), (
+        "tasks 모드가 작성된 구현 계획을 입력으로 쓴다는 문장 없음"
+    )
+
+
+def test_taskmaster_tasks_mode_reports_needs_context_when_plan_missing():
+    section = _mode_section(_body(TASKMASTER), "tasks")
+    assert _any_line(section, r"구현 계획", r"(없|부재)", r"NEEDS_CONTEXT"), (
+        "구현 계획 부재 시 NEEDS_CONTEXT 보고 문장 없음"
+    )
+    assert _any_line(section, r"NEEDS_CONTEXT", r"plan 모드"), "plan 모드 선행 필요 안내 없음"
+
+
+def test_taskmaster_tasks_mode_does_not_write_plan():
+    section = _mode_section(_body(TASKMASTER), "tasks")
+    assert not _any_line(section, r"구현 계획", r"(추가|교체|갱신)[^.]*(한다|\.|$)", r"Edit"), (
+        "tasks 모드에 구현 계획을 Edit로 쓰는 단계가 남음"
+    )
+
+
+def test_taskmaster_batch_limit_applies_to_tasks_mode_only():
+    section = _section(_body(TASKMASTER), "배치 제한", level=3)
+    assert _any_line(section, r"tasks 모드", r"(만|에만|한정)"), (
+        "배치 제한이 tasks 모드에만 적용된다는 문장 없음"
+    )
 
 
 def test_taskmaster_batch_limit_section_keeps_parallel_instances_spec_read_only():
