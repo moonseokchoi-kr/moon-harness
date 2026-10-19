@@ -227,6 +227,27 @@ def test_arch_start_directive_dispatches_stack_architect_on_main_checkout(stop_p
     assert text.index("architect") < text.index("PHASE2_ARCH_DONE")
 
 
+def test_arch_start_directive_passes_spec_absolute_path_in_dispatch_prompt(stop_pipeline):
+    lines = stop_pipeline.DIRECTIVES["PHASE2_ARCH_START"].splitlines()
+    assert any(
+        "절대 경로" in ln
+        and "docs/sdd/spec/" in ln
+        and ("디스패치" in ln or "프롬프트" in ln)
+        for ln in lines
+    ), lines
+
+
+def test_arch_start_directive_limits_edit_to_design_decision_section(stop_pipeline):
+    lines = stop_pipeline.DIRECTIVES["PHASE2_ARCH_START"].splitlines()
+    assert any(
+        "설계 결정" in ln
+        and "Edit" in ln
+        and ("다른" in ln or "외" in ln)
+        and ("수정하지" in ln or "건드리지" in ln)
+        for ln in lines
+    ), lines
+
+
 @pytest.mark.parametrize("label", ["PHASE2_ARCH_DONE", "PHASE2_ARCH_SKIP"])
 def test_arch_done_and_skip_directives_transition_to_phase3_plan_start(
     stop_pipeline, label
