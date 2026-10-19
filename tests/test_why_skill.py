@@ -157,3 +157,94 @@ def test_model_regex_matches_model_names(sample: str):
 )
 def test_model_regex_ignores_non_model_names(sample: str):
     assert _MODEL_NAME_RE.search(sample) is None
+
+
+# ── 절 단위 검사 (키워드가 다른 절/frontmatter에 있어도 통과하던 공백 보강) ───
+
+
+def _body_without_frontmatter(text: str) -> str:
+    return re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+
+
+def _section(text: str, heading_prefix: str) -> str:
+    """frontmatter를 제외한 본문에서 heading_prefix로 시작하는 헤딩의 절 본문.
+
+    헤딩 줄을 포함해 다음 헤딩(같거나 더 높은 레벨) 전까지를 반환한다.
+    절이 없으면 빈 문자열.
+    """
+    lines = _body_without_frontmatter(text).splitlines()
+    start = None
+    level = 0
+    for i, line in enumerate(lines):
+        m = re.match(r"(#+)\s+(.*)", line)
+        if m and m.group(2).startswith(heading_prefix):
+            start, level = i, len(m.group(1))
+            break
+    if start is None:
+        return ""
+    body: list[str] = [lines[start]]
+    for line in lines[start + 1 :]:
+        m = re.match(r"(#+)\s", line)
+        if m and len(m.group(1)) <= level:
+            break
+        body.append(line)
+    return "\n".join(body)
+
+
+def test_section_helper_excludes_frontmatter_and_other_sections():
+    text = "---\nname: x\n---\n\n## A\n\nalpha\n\n### A1\n\nsub\n\n## B\n\nbeta\n"
+    assert "alpha" in _section(text, "A")
+    assert "sub" in _section(text, "A")
+    assert "beta" not in _section(text, "A")
+    assert _section(text, "없는 절") == ""
+
+
+@pytest.mark.parametrize(
+    "keyword", ["읽기 전용", "파일 쓰기", "외부 시스템", "데이터로만"]
+)
+def test_read_only_section_contains_keyword(keyword: str):
+    section = _section(_skill_text(), "읽기 전용 규칙")
+    assert section.strip(), "읽기 전용 규칙 절 없음"
+    assert keyword in section
+
+
+def test_step3_section_exists():
+    assert _section(_skill_text(), "Step 3").strip(), "Step 3 절 없음"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        "코드 앵커",
+        "읽기 전용",
+        "데이터로만",
+        "반환 형식",
+        "사실",
+        "추론",
+        "모름",
+        "출처",
+    ],
+)
+def test_step3_section_contains_explore_prompt_item(keyword: str):
+    assert keyword in _section(_skill_text(), "Step 3")
+
+
+@pytest.mark.parametrize("label", ["(a)", "(b)", "(c)", "(d)"])
+def test_step3_section_lists_explore_prompt_items(label: str):
+    assert label in _section(_skill_text(), "Step 3")
+
+
+def test_step3_section_has_no_agent_tool_fallback():
+    section = _section(_skill_text(), "Step 3")
+    assert "Agent 도구가 없는" in section
+    assert "직접 조사" in section
+
+
+@pytest.mark.parametrize(
+    "name", ["context-sources.md", "epistemics.md", "source-control.md"]
+)
+def test_reference_file_is_not_empty(name: str):
+    path = _REFERENCES_DIR / name
+    assert path.is_file(), f"{path} 없음"
+    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(lines) >= 5
