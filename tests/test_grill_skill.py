@@ -88,3 +88,89 @@ def test_facts_are_investigated_not_asked(grill_text):
     body = _body(grill_text)
     assert "직접 조사" in body
     assert "Explore" in body
+
+
+# --- 계약 문장 단위 고정 (refactor 안전망) -----------------------------------
+
+
+def _section(text: str, heading: str) -> str:
+    """`## heading` 절 본문(다음 `## ` 헤딩 직전까지). frontmatter 제외."""
+    body = _body(text)
+    match = re.search(
+        rf"^##[ \t]+{re.escape(heading)}[ \t]*\n(.*?)(?=^##[ \t]|\Z)",
+        body,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert match, f"절 '{heading}' 이 없다"
+    return match.group(1)
+
+
+def _lines(section: str) -> list:
+    return [line for line in section.splitlines() if line.strip()]
+
+
+def _line_matching(section: str, *patterns: str) -> str:
+    """모든 패턴을 함께 만족하는 한 줄(=한 계약 문장)을 반환. 없으면 실패."""
+    for line in _lines(section):
+        if all(re.search(p, line) for p in patterns):
+            return line
+    pytest.fail(f"다음을 모두 만족하는 문장이 없다: {patterns}")
+
+
+@pytest.fixture(scope="module")
+def approval_section(grill_text) -> str:
+    return _section(grill_text, "요약과 명시적 yes")
+
+
+def test_summary_is_standalone_message(approval_section):
+    _line_matching(approval_section, r"요약", r"질문 라운드", r"섞지 않", r"단독 메시지")
+
+
+def test_approval_only_from_immediate_reply_not_round_answer(approval_section):
+    _line_matching(approval_section, r"[\"“]네[\"”]", r"yes", r"승인으로 인정", r"요약.{0,10}직후", r"응답")
+    _line_matching(approval_section, r"라운드 답변의 [\"“]네[\"”]", r"승인이 아니")
+
+
+def test_conditional_yes_is_not_approval_and_resummarizes(approval_section):
+    _line_matching(
+        approval_section,
+        r"수정 요청",
+        r"조건부 yes",
+        r"승인이 아니",
+        r"요약을 고쳐",
+        r"yes를 요청",
+    )
+
+
+def test_no_follow_up_work_before_approval(approval_section):
+    _line_matching(approval_section, r"승인 전", r"후속 작업", r"시작하지 않")
+
+
+def test_implicit_agreement_literal_and_negation_in_same_sentence(approval_section):
+    _line_matching(
+        approval_section,
+        r"좋아 보여",
+        r"암묵적 동의",
+        r"승인으로 (보|취급하)지 않",
+    )
+
+
+def test_non_interactive_sentence_refuses_start_and_halts_with_report(grill_text):
+    section = _section(grill_text, "사용 조건")
+    line = _line_matching(
+        section,
+        r"비대화형",
+        r"/loop",
+        r"스케줄",
+        r"CI",
+        r"시작하지 않",
+        r"멈|중단",
+        r"사용자 입력이 필요",
+    )
+    assert re.search(r"보고", line)
+
+
+def test_termination_condition_three_questions_and_unpredictable_branch(grill_text):
+    section = _section(grill_text, "종료 조건")
+    _line_matching(section, r"다음에 물을 질문 3개", r"예측할 수 있으면", r"종료")
+    _line_matching(section, r"예측할 수 없는 질문", r"그 질문부터", r"라운드로 묻")

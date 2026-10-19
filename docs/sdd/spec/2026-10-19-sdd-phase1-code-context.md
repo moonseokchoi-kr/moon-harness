@@ -238,7 +238,7 @@ Risk:
 - THE SYSTEM SHALL 새 기능 설계(구조·알고리즘)는 쓰지 않는다. 기존 코드 사실·제약은 근거(파일:라인, 커밋, PR)와 함께 쓴다. 근거 없는 항목은 "추론" 또는 "모름"으로 표기한다.
 - THE SYSTEM SHALL 사용자 원문을 변형하지 않고, 모호성은 "미결 질문"에 둔다(인터뷰 확정 후이므로 새로 발견한 것만). 구 마커는 쓰지 않는다.
 - THE SYSTEM SHALL "적용 규칙"에 프로젝트에 로드된 규칙(CLAUDE.md, ANTI_SLOP 등) 중 이번 변경에 걸리는 것만 쓴다. 사용자 홈 경로를 하드코딩하지 않는다.
-- THE SYSTEM SHALL `BLOCKER_PASS` 마크 처리(`PHASE1_SPEC_DRAFT` directive 의존, `has_blocker_pass` 리터럴 검사)를 기존대로 유지한다.
+- THE SYSTEM SHALL spec-writer와 템플릿이 통과 마크를 쓰지 않게 한다. 마크는 blocker-checker PASS 후 컨트롤러만 추가한다(`has_blocker_pass` 리터럴 검사의 우회 방지, `PHASE1_SPEC_DRAFT` directive 의존).
 - THE SYSTEM SHALL spec "기능 요구사항"·"설계 결정"·"미결 질문" 섹션의 소유자이며 "구현 계획" 섹션은 쓰지 않는다(R11).
 - Acceptance (오프라인 pytest): `agents/sdd-spec-writer.md` 존재, frontmatter `name == "sdd-spec-writer"`, `tools`에 `Write` 포함, `agents/sdd-ux-researcher.md` 부재. 본문에 `페르소나`, `유스케이스`, `타겟 사용자`가 없고 "미결 질문"이 있음.
 
@@ -251,7 +251,7 @@ Risk:
 - THE SYSTEM SHALL 조건부 섹션 3개를 템플릿에 둔다: `## 기능 지도`(요청이 독립 기능 여러 개일 때만, 맨 앞), `## UI`(이미 나온 디자인이 있을 때만, 링크만), `## 구현 계획`(Phase 3에서 taskmaster가 작성: 순서·위험·테스트 스코프).
 - THE SYSTEM SHALL "빌드·테스트 명령", "구조", "스타일"은 복사하지 않고 CLAUDE.md 링크로 대체하며 경로를 하드코딩하지 않는다. "적용 규칙"에는 로드된 규칙 중 이번 변경에 걸리는 것만 적는다.
 - THE SYSTEM SHALL "타겟 사용자", "핵심 가치" 필드를 제거한다(H27).
-- THE SYSTEM SHALL 새 템플릿과 `sdd-spec-writer`가 `BLOCKER_PASS` 마크를 유지하게 한다(`PHASE1_SPEC_DRAFT` directive가 의존하며 `has_blocker_pass`가 리터럴로 검사한다).
+- THE SYSTEM SHALL 새 템플릿과 `sdd-spec-writer`가 통과 마크를 쓰지 않게 한다. 마크는 blocker-checker PASS 후 컨트롤러만 추가한다(`has_blocker_pass` 리터럴 검사의 우회 방지).
 - Acceptance (오프라인 pytest): `skills/sdd/references/spec-template.md`에 위 13개 섹션 제목과 `기능 지도`, `UI`, `구현 계획` 조건부 섹션 제목, `Preserve`, `Change`, `Avoid`, `Risk`, `Always`, `Ask first`, `Never`가 있고 `타겟 사용자`, `핵심 가치`는 없음. `skills/sdd/SKILL.md`가 `references/spec-template.md`를 참조하고 `타겟 사용자`, `핵심 가치`를 포함하지 않음. `skills/`·`agents/` 하위에 `docs/sdd/design/`, `docs/sdd/context/` 경로 지시 문자열 0건.
 
 ### F7: Phase 1 라벨과 하위호환

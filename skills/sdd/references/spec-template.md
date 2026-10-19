@@ -8,8 +8,6 @@ task 문서와 `ORCHESTRATOR_STATE.md`는 별도로 둔다. 아래 골격의 섹
 
 # {feature} Spec
 
-<!-- BLOCKER_PASS: blocker-checker가 통과 판정 후 이 마크를 기록한다. 작성자는 채우지 않는다. -->
-
 ## 기능 지도
 
 (조건부: 요청이 독립된 기능 여러 개일 때만, 문서 맨 앞에 둔다. 기능별 한 줄 요약과 의존 관계만 적는다.)
