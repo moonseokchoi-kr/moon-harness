@@ -15,7 +15,6 @@ git이 추적하므로 손상 시 복구 가능하고, 변경 이력이 commit l
 # Orchestrator State
 
 ## 메타
-- develop 문서: <path to develop document>
 - spec 문서: <path to spec document>
 - 시작 시각: <ISO 8601>
 - 마지막 갱신: <ISO 8601>
@@ -23,7 +22,7 @@ git이 추적하므로 손상 시 복구 가능하고, 변경 이력이 commit l
 - resume_at: <ISO 8601, PAUSED_AT_LIMIT일 때만>
 
 ## 빌드 프로파일
-> arch 문서의 `## 빌드 프로파일` 표를 taskmaster가 복사. Phase 4 build-aware TDD가 소비.
+> 오케스트레이터가 Phase 4 진입 시 기록. Phase 4 build-aware TDD가 소비.
 > 출처: <CLAUDE.md | CLAUDE.local.md | 사용자 확인 YYYY-MM-DD>
 
 | 필드 | 값 | 비고 |

@@ -2,7 +2,7 @@
 name: sdd-orchestrator
 description: SDD Phase 4의 멀티 에이전트 오케스트레이션. ORCHESTRATOR_STATE.md를 읽고, Wave별로 Agent 도구를 사용해서 Engineer → Reviewer → Test Automator 루프를 자동 실행한다.
 model: opus
-allowed-tools: Bash Read Write Edit Glob Grep Agent
+allowed-tools: Bash Read Write Edit Glob Grep Agent Skill
 user-invocable: false
 ---
 
@@ -42,7 +42,13 @@ Phase 3(Plan)에서 생성된 ORCHESTRATOR_STATE.md와 task 문서를 입력으�
    - 팀 배정 섹션 있음 → 내 팀의 담당 Wave만 처리
 3. 상태를 EXECUTING으로 변경 (내 팀 섹션만)
 4. Wave 구성과 태스크 목록을 파악 (담당 Wave 범위만 필터링)
-5. **빌드 프로파일 로드** — ORCHESTRATOR_STATE.md의 `## 빌드 프로파일`을 읽는다(없으면 사용자 에스컬레이션 — Phase 2 미발견).
+5. **빌드 프로파일 확보** — Phase 4 진입 시 오케스트레이터가 직접 확보한다. 인터프리터·툴의 경로는 하드코딩하지 않고 확정된 명령만 기록한다:
+   1. STATE의 `## 빌드 프로파일`에 프로파일이 이미 있으면 재확보하지 않고 그대로 쓴다(이후 단계는 건너뛴다).
+   2. 없으면 프로젝트 CLAUDE.md → CLAUDE.local.md 순서로 빌드·테스트 명령을 찾는다.
+   3. 거기에도 없으면 `/build-notes` 스킬이 사용 가능할 때 `Skill(build-notes)`를 실행한다. build-notes는 사용자 전역 스킬이라 플러그인에 없을 수 있으며(이관하지 않는다), 결과는 `CLAUDE.local.md`에 기록되므로 그 내용을 STATE로 옮긴다.
+   4. build-notes가 없거나 불가하면(정상 경로) 사용자 질문으로 폴백해 빌드·테스트 명령을 확인한다.
+   5. Agent Team 팀원(sdd-team-leader) 컨텍스트처럼 사용자 질문이 불가하면 BLOCKED를 반환하고, 팀 리드가 사용자에게 중계한다.
+   6. 확보한 프로파일을 STATE `## 빌드 프로파일`에 기록한다(출처 포함, 스키마: [state-schema.md](references/state-schema.md)).
 6. **워밍업 빌드 (build-aware TDD, 1회)**:
    - 프로파일 유형이 `build-required`이고 `워밍업 완료`가 미기록이면 → 프로파일의 **워밍업 빌드 명령을 1회 실행**해 콜드 캐시를 데운다. 완료 후 STATE에 `워밍업 완료: <시각>` 기록(중복 방지).
    - `fast-scoped`이면 워밍업 생략하고 `워밍업 완료: 미실행(fast-scoped)` 기록.
@@ -90,12 +96,14 @@ Agent(T-3, run_in_background: true)
 1. ORCHESTRATOR_STATE.md: T-N → IN_PROGRESS (implementing)
 2. Agent(
      subagent_type: task 문서의 구현자에 맞는 타입,
-     prompt: task 문서 경로 + design/arch 문서 경로 + design/ui + design/api + 소유 파일 + 요구사항
+     prompt: task 문서 경로 + spec 문서 경로 + 소유 파일 + 요구사항
              + **빌드 프로파일**(증분 빌드 + 이 태스크 스코프 테스트 명령, no-clean 규율),
      run_in_background: true
    )
 3. 결과 수신 후 ORCHESTRATOR_STATE.md: T-N → 결과 반영
 ```
+
+**테스트 스코프 연결**: task 문서에는 실행 명령이 없고 "테스트 스코프" 값만 있다. 오케스트레이터가 task 문서의 "테스트 스코프" 값을 읽어 빌드 프로파일 `테스트 실행` 명령의 `{filter}` 자리에 채운 완성 명령을 프롬프트에 넣는다(이 연결이 없으면 Engineer가 실행 명령을 만들 수 없다).
 
 Engineer는 작업 완료 후 결과만 반환한다. ORCHESTRATOR_STATE.md 수정 금지.
 
@@ -104,7 +112,7 @@ Engineer는 작업 완료 후 결과만 반환한다. ORCHESTRATOR_STATE.md 수�
 Engineer 결과 수신 → T-N: verifying 갱신 → Compliance Checker 디스패치:
 
 ```
-Agent(subagent_type: "sdd-compliance-checker", prompt: spec 경로 + design/arch 경로 + design/ui + design/api + 변경 파일 목록)
+Agent(subagent_type: "sdd-compliance-checker", prompt: spec 단일 문서 경로 + 변경 파일 목록)
 ```
 
 - **PASS** → 오케스트레이터가 state 갱신 → 리뷰 단계로
@@ -131,6 +139,8 @@ Reviewer 결과 수신 → T-N: testing 갱신 → Test Automator 디스패치:
 Agent(subagent_type: "sdd-test-automator",
       prompt: 검증 요청 + 빌드 프로파일(증분 빌드 + 이 태스크 스코프 테스트 명령, no-clean))
 ```
+
+> 📌 테스트 단계 프롬프트도 동일하게, task 문서의 "테스트 스코프" 값을 빌드 프로파일 테스트 실행 명령의 `{filter}` 자리에 채워 완성 명령으로 전달한다.
 
 > 📌 워밍업은 Step 1에서 1회 끝났다. Test Automator는 **증분 빌드 + 스코프 테스트**로 RED/GREEN을 확인한다 — "전체 테스트 1회 실행"으로 대체 금지.
 
@@ -162,6 +172,8 @@ Agent(subagent_type: "sdd-test-automator",
 main에 직접 머지하지 않는다. PR을 열고 외부 신호가 전부 green이 될 때까지 수렴시킨 뒤, **최종 머지는 사람이 승인**한다.
 
 1. result 문서 생성: `docs/sdd/result/{date}-{feature}.md`
+   - UI 변경이 있으면 result 문서에 수동 테스트 시나리오를 기록한다(개발자가 직접 확인할 조작 순서·기대 결과).
+   - E2E 테스트는 개발자가 수동 확인 후 요청할 때만 작성한다.
 2. ORCHESTRATOR_STATE.md 상태를 COMPLETED로 변경
 3. **kompound 박제 실행** (F1, T-12) — `hooks/enforcement/stop-pipeline.py`의 완료 게이트가 이 시점 이후의 Stop 훅에서 자동으로 directive를 발화한다. directive 지시에 따라 kompound 박제 CLI(`python3 -m hooks.lib.kompound_snapshot apply --json`, 절대경로는 directive가 제시)를 실행하고, 성공/실패 결과를 사용자에게 보고한다. 실패해도 사이클을 되돌리지 않고 사용자 판단을 요청한다.
    - **근거(D1, 사용자 확정)**: 다음 4번(push + pr-converge)은 코드단 수정 작업이고, 박제 대상 문서(spec/arch/task/result)의 의도는 이미 2번(STATE=COMPLETED)에서 확정된다 — 이후 코드가 더 바뀌어도 박제할 문서 내용은 달라지지 않는다. 따라서 박제는 push 이전, STATE 확정 직후 실행하는 것이 안전하다.
