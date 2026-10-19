@@ -51,6 +51,8 @@ Phase 2 → 3       Phase 4-2: Ship
 | 스킬 | 역할 |
 |------|------|
 | `/sdd` | 자동 파이프라인 기반 Spec-Driven Development |
+| `/grill` | 요구사항 인터뷰 (Phase 1) |
+| `/why` | 코드 변경 이유·이력 조사 |
 | `/adversarial-review` | 리뷰 3회 실패 시 에스컬레이션 |
 | `/git-worktree` | 격리된 feature 브랜치 |
 
@@ -70,7 +72,8 @@ Phase 2 → 3       Phase 4-2: Ship
 
 - **Stop 훅 컨트롤러** (`stop-pipeline.py`) 가 각 Phase 전환을 자동 관리
 - 16개 라벨 기반 상태 머신
-- 사용자 게이트(spec/arch/ui/api/design/plan) 에서만 정지
+- 사용자 게이트(spec, plan 두 곳)에서만 정지 — Phase 1 spec 승인, Phase 3 plan+tasks 승인
+- Phase 1 = grill 인터뷰 + why/code-mapper 조사 + sdd-spec-writer → 단일 spec 문서, Phase 2 아키텍처는 조건부
 - Circuit breaker (5분 TTL, 20회) 로 무한 루프 방지
 - Session 격리 + Stale state 자동 정리
 

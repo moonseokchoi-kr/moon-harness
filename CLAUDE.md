@@ -1,18 +1,18 @@
 # moon-harness
 
 AI 에이전트 전체 개발 라이프사이클(아이디어 → 구현 → 배포)을 구조화하는 Claude Code 플러그인.
-SDD 파이프라인, 자가개선 시스템(pr-converge + self-improve), enforcement 훅.
+SDD 파이프라인(grill 인터뷰 → 단일 spec → 조건부 아키텍처 → plan/tasks), 자가개선 시스템(pr-converge + self-improve), enforcement 훅.
 
 ## 구성
 
 | 디렉터리 | 내용 |
 |----------|------|
-| `skills/` | 스킬 (sdd, sdd-orchestrator, harness, pr-converge, self-improve, git-worktree, …) |
+| `skills/` | 스킬 (sdd, sdd-orchestrator, grill, why, harness, pr-converge, self-improve, git-worktree, …) |
 | `agents/` | 서브에이전트 정의 (sdd-*, harness-improvement-critic, architect 등) |
 | `hooks/` | bash enforcement 훅 + `hooks/lib/self_improve/` (결정적 코어 Python 패키지) |
 | `benchmarks/` `evals/` | 자가개선 측정 substrate (fitness function + 라이브 eval) |
 | `tests/` | 결정적 코어 오프라인 pytest 스위트 |
-| `docs/sdd/` | SDD 사이클 산출물 (spec/design/task/result) |
+| `docs/sdd/` | SDD 사이클 산출물 (spec/task/result) |
 
 ## 빌드 / 테스트
 
