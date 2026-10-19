@@ -437,3 +437,11 @@ def test_worktree_created_directive_tasks_not_dispatched_before_plan_completes(s
     assert re.search(r"plan.*(완료|끝)|(완료|끝).*plan", tasks_line) or re.search(
         r"plan.*(완료|끝)", text[: text.index(tasks_line)]
     ), "plan 완료 후 tasks 를 디스패치한다는 순서 문장이 없다"
+
+
+def test_dag_constructed_directive_presents_plan_design_decisions_and_tasks_wave(stop_pipeline):
+    text = stop_pipeline.DIRECTIVES["PHASE3_DAG_CONSTRUCTED"]
+    ln = _line_with(text, "제시")
+    assert "구현 계획" in ln, f"제시 항목 줄에 '구현 계획' 이 없다: {ln}"
+    assert "설계 결정" in ln, f"제시 항목 줄에 '설계 결정' 이 없다: {ln}"
+    assert "태스크" in ln and "Wave" in ln

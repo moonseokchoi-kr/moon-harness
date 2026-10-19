@@ -407,3 +407,49 @@ def test_spec_conflict_exception_does_not_invert_to_advance(body):
     assert pos_adv >= 0
     tail = x[pos_adv:]
     assert re.search(r"않|아님|금지|하지", tail), "advance 뒤에 부정 어휘가 없어 의미가 반전될 수 있다"
+
+
+# ── T-12 iter2: spec 위치 판정·Phase 4 검증·Phase 3 승인 제시 항목·심각도 절 단일 ──
+def test_phase_judgment_section_states_spec_location_worktree_first(body):
+    sec = _section(body, "## Phase 판정")
+    ln = _lines_matching(sec, r"spec 위치", r"worktree_path", r"worktree", r"메인")
+    assert ln, "Phase 판정 절에 'spec 위치: pipeline.json worktree_path 있으면 worktree 우선, 없으면 메인' 문장이 없다"
+    x = ln[0]
+    assert "pipeline.json" in x
+    assert x.find("worktree") < x.rfind("메인"), "worktree 우선, 없으면 메인 순서가 아니다"
+    assert re.search(r"우선", x) and re.search(r"없으면", x)
+
+
+def test_phase3_entry_validation_scoped_before_worktree_creation(phase3):
+    sec = _section(phase3, "### 진입 전 검증")
+    assert re.search(r"worktree 생성.{0,10}spec 이동.{0,6}이전", sec), \
+        "Phase 3 진입 전 검증이 'worktree 생성·spec 이동 이전'에 적용된다는 한정 문장이 없다"
+
+
+def test_phase4_entry_check1_checks_worktree_spec_and_blocker_pass_not_phase3_reuse(phase4):
+    sec = _section(phase4, "### 진입 전 검증")
+    row = next((ln for ln in sec.splitlines() if re.match(r"\|\s*1\s*\|", ln)), "")
+    assert row, "Phase 4 진입 전 검증 #1 행이 없다"
+    assert "Phase 3 진입 전 검증 전부" not in row, "#1이 Phase 3 진입 전 검증 전부를 재사용한다"
+    assert "worktree" in row and "spec" in row and "BLOCKER_PASS" in row
+    assert "Phase 1로 롤백" not in row and "Phase 1 롤백" not in row, "#1 실패 조치가 Phase 1 롤백으로 빠진다"
+
+
+def test_phase3_approval_line_presents_plan_design_decisions_and_tasks_dag(phase3):
+    ln = _lines_matching(phase3, r"제시", r"DAG")
+    assert ln, "Phase 3 승인 제시 항목 줄이 없다"
+    assert any(
+        "구현 계획" in x and "설계 결정" in x and "사용자 확인 필요" in x and "task" in x
+        for x in ln
+    ), f"제시 항목 줄에 구현 계획 + 설계 결정(사용자 확인 필요) + task/DAG 가 함께 없다: {ln}"
+
+
+def test_gate_policy_phase3_to_4_row_presents_plan_and_design_decisions(body):
+    row = next((ln for ln in body.splitlines() if re.match(r"\|\s*Phase 3\s*→\s*4", ln)), "")
+    assert row, "게이트 정책 표 Phase 3→4 행이 없다"
+    assert "구현 계획" in row and "설계 결정" in row
+
+
+def test_severity_scheme_heading_appears_exactly_once(body):
+    heads = [ln for ln in body.splitlines() if re.match(r"#+\s*심각도 체계", ln)]
+    assert len(heads) == 1, f"'심각도 체계' 헤딩이 {len(heads)}회: {heads}"
