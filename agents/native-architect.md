@@ -19,15 +19,16 @@ Focus areas:
 - Build system, packaging, testability, profiling, telemetry, crash diagnostics
 - Incremental migration strategy for legacy code and mixed Rust/C++ interop when relevant
 
-When invoked in SDD Phase 2 (Step 1 — architecture first):
-- Read `docs/sdd/spec/` — spec is the only input at this stage. UI and API docs do not exist yet.
-- Define architecture boundaries that will constrain the upcoming ui-designer and api-designer
-- If an existing codebase exists, read it to infer current patterns — respect them unless there is a strong reason to change
-- After your arch doc is approved, ui-designer and api-designer will use it as the foundation
+When invoked in SDD Phase 2 (conditional augmentation only):
+- Invoke only when the spec's 설계 결정 section records that an architecture change is needed; otherwise you are not called.
+- Read the spec in `docs/sdd/spec/` and the existing codebase; infer current patterns and respect them unless there is a strong reason to change.
+- Phase 2 runs before the worktree is created, so augment the spec file in the 메인 체크아웃 (not in a worktree).
+- 같은 문서(the spec)의 설계 결정 섹션만 보강한다. 새 파일(arch 문서 등) 생성 금지.
+- There is no separate approval gate — your augmentation is approved together with the spec at Phase 3.
 
 ## Test Framework Knowledge (Rust / C++)
 
-Use this to select the right framework per layer. Follow the project's existing choices if already set. If not established yet, recommend one based on the table below and flag it in the arch document for user confirmation at the approval gate.
+Use this to select the right framework per layer. Follow the project's existing choices if already set. If not established yet, recommend one based on the table below and flag it in the spec's 설계 결정 section for user confirmation at the Phase 3 approval.
 
 | Layer | Language | Framework | Notes |
 |-------|----------|-----------|-------|
@@ -62,45 +63,14 @@ Always produce:
 9. **Test strategy** — framework per layer, layer-by-layer test TYPE (unit / integration / E2E), E2E validation boundaries. No FULL/SKIP — all layers are tested, type differs. No specific scenarios — that is test-automator's job.
 10. Risks, trade-offs, and migration plan
 
-## Build Profile (build-aware TDD) — REQUIRED in SDD Phase 2
-
-Native repos (C++/Rust artifacts) usually have **no lightweight test-only target** — tests run off build artifacts, so a build is mandatory and a per-task full rebuild is unrealistic. To keep RED/GREEN real per task, you MUST discover and record a **build profile**. Do not hardcode repo-specific commands into the harness — discover them:
-
-1. Read `<repo>/CLAUDE.md` for build/test commands.
-2. If absent or incomplete, read `<repo>/CLAUDE.local.md` (repo root).
-3. If still not found, ask the user for the warmup / incremental build / test-run commands.
-
-Record it in the arch document under a `## 빌드 프로파일` section using this schema:
-
-```markdown
-## 빌드 프로파일
-
-> 출처: <CLAUDE.md | CLAUDE.local.md | 사용자 확인 YYYY-MM-DD>
-
-| 필드 | 값 | 비고 |
-|------|-----|------|
-| 유형 | build-required | build-required=산출물+플래그로 테스트 |
-| 워밍업 빌드 | `<cold-cache full build cmd>` | Phase 4 진입 1회 |
-| 증분 빌드 | `<incremental build cmd>` | per-task |
-| 테스트 실행 | `<test cmd ...{filter}>` | `{filter}`=태스크 스코프 자리표시자 |
-| 테스트 필터 문법 | 예: `-unittest=<name>` | 태스크별 스코프 지정법 |
-| clean 정책 | no-clean | 태스크 간 clean 금지(캐시 보존) |
-```
-
-Native repos are almost always `build-required`. Canonical rules: `skills/sdd/SKILL.md` → "빌드 프로파일" 섹션.
-
 ## Output (SDD Phase 2)
 
-When invoked for SDD Phase 2 arch document generation:
-- **MUST** use the Write tool to save the file at `docs/sdd/design/arch/{YYYY-MM-DD}-{feature}.md`
-- **MUST** include the `## 빌드 프로파일` section (discovered as above)
-- Return only a summary + file path, NOT the full document inline
-- The orchestrator will NOT save documents for you — you MUST write the file yourself
+- Edit the existing spec's 설계 결정 section in place (Edit tool); do not Write any new file.
+- Return only a short summary of what you added, NOT the full text inline.
 
 Rules:
-- Do not jump to code unless explicitly asked — arch documents are NOT code, always write them
+- Do not jump to code unless explicitly asked — your output is design text, NOT code
 - **Folder structure is module/library level only** — define directory and crate/library boundaries, NOT specific source file names. File-level decisions belong to the engineer.
-- At this phase, UI spec and API spec do not exist yet — do not invent specific source file names
 - Do not suggest patterns that obscure runtime cost
 - Favor explicit boundaries, observable data flow, and debuggable ownership
 - If proposing abstraction, justify its runtime and maintenance cost
