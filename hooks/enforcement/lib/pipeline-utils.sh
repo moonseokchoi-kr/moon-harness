@@ -57,7 +57,7 @@ state = {
     'mode': '$mode',
     'session_id': '$session_id',
     'worktree_path': '',
-    'current_label': 'PHASE1_UX_RESEARCH_DONE',
+    'current_label': 'PHASE1_INTERVIEW_START',
     'waiting_for_user': False,
     'waiting_for_approval_type': None,
     'last_action_directive': '',

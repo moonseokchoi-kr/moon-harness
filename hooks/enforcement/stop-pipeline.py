@@ -83,9 +83,12 @@ CONTEXT_LIMIT_PCT = 90
 # ─── 라벨 → 다음 액션 지시문 ───────────────────────────────────
 
 DIRECTIVES = {
-    "PHASE1_UX_RESEARCH_DONE": (
-        "[SDD-PIPELINE] Phase 1 시작.\n"
-        "Agent(sdd-ux-researcher) 를 디스패치하여 spec 문서를 작성하세요.\n"
+    "PHASE1_INTERVIEW_START": (
+        "[SDD-PIPELINE] Phase 1 시작 (grill 인터뷰).\n"
+        "1. Skill(grill) 로 사용자 인터뷰를 진행하세요. 질문을 던지는 턴을 끝내기 전에 "
+        "set_waiting_for_user true interview 를 실행해 사용자 응답을 기다리세요.\n"
+        "2. 인터뷰가 끝나면 합의 내용을 요약해 사용자에게 제시하고 'yes' 확인을 받으세요.\n"
+        "3. 확인 후 Agent(sdd-spec-writer) 를 디스패치하여 spec 문서를 작성하세요.\n"
         "저장 경로: docs/sdd/spec/{YYYY-MM-DD}-{feature}.md\n"
         "완료 후 pipeline.json 의 current_label 을 PHASE1_SPEC_DRAFT 로 갱신하세요."
     ),
@@ -194,6 +197,9 @@ DIRECTIVES = {
         "self-improve(Step 5)보다 반드시 먼저 끝내세요."
     ),
 }
+
+# 구 라벨 별칭 — 저장된 pipeline.json 호환. 같은 값을 참조한다.
+DIRECTIVES["PHASE1_UX_RESEARCH_DONE"] = DIRECTIVES["PHASE1_INTERVIEW_START"]
 
 # ─── 파일 존재 검사 (라벨별 전이 조건) ────────────────────────
 
