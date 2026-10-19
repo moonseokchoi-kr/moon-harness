@@ -71,7 +71,7 @@ Phase 2 → 3       Phase 4-2: Ship
 `/sdd start <feature>` 한 번으로 Phase 4 진입까지 자동 진행.
 
 - **Stop 훅 컨트롤러** (`stop-pipeline.py`) 가 각 Phase 전환을 자동 관리
-- 16개 라벨 기반 상태 머신
+- 라벨 기반 상태 머신 (Phase 2는 ARCH_START/ARCH_SKIP 분기)
 - 사용자 게이트(spec, plan 두 곳)에서만 정지 — Phase 1 spec 승인, Phase 3 plan+tasks 승인
 - Phase 1 = grill 인터뷰 + why/code-mapper 조사 + sdd-spec-writer → 단일 spec 문서, Phase 2 아키텍처는 조건부
 - Circuit breaker (5분 TTL, 20회) 로 무한 루프 방지
