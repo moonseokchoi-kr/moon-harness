@@ -115,3 +115,40 @@ def test_decide_continues_when_waiting_for_user(stop_pipeline, tmp_path, label):
     result = stop_pipeline.decide({}, tmp_path, path)
 
     assert result == {"continue": True, "suppressOutput": True}
+
+
+# ── iteration 2: 인터뷰 대기 해제 ────────────────────────────────
+@pytest.mark.parametrize("label", PHASE1_LABELS)
+def test_directive_releases_waiting_before_spec_writer_dispatch(stop_pipeline, label):
+    text = stop_pipeline.DIRECTIVES[label]
+    release = text.find("set_waiting_for_user false")
+    dispatch = text.find("sdd-spec-writer")
+    assert release != -1, "directive에 `set_waiting_for_user false` 해제 지시가 없다"
+    assert release < dispatch, "해제 지시가 sdd-spec-writer 디스패치 지시보다 앞이어야 한다"
+
+
+@pytest.mark.parametrize("label", PHASE1_LABELS)
+def test_decide_returns_to_block_after_interview_wait_released(
+    stop_pipeline, tmp_path, label
+):
+    path = _write_state(
+        tmp_path,
+        stop_pipeline,
+        label,
+        waiting_for_user=True,
+        waiting_for_approval_type="interview",
+    )
+    assert stop_pipeline.decide({}, tmp_path, path) == {
+        "continue": True,
+        "suppressOutput": True,
+    }
+
+    # SKILL/directive 지시대로 `set_waiting_for_user false null` 해제를 상태에 반영
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state["waiting_for_user"] = False
+    state["waiting_for_approval_type"] = None
+    path.write_text(json.dumps(state), encoding="utf-8")
+
+    result = stop_pipeline.decide({}, tmp_path, path)
+
+    assert result == {"decision": "block", "reason": stop_pipeline.DIRECTIVES[label]}

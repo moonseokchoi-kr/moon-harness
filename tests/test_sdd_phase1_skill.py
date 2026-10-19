@@ -189,3 +189,34 @@ def test_no_ux_researcher_in_scan_scope():
 def test_skill_line_count_within_budget():
     n = len(SDD_SKILL.read_text(encoding="utf-8").splitlines())
     assert n <= MAX_LINES, f"SKILL.md {n}줄 > {MAX_LINES}"
+
+
+# ── iteration 2: 인터뷰 대기 해제 + BLOCKER_PASS 리터럴 ───────────
+def test_phase1_releases_waiting_after_yes_before_spec_writer_dispatch(phase1):
+    lines = phase1.splitlines()
+    yes_idx = next(i for i, ln in enumerate(lines) if re.search("명시적", ln) and re.search("yes", ln))
+    dispatch_idx = next(
+        i
+        for i, ln in enumerate(lines)
+        if re.match(r"\s*\d+\.\s*`sdd-spec-writer`.*디스패치", ln)
+    )
+    release_idx = [i for i, ln in enumerate(lines) if re.search(r"set_waiting_for_user false", ln)]
+    assert release_idx, "Phase 1 절에 `set_waiting_for_user false` 해제 지시가 없다"
+    assert any(
+        yes_idx <= i < dispatch_idx for i in release_idx
+    ), "해제 지시가 yes 승인 이후 sdd-spec-writer 디스패치 이전에 없다"
+
+
+def test_phase1_interview_release_clears_approval_type(phase1):
+    assert _lines_matching(
+        phase1, r"set_waiting_for_user false null"
+    ), "해제 지시는 `set_waiting_for_user false null` 형태여야 한다"
+
+
+def test_phase1_blocker_pass_literal_only_on_second_pass(phase1):
+    assert _lines_matching(
+        phase1, r"BLOCKER_PASS", r"2차"
+    ), "2차 blocker-check PASS 시 리터럴 BLOCKER_PASS 마크 문장이 없다"
+    assert _lines_matching(
+        phase1, r"BLOCKER_PASS", r"1차", r"않|금지|아니"
+    ), "1차 PASS에는 BLOCKER_PASS를 붙이지 않는다는 문장이 없다"
