@@ -20,7 +20,7 @@ FORBIDDEN_NAMES = [
 ]
 PATH_PATTERNS = ["docs/sdd/design/", "docs/sdd/context/"]
 F12_PATTERN = re.compile(r"docs/sdd/design/arch|Build Profile|arch 문서의 .*## 빌드 프로파일|taskmaster가 복사")
-SIMPLE_PATTERN = re.compile(r"\bSIMPLE\b")
+SIMPLE_PATTERN = re.compile(r"(?<![A-Za-z0-9_])SIMPLE(?![A-Za-z0-9_])")  # ASCII 경계: 한글 조사 허용
 
 
 def _rel(path: Path) -> str:
@@ -127,10 +127,17 @@ def test_claude_md_docs_row_is_spec_task_result():
     assert "design" not in row
 
 
+def _name_pattern(name: str) -> "re.Pattern[str]":
+    """비-sdd 이름은 ASCII 경계로 매칭한다(\\w 는 한글을 포함해 '이름+조사'를 놓친다)."""
+    if name.startswith("sdd-") or name == "ux-researcher":
+        return re.compile(re.escape(name))
+    return re.compile(r"(?<![A-Za-z0-9_-])" + re.escape(name) + r"(?![A-Za-z0-9_-])")
+
+
 # ---- 전체 스캔 (F4,F6,F9,F11,F12) ----
 @pytest.mark.parametrize("name", FORBIDDEN_NAMES)
 def test_no_removed_agent_or_ux_researcher_names(name):
-    pat = re.compile(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])") if not name.startswith("sdd-") and name != "ux-researcher" else re.compile(re.escape(name))
+    pat = _name_pattern(name)
     hits = _hits(lambda l: bool(pat.search(l)))
     assert not hits, "\n".join(hits)
 
@@ -170,3 +177,28 @@ def test_untouched_paths_unchanged_vs_main():
     diff = _git("diff", "--name-only", base.stdout.strip(), "--", *paths)
     assert diff.returncode == 0, diff.stderr
     assert diff.stdout.strip() == "", f"무변경 대상 변경됨:\n{diff.stdout}"
+
+
+# ---- 정규식 자체 단위 테스트 + README 라벨 수 서술 ----
+def test_name_pattern_matches_name_followed_by_korean_particle():
+    assert _name_pattern("ui-designer").search("ui-designer가 쓴다")
+
+
+def test_name_pattern_does_not_double_count_sdd_prefixed():
+    assert not _name_pattern("ui-designer").search("sdd-ui-designer")
+    assert _name_pattern("sdd-ui-designer").search("sdd-ui-designer")
+
+
+def test_name_pattern_rejects_prefixed_by_word_char():
+    assert not _name_pattern("ui-designer").search("xui-designer")
+
+
+def test_simple_pattern_matches_before_korean_particle():
+    assert SIMPLE_PATTERN.search("SIMPLE이 아니다")
+    assert not SIMPLE_PATTERN.search("SIMPLEX")
+
+
+def test_readme_state_machine_label_count_is_not_hardcoded():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    hits = [l for l in text.splitlines() if re.search(r"\d+\s*개\s*라벨", l)]
+    assert not hits, "라벨 수 하드코딩 금지(DIRECTIVES 와 어긋남): " + " | ".join(hits)
