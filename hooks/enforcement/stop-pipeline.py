@@ -88,7 +88,8 @@ DIRECTIVES = {
         "1. Skill(grill) 로 사용자 인터뷰를 진행하세요. 질문을 던지는 턴을 끝내기 전에 "
         "set_waiting_for_user true interview 를 실행해 사용자 응답을 기다리세요.\n"
         "2. 인터뷰가 끝나면 합의 내용을 요약해 사용자에게 제시하고 'yes' 확인을 받으세요.\n"
-        "3. 확인 후 Agent(sdd-spec-writer) 를 디스패치하여 spec 문서를 작성하세요.\n"
+        "3. yes 직후 set_waiting_for_user false null 을 실행해 인터뷰 대기를 해제한 뒤 "
+        "Agent(sdd-spec-writer) 를 디스패치하여 spec 문서를 작성하세요.\n"
         "저장 경로: docs/sdd/spec/{YYYY-MM-DD}-{feature}.md\n"
         "완료 후 pipeline.json 의 current_label 을 PHASE1_SPEC_DRAFT 로 갱신하세요."
     ),
