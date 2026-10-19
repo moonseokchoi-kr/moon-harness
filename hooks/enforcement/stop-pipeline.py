@@ -149,8 +149,10 @@ DIRECTIVES = {
         "   사용자가 정본을 정해 충돌이 해소되면 set_waiting_for_user false null 을 실행하고, "
         "current_label 은 PHASE3_WORKTREE_CREATED 그대로 유지한 채 이 지시를 처음부터 다시 수행하세요.\n"
         "   충돌 해소 시점에 advance_label 은 하지 않습니다 (금지).\n"
-        "이동이 끝나면 Agent(sdd-taskmaster, mode='tasks') 를 worktree 경로 기준으로 디스패치하여 "
-        "spec 의 구현 계획 섹션에서 태스크 문서를 생성하세요.\n"
+        "이동이 끝나면 Agent(sdd-taskmaster, mode='plan') 을 worktree 경로 기준으로 단독 1회 디스패치하여 "
+        "spec 에 구현 계획 섹션을 작성하게 하세요 (tasks 전에 반드시 먼저, 다른 디스패치와 동시 금지).\n"
+        "plan 완료 후 Agent(sdd-taskmaster, mode='tasks') 를 병렬 배치로 디스패치하여 "
+        "구현 계획 섹션에서 태스크 문서를 생성하세요 (spec 은 읽기 전용, 수정 금지).\n"
         "완료 후 current_label=PHASE3_TASKMASTER_DONE."
     ),
     "PHASE3_TASKMASTER_DONE": (

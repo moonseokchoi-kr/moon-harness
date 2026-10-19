@@ -5,7 +5,7 @@ description: "Use when a user mentions a feature idea, requirement, or spec docu
 
 # SDD (Spec-Driven Development)
 
-기능 아이디어를 **Spec → Develop → Plan → Execute** 4단계로 구조화하여 구현하는 워크플로우.
+기능 아이디어를 **Spec → (Arch) → Plan → Execute** 4단계로 구조화하여 구현하는 워크플로우.
 sdd는 **순수 팀장**이다. 직접 문서를 작성하지 않고, 관리/보고/승인/에스컬레이션만 담당한다.
 
 **핵심 원칙:** 문서가 곧 상태. 문서 존재 여부 + checkbox + 라벨로 Phase를 추적한다.
@@ -21,18 +21,15 @@ SDD는 **Stop 훅 파이프라인 컨트롤러**로 자동 진행된다. 사용�
 ```bash
 # 사용자 요청 감지 시
 source "$HARNESS_HOOKS/enforcement/lib/pipeline-utils.sh"
-init_pipeline "<feature-name>" "<FULL|SIMPLE>"
+init_pipeline "<feature-name>"
 ```
-
-- `FULL`: UI + API 필요 (프론트+백 혼합, 3개 이상 기능)
-- `SIMPLE`: arch만 (기능 3개 이하, UI/API 미언급)
 
 ### 흐름
 
 ```
 init_pipeline → Claude가 작업 → Stop 훅 → directive 주입 → 다음 작업
                                     ↓
-                        (반복, 16개 라벨 따라 자동 전진)
+                        (반복, 라벨 따라 자동 전진)
                                     ↓
             사용자 게이트 도달 → waiting_for_user=true → Claude 멈춤
                                     ↓
@@ -52,6 +49,8 @@ init_pipeline → Claude가 작업 → Stop 훅 → directive 주입 → 다음 
 | "취소", "중단" | `cancel_pipeline` |
 
 `interview` 대기 중(`set_waiting_for_user true interview`)에는 위 표를 적용하지 않는다 — 요약 승인은 "네"/"yes" 단독 응답만 인정하고, "승인"/"ok" 등은 요약 확인이 아니다.
+
+`spec_conflict` 대기 중(`set_waiting_for_user true spec_conflict`)에도 위 표를 적용하지 않는다 — "진행"/"승인" 등은 advance 가 아니며 `advance_label`을 하지 않고 `set_waiting_for_user false null` 만 실행한다. 라벨은 PHASE3_WORKTREE_CREATED 로 유지한다.
 
 ### 핵심 헬퍼 함수 (`pipeline-utils.sh`)
 
@@ -84,13 +83,13 @@ directive는 라벨별로 "지금 무엇을 할지"를 구체적으로 지시한
 
 <HARD-GATE>
 1. Phase 순서를 건너뛰지 않는다. 직전 Phase 산출물이 불완전하면 해당 Phase로 롤백해서 복원 후 재진입.
-   blocker-checker 통과 + 사용자 승인 없이 Phase 2 진입 불가. develop 승인 없이 Phase 3 진입 불가.
+   blocker-checker 통과 + 사용자 승인 없이 Phase 2 진입 불가. Phase 2 판단(ARCH_DONE/SKIP) 없이 Phase 3 진입 불가.
    → 선행조건 미충족 시 phase-gate.sh가 세션 시작 시 자동 경고한다.
 2. TDD Iron Law — FULL 태스크: RED 먼저, GREEN 필수, 리뷰 필수.
    → 구현자의 테스트 파일 수정은 tdd-gate.sh가 물리적으로 차단한다.
    → **RED/GREEN은 실제로 실행해 확인한다 — 끝에 1회 빌드로 대체 금지.** 빌드 산출물 기반 레포(`build-required` 프로파일)에서도
      per-task **증분 빌드 + 스코프 테스트**로 RED(실패)→GREEN(통과)를 매 태스크 확인한다. 상세는 "빌드 프로파일" 섹션 참조.
-3. Phase 4 격리: 모든 구현은 worktree 안에서 수행.
+3. 격리: Phase 3 진입 시 worktree를 만들고 이후 모든 작업·구현은 그 안에서 수행.
    → main 브랜치 직접 커밋/푸시는 branch-gate.sh가 물리적으로 차단한다.
    → 공유 worktree 병렬 작업 시 광역 stage(`git add -A`/`.`)와 브랜치 전환/생성은 worktree-add-gate.sh가 물리적으로 차단한다(소유 파일만 명시 add).
 4. 의존 태스크 순서: 의존 태스크가 DONE이 아니면 시작 금지.
@@ -105,9 +104,9 @@ directive는 라벨별로 "지금 무엇을 할지"를 구체적으로 지시한
 | 합리화 | 실제 결과 | 올바른 행동 |
 |--------|----------|------------|
 | "스펙이 짧으니 검사 생략" | 짧은 스펙일수록 누락이 많다 | blocker-checker 실행 |
-| "설계 없이 바로 태스크" | 설계 없는 구현은 재작업을 낳는다 | Phase 2 설계 먼저 |
+| "설계 결정 확인 없이 바로 태스크" | 설계 없는 구현은 재작업을 낳는다 | Phase 2 아키텍처 판단 먼저 |
 | "이슈 1개니 그냥 진행" | 이슈 1개도 쌓이면 P1 | 사용자 확인 후 진행 |
-| "간단한 변경이라 worktree 불필요" | 격리 없으면 main 오염 | Phase 4 시작 시 worktree 필수 *(branch-gate.sh 자동 차단)* |
+| "간단한 변경이라 worktree 불필요" | 격리 없으면 main 오염 | Phase 3 진입 시 worktree 필수 *(branch-gate.sh 자동 차단)* |
 | "테스트를 살짝 수정하면 통과" | TDD 무결성 파괴 | 구현으로 테스트 통과 *(tdd-gate.sh 자동 차단)* |
 | "Plan 없이 바로 구현" | 방향 없는 구현 | task + DAG + 승인 후 진입 |
 
@@ -115,40 +114,29 @@ directive는 라벨별로 "지금 무엇을 할지"를 구체적으로 지시한
 
 ```
 docs/sdd/
-├── spec/{YYYY-MM-DD}-{feature}.md
-├── design/                              # Phase 2 설계
-│   ├── arch/{YYYY-MM-DD}-{feature}.md   # 아키텍처 (모든 모드)
-│   ├── ui/{YYYY-MM-DD}-{feature}.md     # UI/UX 명세 (FULL 모드)
-│   └── api/{YYYY-MM-DD}-{feature}.md    # API 계약 (FULL 모드)
-├── context/{YYYY-MM-DD}-{feature}.md    # 공유 상태 (FULL 모드)
+├── spec/{YYYY-MM-DD}-{feature}.md       # 단일 문서 (설계 결정·구현 계획 포함)
 ├── task/{feature}/{YYYY-MM-DD}-T-{N}-{task}.md  # Phase 3 태스크
 ├── ORCHESTRATOR_STATE.md                 # Phase 4 상태 추적
 └── result/{YYYY-MM-DD}-{feature}.md     # Phase 4 최종 결과
 
 .claude/state/
-├── pipeline.json                        # 파이프라인 상태 (current_label, waiting_for_user 등)
-│                                         # init_pipeline 시 생성, cancel_pipeline 시 삭제
-└── e2e-config.json                      # Phase 2 완료 시 sdd-ui-designer가 생성
-                                         # e2e-gate.sh가 커밋 시 참조
+└── pipeline.json                        # 파이프라인 상태 (current_label, waiting_for_user 등)
+                                          # init_pipeline 시 생성, cancel_pipeline 시 삭제
 ```
 
 파일명: `{YYYY-MM-DD}-{feature-name}.md` (kebab-case, 영문).
 
 ## Phase 판정 규칙 (세션 재개 시)
 
-**정밀 모드**: context 문서의 `## 라벨 상태`에서 현재 라벨을 읽어 판정.
-
-**호환 모드** (context 없음) — 직전 Phase 산출물이 **완전할 때만** 다음 Phase로 진입 가능하다고 판정한다:
+직전 Phase 산출물이 **완전할 때만** 다음 Phase로 진입 가능하다고 판정한다:
 
 | 관찰 상태 | 판정 | 비고 |
 |----------|------|------|
 | spec 없음 | P1 미시작 | — |
-| spec 있음 + design/arch 없음 | **P2 미시작** | Phase 1 완료 |
-| Phase 1 완료 + design/arch 있음 | P2 진행 중 | ui-designer/api-designer 진행 |
-| Phase 1 완료 + design/arch 있음 + (FULL 모드인데 design/ui 또는 design/api 누락) | **P2 미완** | → 누락분 복원 |
-| Phase 2 완료 + task 문서 없음 | P3 미시작 | — |
-| Phase 2 완료 + task 있음 + ORCHESTRATOR_STATE 없음 | P3 진행 중 | taskmaster dag 모드 미수행 |
-| Phase 3 완료 + ORCHESTRATOR_STATE 있음 + 미완료 | P4 진행 중 | — |
+| spec 있음 + BLOCKER_PASS 없음 | P1 진행 중 | blocker-checker·승인 대기 |
+| spec 있음 + BLOCKER_PASS + task 문서 없음 | P2 판단 또는 P3 미시작 | Phase 1 완료, 아키텍처 보강 판단 |
+| task 있음 + ORCHESTRATOR_STATE 없음 | P3 진행 중 | taskmaster dag 모드 미수행 |
+| ORCHESTRATOR_STATE 있음 + 미완료 | P4 진행 중 | — |
 | Phase 4 완료 + result 없음 | P4 대기 | — |
 | result 있음 | 완료 | — |
 
@@ -160,9 +148,9 @@ docs/sdd/
 
 ```
 PHASE1_INTERVIEW_START → PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → PHASE1_USER_APPROVED
-→ PHASE2_START → PHASE2_ARCH_STRUCTURE_DONE → PHASE2_ARCH_USER_APPROVED → PHASE2_UI_DESIGN_COMPLETE 
-→ PHASE2_API_DESIGN_COMPLETE → PHASE2_DESIGN_USER_APPROVED → PHASE2_USER_APPROVED
-→ PHASE3_PLAN_START → PHASE3_TASKMASTER_DONE → PHASE3_DAG_CONSTRUCTED → PHASE3_USER_APPROVED
+→ PHASE2_ARCH_START → PHASE2_ARCH_DONE        (아키텍처 보강 필요 시)
+→ PHASE2_ARCH_SKIP                            (불필요 시; 둘 중 하나)
+→ PHASE3_PLAN_START → PHASE3_WORKTREE_CREATED → PHASE3_TASKMASTER_DONE → PHASE3_DAG_CONSTRUCTED → PHASE3_USER_APPROVED
 → PHASE4_WORKTREE_CREATED → PHASE4_TASK_{N}_TEST_RED → PHASE4_TASK_{N}_IMPLEMENTING → PHASE4_TASK_{N}_REVIEWING
 → PHASE4_TASK_{N}_GREEN → PHASE4_TASK_{N}_VERIFIED → PHASE4_TASK_{N}_REFACTOR_TESTED → PHASE4_TASK_{N}_DONE
 → PHASE4_ALL_TASKS_DONE → PHASE4_INTEGRATION_TEST_PASS → PHASE4_RESULT_GENERATED → PHASE4_MERGED
@@ -199,15 +187,11 @@ PHASE1_INTERVIEW_START → PHASE1_SPEC_DRAFT → PHASE1_BLOCKER_CHECK_PASS → P
 | 에이전트 | Phase | 모델 | 역할 |
 |---------|-------|------|------|
 | `sdd-spec-writer` | 1 | sonnet | grill 인터뷰 결과 기반 spec 작성 |
-| `sdd-ui-designer` | 2 | opus | UI/UX 명세 |
 | `sdd-blocker-checker` | 1 | haiku | spec 블로커 탐지 |
-| `sdd-context-manager` | 전체 | haiku | 공유 상태 관리 |
-| `webapp-architect` | 2 | opus | 웹 앱 아키텍처 결정, develop 작성 |
-| `flutter-architect` | 2 | opus | Flutter 앱 아키텍처 결정, develop 작성 |
-| `native-architect` | 2 | opus | Rust/C++ 네이티브 아키텍처 결정, develop 작성 |
-| `sdd-api-designer` | 2 | opus | API 계약 정의 |
-| `sdd-architect-reviewer` | 2 | opus | 설계 정합성 검증 |
-| `sdd-taskmaster` | 3 | sonnet | spec+develop에서 태스크 도출 |
+| `webapp-architect` | 2 | opus | 웹 앱 아키텍처 결정, spec 설계 결정 보강 |
+| `flutter-architect` | 2 | opus | Flutter 앱 아키텍처 결정, spec 설계 결정 보강 |
+| `native-architect` | 2 | opus | Rust/C++ 네이티브 아키텍처 결정, spec 설계 결정 보강 |
+| `sdd-taskmaster` | 3 | sonnet | spec에서 plan 작성·태스크 도출 |
 | `sdd-implementer` | 4 | sonnet | 범용 구현 |
 | `sdd-ts-engineer` | 4 | sonnet | TypeScript/Node.js |
 | `sdd-rust-engineer` | 4 | sonnet | Rust 백엔드 |
@@ -248,46 +232,27 @@ spec 구조는 `references/spec-template.md`를 따른다.
 
 ---
 
-## Phase 2: Design
+## Phase 2: 조건부 아키텍처
 
-sdd는 직접 설계를 작성하지 않는다. [webapp/flutter/native]-architect + ui-designer + api-designer + architect-reviewer 협업.
-설계 산출물 = 아키텍처(arch), 사용자 인터페이스(ui), API 계약(api). **태스크 목록 없음** (Phase 3에서 도출).
+조건부 단계다. `PHASE1_USER_APPROVED` 직후 리드가 spec의 설계 결정 섹션을 보고 아키텍처 보강이 필요한지 판단한다. 별도 아키텍처 문서·UI/API 설계 문서는 만들지 않는다. **태스크 목록 없음** (Phase 3에서 도출).
 
-### Phase 2 진입: worktree 격리 (필수)
+| 판단 | 라벨 | 동작 |
+|------|------|------|
+| 설계 결정이 부족하거나 구조 변경이 필요 | `PHASE2_ARCH_START` | architect 디스패치 |
+| 기존 구조 안에서 해결 가능 | `PHASE2_ARCH_SKIP` | 바로 Phase 3 |
 
-Phase 2 프로세스 시작 전에 worktree를 생성한다. 이후 **Phase 2, 3, 4의 모든 작업은 worktree 내에서 수행**한다.
-
-1. `Skill(git-worktree, {feature-name})` 호출 — `./worktrees/{feature-name}` 경로에 worktree + `feature/{feature-name}` 브랜치 생성
-2. 이후 모든 에이전트 디스패치 시 **worktree 절대 경로**를 프롬프트에 반드시 주입한다
-3. `.gitignore`에 `worktrees/` 포함 확인 (없으면 추가)
-4. worktree 경로 예시: `/Users/moon/Workspace/money_track/worktrees/money-track-mvp`
-
-→ PHASE2_WORKTREE_CREATED
-
-> **중요:** 에이전트가 파일을 생성할 때 메인 경로가 아닌 **worktree 경로** 아래에 저장해야 한다. 리드는 디스패치 프롬프트에 worktree 절대 경로를 항상 포함하고, "이 경로 아래에 파일을 저장하라"고 명시한다.
+- architect(`webapp-architect`/`flutter-architect`/`native-architect`)는 메인 체크아웃의 spec 절대 경로를 디스패치 프롬프트에 받아 spec의 설계 결정 섹션만 Edit 한다. 새 파일은 만들지 않고 다른 섹션은 건드리지 않는다.
+- 완료 시 `PHASE2_ARCH_DONE`. `PHASE2_ARCH_DONE`/`PHASE2_ARCH_SKIP` 모두 `PHASE3_PLAN_START`로 이어진다.
+- Phase 2에는 별도 승인 게이트가 없다 (Phase 3 최종 승인에서 함께 확인).
+- worktree는 Phase 3 진입 시 만든다 (Phase 2에서는 만들지 않는다).
 
 ### Phase 2 진입 전 검증 (필수)
-
-Phase 2 프로세스를 시작하기 **전에** 아래 체크리스트를 먼저 기계적으로 검증한다. 하나라도 실패하면 Phase 2 진입 금지 — 해당 조치를 먼저 수행한다.
 
 | # | 체크 | 실패 시 조치 |
 |---|------|------|
 | 1 | `docs/sdd/spec/{YYYY-MM-DD}-{feature}.md` 존재 | **Phase 1로 롤백** — Phase 1 인터뷰 후 `sdd-spec-writer` 디스패치 |
-| 2 | spec 말미에 blocker-check PASS 마크 또는 이전 세션 승인 기록 | `sdd-blocker-checker` 재실행 |
-| 3 | Phase 1 사용자 승인 게이트 통과 기록 | 사용자 승인 요청 |
-| 4 | worktree 생성 완료 (Phase 2 진입과 동시) | `Skill(git-worktree)` 호출 |
-
-검증 통과 후에만 아래 "설계 모드 판정"으로 진입한다.
-
-> 📌 architect는 arch 설계와 함께 **빌드 프로파일**(워밍업/증분 빌드·테스트 실행·필터 명령)을 발견해 arch 문서에 기록한다. 아래 [빌드 프로파일](#빌드-프로파일-build-aware-tdd) 섹션 참조 — Phase 4의 build-aware TDD가 이 프로파일을 소비한다.
-
-### 설계 모드 판정
-
-| 조건 | 모드 |
-|------|------|
-| 기능 요구사항 3개 이하 + API/UI 미언급 | SIMPLE |
-| API/UI 키워드 존재, 또는 프론트+백엔드 혼합 | FULL |
-| 사용자 명시 요청 | 해당 모드 |
+| 2 | spec 말미에 `BLOCKER_PASS` 마크 | `sdd-blocker-checker` 재실행 |
+| 3 | Phase 1 사용자 승인 기록 | 사용자 승인 요청 |
 
 ### Architect 선택 기준
 
@@ -299,110 +264,6 @@ Phase 2 프로세스를 시작하기 **전에** 아래 체크리스트를 먼저
 | `Cargo.toml` / `CMakeLists.txt` 존재 / spec에 Rust·C++ 언급 | `native-architect` |
 | `package.json` 존재 / spec에 React·Vue·Next·웹 언급 | `webapp-architect` |
 | 판정 불가 | 사용자에게 확인 후 dispatch |
-
-### SIMPLE 모드
-
-1. 컨텍스트 탐색 → Architect 선택 기준으로 프로젝트 타입 판정 → 해당 architect 디스패치 (develop 작성)
-2. `sdd-architect-reviewer` 디스패치 (평가) → Critical이면 수정 후 재평가
-3. 사용자 승인 게이트
-
-### FULL 모드 (순차)
-
-```
-1. [Architect 선택 기준으로 판정한 architect] → 아키텍처 설계
-   (레이어 구조, 폴더 구조, 컴포넌트 경계, 기술 제약사항, 테스트 전략)
-   → design/arch/ 저장
-   → sdd-architect-reviewer 리뷰 → 수정 → 재리뷰 (PASS까지 반복)
-   → PHASE2_ARCH_STRUCTURE_DONE
-
-2. [사용자 아키텍처 승인 게이트]
-   아키텍처 구조 요약 제시 → 사용자 확인
-   피드백 있으면 architect 재디스패치 후 재검토
-   → PHASE2_ARCH_USER_APPROVED
-
-3. sdd-ui-designer → 순수 UX 명세 (아키텍처 제약 안에서)
-   ※ 디스패치 프롬프트에 반드시 포함: "DESIGN.md를 작성해야 한다 (화면 레이아웃, 플로우, 인터랙션, 비주얼 가이드)"
-   ※ 작성 범위: 화면 레이아웃, 플로우, 인터랙션, 비주얼 가이드
-   ※ 작성 금지: 상태 타입/관리 위치, API 엔드포인트, 프레임워크 API 명칭
-   → 산출물: design/ui/ + docs/sdd/design/DESIGN.md (둘 다 필수)
-   → sdd-architect-reviewer → UI 명세 리뷰 → 수정 → PASS
-   → [사용자 UI 피드백] → 반영
-   → PHASE2_UI_DESIGN_COMPLETE
-
-4. sdd-api-designer (UI 명세 필수 입력) → UI 명세에서 도출된 데이터 요구사항 + arch 기반 API/데이터 계약 설계
-   ※ UI 설계 중 발견된 데이터 요구사항이 API 범위를 결정함 — ui-designer 완료 후 진행
-   → design/api/ 저장
-   → sdd-architect-reviewer → API 명세 리뷰 → 수정 → PASS
-   → [사용자 API 피드백] → 반영
-   → PHASE2_API_DESIGN_COMPLETE
-
-5. [사용자 최종 설계 승인] → PHASE2_DESIGN_USER_APPROVED
-   
-6. sdd-context-manager (FULL 모드) → context 문서 초기 생성
-   → PHASE2_USER_APPROVED
-```
-
-### 모든 레이어에 테스트
-
-모든 레이어는 테스트를 먼저 작성한다 (RED → GREEN). 차이는 테스트 타입뿐이다.
-
-| 레이어 | 테스트 타입 | 시점 | 비고 |
-|--------|-----------|------|------|
-| Model/Service/Domain | 단위 테스트 | 구현 전 RED | |
-| ViewModel/Controller | 단위 테스트 | 구현 전 RED | |
-| View/UI | **E2E 테스트 필수** (Maestro, Playwright 등) | 구현 전 RED | UI가 있으면 반드시 E2E |
-| Platform Channel | E2E 테스트 | 구현 전 RED | |
-| DB 스키마/마이그레이션 | 단위 테스트 | 구현 전 RED | |
-
-> **UI가 있는 프로젝트 (design/ui/ 문서 존재)**: View/UI 레이어 E2E 테스트는 선택이 아니라 **필수**. test-automator가 verify 단계에서 E2E 테스트 없이 DONE 반환 금지.
-| 설정/스캐폴딩 | 검증 테스트 (프레임워크별) | 구현 전 또는 후 |
-
-### 아키텍처 문서 템플릿
-
-아키텍처 문서(`docs/sdd/design/arch/{YYYY-MM-DD}-{feature}.md`)는 architect가 작성한다.
-
-```markdown
-# {Feature Name} — 아키텍처
-
-## 레이어 구조
-(Presentation / Domain / Data / Platform 등)
-
-## 폴더 구조
-모듈/기능 단위 디렉토리 경계만 정의한다. 특정 파일명은 엔지니어가 결정.
-
-예시:
-```
-lib/
-├── features/     ← 기능별 모듈
-│   ├── home/
-│   ├── transaction/
-│   └── settings/
-├── core/         ← 공통 레이어
-└── shared/       ← 공유 컴포넌트
-```
-(파일명 수준 X — `home_screen.dart` 같은 구체적 파일명 기입 금지)
-
-## 컴포넌트 경계
-주요 컴포넌트와 책임 범위
-
-## 기술 스택 & 제약사항
-비기능 요구사항, 성능, 보안, 기술 스택 제한 등
-
-## 테스트 전략
-구체적 시나리오는 작성하지 않는다 — test-automator가 레이어 타입 기반으로 도출.
-
-- **레이어별 테스트 타입**:
-  | 레이어 | 테스트 타입 | 프레임워크 |
-  |--------|-----------|-----------|
-  | Domain/Service | 단위 테스트 | (예: flutter_test, jest) |
-  | View/UI | E2E/통합 | (예: Maestro, Playwright) |
-  | Platform Channel | E2E | (예: integration_test) |
-  | 설정/스캐폴딩 | — | — |
-- **E2E 검증 경계**: (어떤 사용자 시나리오를 E2E로 검증하는가)
-
-## 빌드 프로파일
-(아래 "빌드 프로파일" 섹션의 표를 채운다. architect가 발견원과 함께 기록.)
-```
 
 ---
 
@@ -417,15 +278,11 @@ lib/
 
 구체 명령(워밍업/증분/테스트 필터)은 레포마다 다르므로 **프로파일에서 주입**한다. 하네스는 위 3원칙만 강제한다.
 
-### 프로파일 발견 (Phase 2, architect)
+### 프로파일 확보
 
-architect가 arch 설계와 함께 아래 순서로 발견하여 **arch 문서의 `## 빌드 프로파일` 섹션**에 기록한다:
+Phase 4 진입 시 `sdd-orchestrator`가 확보해 ORCHESTRATOR_STATE.md `## 빌드 프로파일`에 기록한다. 순서(CLAUDE.md → CLAUDE.local.md → /build-notes → 사용자 질문)는 "Phase 4 진입 전 검증" 5번 참조.
 
-1. **`<repo>/CLAUDE.md`** — 빌드/테스트 명령이 적혀 있으면 사용
-2. **`<repo>/CLAUDE.local.md`** (repo 루트) — committed CLAUDE.md가 없거나 명령이 없으면 여기 확인
-3. **사용자 질문** — 위 둘에서 못 찾으면 워밍업/증분/테스트 명령을 사용자에게 질문해 프로파일로 기록
-
-### 프로파일 스키마 (arch 문서 + ORCHESTRATOR_STATE.md 공통)
+### 프로파일 스키마 (ORCHESTRATOR_STATE.md)
 
 ```markdown
 ## 빌드 프로파일
@@ -446,40 +303,52 @@ architect가 arch 설계와 함께 아래 순서로 발견하여 **arch 문서�
 - `build-required` (C++/네이티브 등): 워밍업 1회 → per-task 증분 빌드 + 스코프 테스트.
 - `fast-scoped` (pytest/jest/cargo test 등 테스트가 직접·빠르게 도는 레포): **워밍업 생략**, per-task는 스코프 테스트만. 증분 빌드 칸 `—`.
 
-프로파일은 Phase 3에서 taskmaster가 `ORCHESTRATOR_STATE.md` 메타에 복사하고, Phase 4에서 orchestrator(워밍업·no-clean)와 test-automator(RED/GREEN 스코프 실행)가 소비한다.
+프로파일은 Phase 4 진입 시 오케스트레이터가 `ORCHESTRATOR_STATE.md`에 기록하고, 오케스트레이터(워밍업·no-clean)와 test-automator(RED/GREEN 스코프 실행)가 소비한다.
 
 ---
 
 ## Phase 3: Plan
 
-spec + 설계 문서(arch/ui/api)에서 태스크를 도출하고 실행 계획을 수립한다. sdd 리드는 직접 수행하지 않고 `sdd-taskmaster`에 위임한다.
+spec의 설계 결정에서 구현 계획을 세우고 태스크를 도출해 실행 계획을 수립한다. sdd 리드는 직접 수행하지 않고 `sdd-taskmaster`에 위임한다. **Phase 3 진입 시 worktree를 생성**하며, 이후 Phase 3·4의 모든 작업은 worktree 안에서 수행한다.
 
 ### 진입 전 검증 (필수)
 
 | # | 체크 | 실패 시 조치 |
 |---|------|------|
-| 1 | Phase 2 진입 전 검증 전부 통과 | **Phase 2 진입 전 검증으로 되돌아가기** |
-| 2 | `docs/sdd/design/arch/{YYYY-MM-DD}-{feature}.md` 존재 | **Phase 2로 롤백** — architect 재디스패치 |
-| 3 | FULL 모드인 경우 `docs/sdd/design/ui/` + `docs/sdd/design/api/` 존재 | **Phase 2로 롤백** — 누락분 복원 |
-| 4 | FULL 모드인 경우 `context/{YYYY-MM-DD}-{feature}.md` 존재 | **Phase 2로 롤백** — context-manager 재디스패치 |
-| 5 | Phase 2 최종 사용자 승인 기록 (design/arch + ui + api) | 사용자 승인 요청 |
+| 1 | `docs/sdd/spec/{YYYY-MM-DD}-{feature}.md` 존재 | **Phase 1로 롤백** — `sdd-spec-writer` 디스패치 |
+| 2 | spec 말미에 `BLOCKER_PASS` 마크 | `sdd-blocker-checker` 재실행 |
+| 3 | Phase 1 사용자 승인 기록 (`PHASE1_USER_APPROVED` 이후 라벨) | 사용자 승인 요청 |
+| 4 | 아키텍처 보강 여부 기록 (`PHASE2_ARCH_DONE` 또는 `PHASE2_ARCH_SKIP`) | Phase 2 판단 수행 |
 
 ### 프로세스
 
 ```
-1. sdd-taskmaster 디스패치 (모드: tasks)
-   - 입력: spec + design/arch + design/ui + design/api 문서 + worktree 경로
+0. PHASE3_PLAN_START: Skill(git-worktree, {feature-name}) 호출 — `./worktrees/{feature-name}` + `feature/{feature-name}` 브랜치 생성
+   (`.gitignore`에 `worktrees/` 확인, 이후 모든 에이전트 디스패치 프롬프트에 worktree 절대 경로 주입)
+   → PHASE3_WORKTREE_CREATED
+
+1. spec 이동 (복사 아님): 메인의 docs/sdd/spec/ spec 문서를 worktree로 옮긴다.
+   - worktree에 같은 파일이 없으면 mv 로 이동
+   - 있고 cmp 결과 동일하면 메인 사본을 삭제하고 진행
+   - 있고 내용이 다르면 중단: set_waiting_for_user true spec_conflict 후 사용자에게 보고. 정본을 임의로 정하지 않는다(금지)
+   - 해소 후 set_waiting_for_user false null 실행, 라벨은 PHASE3_WORKTREE_CREATED 유지, 이 단계를 처음부터 다시 수행. 해소 시 advance_label 은 하지 않는다(금지)
+
+2. sdd-taskmaster 디스패치 (plan 모드): 단독 1회, worktree 경로 입력
+   - spec에 `## 구현 계획` 섹션 작성 (plan 모드만 spec 쓰기)
+
+3. sdd-taskmaster 디스패치 (tasks 모드): plan 완료 후 병렬 배치
+   - 입력: worktree의 spec + 구현 계획. spec은 읽기 전용(쓰기 금지)
    - 배치 크기: 최대 5개 (태스크 수에 따라 순차 배치)
    - 각 태스크마다 task 문서 생성 (sdd-taskrunner 참고 문서의 기준 사용)
    → PHASE3_TASKMASTER_DONE
 
-2. sdd-taskmaster 디스패치 (모드: dag)
+4. sdd-taskmaster 디스패치 (dag 모드)
    - 입력: 생성된 task 문서 목록
    - 의존 관계 분석 → DAG → Wave 자동 구성
    - ORCHESTRATOR_STATE.md 초기 생성 (상태: PLANNING)
    → PHASE3_DAG_CONSTRUCTED
 
-3. [사용자 승인 게이트]
+5. [사용자 승인 게이트] 승인은 1회 — plan(구현 계획)과 tasks를 함께 승인
    task 목록 + DAG/Wave + 구현자 배정 제시 → 승인
    → PHASE3_USER_APPROVED
 ```
@@ -491,16 +360,16 @@ spec + 설계 문서(arch/ui/api)에서 태스크를 도출하고 실행 계획�
 ```markdown
 # T-{N}: {Task Name}
 
-## 관련 문서 (spec, arch, ui, api 경로)
-## 구현자 / 테스트 타입 (단위/통합/E2E)
+## 관련 문서 (spec 경로, 요구사항 ID)
+## 구현자 / 테스트 타입 (단위/통합)
 ## 완료 조건 (checkbox)
 ## 의존 태스크
 ## 예상 변경 파일 (모듈/경로 수준)
 ## Steps (checkbox)
-## 검증 명령어 (빌드 프로파일의 증분 빌드 + 테스트 실행을 이 태스크 스코프로 채운 명령)
-##   - 테스트 스코프: 이 태스크가 RED/GREEN으로 돌릴 테스트 필터 (프로파일의 필터 문법 적용)
+## 검증 명령어
+##   - 테스트 스코프: 이 태스크가 RED/GREEN으로 돌릴 테스트 필터 (명령은 쓰지 않는다)
 ```
-(테스트 시나리오는 test-automator가 task 완료 조건을 분석하여 직접 도출. 검증 명령어의 빌드/필터는 ORCHESTRATOR_STATE.md 빌드 프로파일에서 가져온다.)
+(테스트 시나리오는 test-automator가 도출한다. 실행 명령은 오케스트레이터가 ORCHESTRATOR_STATE.md 빌드 프로파일에서 가져와 테스트 스코프를 채운다.)
 
 ---
 
@@ -516,11 +385,17 @@ spec + 설계 문서(arch/ui/api)에서 태스크를 도출하고 실행 계획�
 | 2 | `docs/sdd/task/{feature}/` 아래 1개 이상의 task 문서 | **Phase 3으로 롤백** — taskmaster 재디스패치 |
 | 3 | `ORCHESTRATOR_STATE.md` 존재 + 유효 스키마 | **Phase 3으로 롤백** — taskmaster dag 모드 재실행 |
 | 4 | Phase 3 최종 사용자 승인 기록 (task + DAG/Wave) | 사용자 승인 요청 |
-| 5 | `ORCHESTRATOR_STATE.md`에 빌드 프로파일 메타 존재 | **Phase 2로 롤백** — architect가 프로파일 미발견. arch 문서 + STATE에 프로파일 기록 후 재진입 |
+| 5 | 빌드 프로파일 확보 — `sdd-orchestrator`가 진입 시 직접 확보 (아래 절차) | 오케스트레이터가 확보할 때까지 진입 보류 |
+
+빌드 프로파일은 오케스트레이터가 Phase 4 진입 시 순서대로 확보해 `ORCHESTRATOR_STATE.md`에 기록한다 (이미 있으면 재확보하지 않는다):
+1. `<repo>/CLAUDE.md`의 빌드/테스트 명령
+2. `<repo>/CLAUDE.local.md` (repo 루트)
+3. 없으면 `/build-notes` 스킬로 발견 (사용자 질문이 가능한 컨텍스트에서만)
+4. 그래도 없으면 사용자에게 질문해 확정 (상세: [skills/sdd-orchestrator/SKILL.md](../sdd-orchestrator/SKILL.md))
 
 ### 진입
 
-Phase 2에서 이미 worktree가 생성되어 있다. 추가 생성 불필요.
+Phase 3에서 이미 worktree가 생성되어 있다. 추가 생성 불필요.
 
 1. worktree 경로에서 스냅샷 커밋 (`chore: Phase 4 실행 시작`)
    → PHASE4_WORKTREE_CREATED
@@ -552,10 +427,26 @@ sdd 리드는 오케스트레이터 실행 결과만 수신한다. 리뷰 루프
 
 ### 리드의 책임
 
-- Phase 4 진입 시 worktree 생성 + 오케스트레이터 호출
+- Phase 4 진입 시 오케스트레이터 호출 (worktree는 Phase 3에서 생성됨)
 - 오케스트레이터가 에스컬레이션(`escalated`, `PAUSED_AT_LIMIT`, 빌드 실패)을 보고하면 사용자에게 중계
 - 오케스트레이터가 완료를 보고하면 사용자에게 머지 승인 요청
 - **직접 Engineer/Reviewer/Test Automator를 디스패치하지 않는다** — 오케스트레이터가 담당
+
+### 테스트 정책
+
+- 모든 레이어는 단위/통합 테스트를 먼저 작성한다. 설계 단계에서 E2E 테스트를 만들지 않는다.
+- UI 변경은 구현 후 result에 수동 테스트 시나리오(입력·기대 결과)를 기록한다.
+- E2E 테스트는 사용자가 요청 시에만 작성한다.
+
+### 심각도 체계 (SOT)
+
+| 심각도 | 범위 | 판정 주체 |
+|--------|------|----------|
+| `[P1]` | 기능 오류, 아키텍처 위반 | sdd-reviewer — **반드시 수정** |
+| `[P2]` | 실측 성능 문제 | sdd-performance-engineer — **반드시 수정** |
+| `[P3]` | 스타일, 네이밍 | 린터/포매터 위임 |
+
+> **상세 판정 기준**: [P1]은 `agents/sdd-reviewer.md`, [P2]는 `agents/sdd-performance-engineer.md` 참조.
 
 ### 심각도 체계 (SOT)
 
@@ -574,9 +465,8 @@ sdd 리드는 오케스트레이터 실행 결과만 수신한다. 리뷰 루프
 | 전환 | 게이트 |
 |------|--------|
 | Phase 1 → 2 | spec + blocker-checker PASS + 사용자 승인 |
-| Phase 2 모드 | SIMPLE/FULL 사용자 확인 |
-| Phase 2 → 3 | design/arch + (FULL 시 design/ui, design/api, context) + 사용자 승인 |
-| Phase 3 → 4 | task 문서 + ORCHESTRATOR_STATE + DAG/Wave + 사용자 승인 |
+| Phase 2 | 조건부 아키텍처. 별도 게이트 없음 |
+| Phase 3 → 4 | spec `## 구현 계획` + task 문서 + ORCHESTRATOR_STATE + DAG/Wave + 사용자 승인 1회 (plan·tasks 포함) |
 | Phase 4 내부 루프 | `sdd-orchestrator`가 담당 (RED/GREEN/VERIFY 게이트 전부) |
 | Phase 4 완료 | 통합 테스트 → result → 사용자 확인 → 머지 |
 | 중단 | 현재 태스크 완료 → result → 머지 |
@@ -585,13 +475,13 @@ sdd 리드는 오케스트레이터 실행 결과만 수신한다. 리뷰 루프
 
 | 규칙 | 적용 시점 |
 |------|----------|
-| 스냅샷 커밋 | Phase 4 worktree 생성 직후 |
+| 스냅샷 커밋 | Phase 4 진입 직후 |
 | 서브태스크별 커밋 | 구현자 각 스텝 완료 시 |
-| 브랜치 원칙 | Phase 4 EnterWorktree + branch rename |
+| 브랜치 원칙 | Phase 3 진입 시 worktree 생성(`feature/{feature}`) |
 
 ## 스펙 변경 정책
 
-Phase 4 도중: 현재 태스크 완료 → spec v2 수정 → blocker-checker 재실행 → (FULL) design/arch/ui/api 영향 분석 → 해당 문서 수정 → 승인 → Phase 4 재개.
+Phase 4 도중: 현재 태스크 완료 → spec v2 수정 → blocker-checker 재실행 → 승인 → 영향받는 task 문서 수정 → Phase 4 재개.
 
 ## LEARNING 캡처 (`.harness/LEARNING.md`)
 
@@ -651,5 +541,5 @@ LEARNING.md는 자가개선 루프의 **입력(raw 신호)**이다. 여기 쌓�
 
 ## 멀티 feature / 하위 호환성
 
-- 각 feature는 독립 worktree + 독립 문서. 동시 진행 가능.
-- SIMPLE 모드가 기본. context/design 없으면 호환 모드 폴백. 마이그레이션 불필요.
+- 각 feature는 독립 worktree(Phase 3 진입 시 생성) + 독립 문서. 동시 진행 가능.
+- 기존 design/·context/ 문서는 수정하지 않고 그대로 둔다. 새 사이클은 spec 단일 문서 흐름을 따른다.
