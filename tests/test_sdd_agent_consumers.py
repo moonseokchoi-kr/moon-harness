@@ -334,3 +334,47 @@ class TestPreserve:
         frontmatter, _ = _split(path)
         assert re.search(r"^name:\s*\S+", frontmatter, re.MULTILINE)
         assert re.search(r"^description:\s*\S+", frontmatter, re.MULTILINE)
+
+
+# ---------------------------------------------------------------- E2E 요청 조건 일관성 (파일 전체)
+
+E2E_REQUEST = re.compile(r"요청")
+E2E_EXCEPTIONS = (
+    re.compile(r"E2E[^\n]*DONE을 막지 않는다"),
+    re.compile(r"E2E\s*필수\s*(?:는\s*)?(?:아니|아님|없)"),
+)
+
+
+def _e2e_unqualified_lines(path: Path) -> list[tuple[int, str]]:
+    """frontmatter 포함 파일 전체에서 'E2E'가 있으나 '요청' 조건이 없는 줄(1-based 줄 번호).
+
+    표 행은 표 바로 위 비어있지 않은 줄이 'E2E'와 '요청'을 함께 담은 주석이면 면제한다.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    offenders: list[tuple[int, str]] = []
+    for idx, line in enumerate(lines):
+        if "E2E" not in line:
+            continue
+        if E2E_REQUEST.search(line) or any(p.search(line) for p in E2E_EXCEPTIONS):
+            continue
+        if line.lstrip().startswith("|"):
+            top = idx
+            while top > 0 and lines[top - 1].lstrip().startswith("|"):
+                top -= 1
+            above = top - 1
+            while above >= 0 and not lines[above].strip():
+                above -= 1
+            if above >= 0 and "E2E" in lines[above] and E2E_REQUEST.search(lines[above]):
+                continue
+        offenders.append((idx + 1, line))
+    return offenders
+
+
+class TestE2ERequestConsistency:
+    def test_every_e2e_line_carries_request_condition(self):
+        offenders = _e2e_unqualified_lines(TEST_AUTOMATOR)
+        assert not offenders, f"E2E가 요청 조건 없이 기본 동작으로 읽히는 줄: {offenders}"
+
+    def test_e2e_framework_table_still_exists(self):
+        text = TEST_AUTOMATOR.read_text(encoding="utf-8")
+        assert re.search(r"^\|.*E2E.*\|.*(?:Maestro|Playwright)", text, re.MULTILINE)
