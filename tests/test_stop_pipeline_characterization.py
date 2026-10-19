@@ -107,6 +107,9 @@ _ALWAYS_MET_LABELS = [
     "PHASE1_INTERVIEW_START",
     "PHASE1_UX_RESEARCH_DONE",  # 구 라벨(별칭, 하위호환)
     "PHASE1_USER_APPROVED",
+    "PHASE2_ARCH_START",  # T-7 신규
+    "PHASE2_ARCH_DONE",  # T-7 신규
+    "PHASE2_ARCH_SKIP",  # T-7 신규
     "PHASE2_START",
     "PHASE2_ARCH_USER_APPROVED",
     "PHASE2_DESIGN_USER_APPROVED",
@@ -473,7 +476,11 @@ _KNOWN_NON_TERMINAL_LABELS = [
     "PHASE2_API_DESIGN_COMPLETE",
     "PHASE2_DESIGN_USER_APPROVED",
     "PHASE2_USER_APPROVED",
+    "PHASE2_ARCH_START",  # T-7 신규
+    "PHASE2_ARCH_DONE",  # T-7 신규
+    "PHASE2_ARCH_SKIP",  # T-7 신규
     "PHASE3_PLAN_START",
+    "PHASE3_WORKTREE_CREATED",  # T-7 신규
     "PHASE3_TASKMASTER_DONE",
     "PHASE3_DAG_CONSTRUCTED",
     "PHASE3_USER_APPROVED",
@@ -794,3 +801,34 @@ def test_reset_breaker_zeroes_blocks_and_sets_future_reset_at(stop_pipeline):
     reset_at = stop_pipeline.parse_iso(cb["reset_at"])
     assert reset_at is not None
     assert reset_at > datetime.now(timezone.utc)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# T-7 — 구 PHASE2 라벨은 공통 별칭 directive 를 받는다 (D7)
+# ═══════════════════════════════════════════════════════════════════════════
+# 위 구 PHASE2 라벨 테스트의 단언(DIRECTIVES[label] 그대로 block, 선행 파일 검사,
+# has_* 판정)은 하나도 삭제/약화하지 않았다. 그 단언은 directive 를 DIRECTIVES[label]
+# 로 참조하므로 별칭으로 바뀌어도 유효하다. 아래는 "구 라벨의 directive 내용이 이제
+# 공통 별칭"이라는 새 사실을 추가로 고정한다.
+
+_OLD_PHASE2_LABELS = [
+    "PHASE2_START",
+    "PHASE2_WORKTREE_CREATED",
+    "PHASE2_ARCH_STRUCTURE_DONE",
+    "PHASE2_ARCH_USER_APPROVED",
+    "PHASE2_UI_DESIGN_COMPLETE",
+    "PHASE2_API_DESIGN_COMPLETE",
+    "PHASE2_DESIGN_USER_APPROVED",
+    "PHASE2_USER_APPROVED",
+]
+
+
+@pytest.mark.parametrize("label", _OLD_PHASE2_LABELS)
+def test_old_phase2_label_directive_is_common_alias_to_phase3_plan_start(
+    stop_pipeline, label
+):
+    directive = stop_pipeline.DIRECTIVES[label]
+    assert directive == stop_pipeline.DIRECTIVES["PHASE2_START"]
+    assert "PHASE3_PLAN_START" in directive
+    for agent in ("sdd-ui-designer", "sdd-api-designer", "sdd-architect-reviewer", "sdd-context-manager"):
+        assert agent not in directive
