@@ -25,7 +25,7 @@ model: sonnet
 | 단위 테스트 | Python | pytest |
 | 단위 테스트 | Kotlin/Android | JUnit5, Kotest |
 | 통합 테스트 | Flutter | flutter_test + integration_test |
-| E2E / UI 자동화 | Flutter/Android | Maestro, Flutter integration_test |
+| E2E / UI 자동화 (요청 시 작성) | Flutter/Android | Maestro, Flutter integration_test |
 | E2E / UI 자동화 | Web | Playwright, Cypress |
 | E2E / UI 자동화 | iOS | XCTest |
 | E2E / UI 자동화 | Android | Espresso, UIAutomator |
@@ -132,12 +132,8 @@ RED 테스트 통과 여부 확인 + 레이어 간 통합 검증.
 
 1. **레이어 분류** — spec 테스트 전략에서 각 변경 파일의 테스트 타입 확인
 2. **단위 테스트 레이어** — 빌드 프로파일로 증분 빌드(build-required) 후 이 태스크 스코프 테스트를 실행해 기존 RED 테스트가 전부 GREEN(통과)인지 확인. no-clean.
-3. **통합/E2E 레이어** — spec에 명시된 프레임워크 사용, 없으면 아래 기준으로 선택:
-   - Flutter UI → Maestro 또는 flutter integration_test
-   - Web UI → Playwright 또는 Cypress
-   - Platform Channel → E2E 기기 연동 테스트
-   - API → supertest / httpx
-4. **UI 수동 시나리오** — UI 변경이 있으면 수동 테스트 시나리오를 result용으로 정리하고, E2E는 개발자가 수동 확인 후 요청할 때만 작성한다.
+3. **통합 테스트 레이어** — 프레임워크 선택은 통합 레이어만 대상으로 한다. spec에 명시된 프레임워크 사용, 없으면 플랫폼 기반 통합 프레임워크(flutter_test + integration_test 표 참조, API → supertest / httpx)로 선택. E2E 프레임워크(Maestro, Playwright 등)는 개발자가 요청할 때만 고른다.
+4. **UI 수동 시나리오** — spec에 `## UI` 섹션이 있거나 task 문서 테스트 타입에 E2E/UI가 있으면 수동 테스트 시나리오(조작 순서/기대 결과)를 출력의 `수동 테스트 시나리오` 필드로 정리한다. result 문서는 직접 쓰지 않는다 — 오케스트레이터가 이 필드를 result에 옮긴다. E2E는 개발자가 수동 확인 후 요청할 때만 작성하며, E2E가 없는 것은 DONE을 막지 않는다.
 5. **스코프 통합 실행 + 실패 분석** — 이 태스크가 건드린 모듈 범위의 테스트를 프로파일 명령으로 실행한다. 전체 스위트 풀 실행은 Phase 4 마지막 통합 검증(오케스트레이터 Step 3)이 담당하므로 per-task verify에서 매번 전체를 돌리지 않는다.
 
 ### 출력 포맷
@@ -148,11 +144,14 @@ RED 테스트 통과 여부 확인 + 레이어 간 통합 검증.
 **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED
 
 **TDD 단위 테스트:** N/N 통과
-**통합/E2E 테스트:** N개 작성, N/N 통과
+**통합 테스트:** N개 작성, N/N 통과
+**E2E 테스트 (요청 시):** N개 작성, N/N 통과 — 요청 없으면 N/A
 
 **사용 프레임워크:**
 - 단위: flutter_test
-- E2E: Maestro (시나리오 N개)
+- E2E (요청 시): Maestro (시나리오 N개)
+
+**수동 테스트 시나리오:** (조작 순서/기대 결과, 없으면 N/A)
 
 **실패 항목 (있는 경우):**
 | # | 테스트 | 실패 사유 | 수정 대상 |
@@ -168,7 +167,7 @@ verify 통과 후, 리팩터링 시 깨지면 안 되는 계약을 테스트로 
 ### 작업 순서
 
 1. **공개 API 계약 테스트** — 인터페이스 변경 즉시 감지
-2. **엣지 케이스 보강** — tdd에서 다루지 않은 경계값, 큰 입력, 동시성 (추가 시나리오도 spec 기준으로 도출)
+2. **엣지 케이스 보강** — tdd에서 다루지 않은 경계값, 큰 입력, 동시성
 3. **성능 기준선** — 해당하는 경우 실행 시간/메모리 기준 테스트
 4. **커밋** — `test: T-{N} refactor 안전망 테스트`
 
