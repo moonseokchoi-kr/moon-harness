@@ -254,3 +254,36 @@ def test_empty_test_scope_reports_task_doc_error_without_full_run(skill_text: st
 def test_step4_ui_criterion_is_spec_ui_section_or_task_test_type(skill_text: str) -> None:
     step4 = _section(_split_frontmatter(skill_text)[1], "Step 4")
     assert _lines_with(step4, r"`## UI`", r"E2E/UI|E2E|UI", r"테스트 타입", r"수동 테스트 시나리오")
+
+
+# ---- T-11 iteration 3: 재리뷰 P1 반영 ----
+
+def test_step1_main_repo_root_command_is_absolute_dirname_of_git_common_dir(step1: str) -> None:
+    """`git rev-parse --git-common-dir`는 루트가 아니라 공통 .git 디렉터리를 반환한다(메인에선 상대경로일 수 있음).
+    루트를 구하는 줄은 --path-format=absolute 와 dirname(또는 부모 디렉터리)을 함께 적어야 한다."""
+    cmd_lines = _lines_with(step1, r"git-common-dir")
+    assert cmd_lines, "메인 repo 루트를 구하는 명령 줄 없음"
+    for ln in cmd_lines:
+        assert re.search(r"--path-format=absolute", ln), f"절대경로 옵션 없음: {ln}"
+        assert re.search(r"dirname|부모 디렉터리", ln), f"dirname/부모 디렉터리 없음: {ln}"
+
+
+def test_step1_does_not_call_bare_git_common_dir_the_root(step1: str) -> None:
+    bare = [
+        ln for ln in _lines_with(step1, r"git rev-parse --git-common-dir", r"루트")
+        if not re.search(r"--path-format=absolute", ln)
+    ]
+    assert not bare, f"맨 --git-common-dir를 루트라고 부르는 줄: {bare}"
+
+
+def test_step1_claude_local_md_reflect_to_main_does_not_overwrite(step1: str) -> None:
+    """worktree에만 생긴 CLAUDE.local.md를 '복사'로 반영하면 메인의 기존 CLAUDE.local.md(다른 내용)를 덮어쓴다.
+    기존 내용을 보존하고 병합/추가하며, 메인에 파일이 없을 때만 새로 만든다."""
+    reflect = _lines_with(step1, r"CLAUDE\.local\.md", r"worktree에만")
+    assert reflect
+    for ln in reflect:
+        assert not re.search(r"복사", ln), f"덮어쓰기 지시(복사): {ln}"
+    assert any(
+        re.search(r"기존 내용", ln) and re.search(r"병합|append|추가", ln) for ln in reflect
+    ), "기존 내용 보존 + 병합/append/추가 지시 없음"
+    assert _lines_with(step1, r"메인", r"파일이 없을 때만", r"새로|만든|생성")
