@@ -140,6 +140,8 @@ docs/sdd/
 | Phase 4 완료 + result 없음 | P4 대기 | — |
 | result 있음 | 완료 | — |
 
+**spec 위치**: pipeline.json의 worktree_path가 있으면 worktree 우선, 없으면 메인에서 spec을 찾는다.
+
 **핵심 원칙**: "직전 Phase의 **모든** 필수 산출물이 존재하지 않으면 다음 Phase로 진입하지 않는다." 불완전 감지 시 해당 Phase로 롤백해서 누락분만 복원한다.
 
 > 📌 위 표의 `ORCHESTRATOR_STATE`는 **`docs/sdd/ORCHESTRATOR_STATE.md`(현재 사이클)만** 가리킨다. 완료된 사이클의 STATE는 Step 4 마지막에 `docs/sdd/archive/{date}-{feature}-ORCHESTRATOR_STATE.md`로 아카이브되며(sdd-orchestrator Step 4.7), Phase 판정에 쓰지 않는다. 따라서 이전 사이클을 끝낸 레포에서 새 사이클을 시작해도 STATE 존재가 "P4 진행 중"으로 오판되지 않는다.
@@ -313,6 +315,8 @@ spec의 설계 결정에서 구현 계획을 세우고 태스크를 도출해 �
 
 ### 진입 전 검증 (필수)
 
+이 검증은 worktree 생성·spec 이동 이전에 적용된다(메인의 spec 기준).
+
 | # | 체크 | 실패 시 조치 |
 |---|------|------|
 | 1 | `docs/sdd/spec/{YYYY-MM-DD}-{feature}.md` 존재 | **Phase 1로 롤백** — `sdd-spec-writer` 디스패치 |
@@ -349,7 +353,7 @@ spec의 설계 결정에서 구현 계획을 세우고 태스크를 도출해 �
    → PHASE3_DAG_CONSTRUCTED
 
 5. [사용자 승인 게이트] 승인은 1회 — plan(구현 계획)과 tasks를 함께 승인
-   task 목록 + DAG/Wave + 구현자 배정 제시 → 승인
+   제시: spec `## 구현 계획` 요약 + Phase 2에서 보강·"사용자 확인 필요"로 표시된 설계 결정 + task 목록 + DAG/Wave + 구현자 배정 → 승인
    → PHASE3_USER_APPROVED
 ```
 
@@ -381,7 +385,7 @@ spec의 설계 결정에서 구현 계획을 세우고 태스크를 도출해 �
 
 | # | 체크 | 실패 시 조치 |
 |---|------|------|
-| 1 | Phase 3 진입 전 검증 전부 통과 | **Phase 3 진입 전 검증으로 되돌아가기** |
+| 1 | worktree 안에 spec 존재 + `BLOCKER_PASS` 마크 확인 | **Phase 3으로 롤백** — spec 이동 누락분 복원 (BLOCKER_PASS 누락 시 `sdd-blocker-checker` 재실행) |
 | 2 | `docs/sdd/task/{feature}/` 아래 1개 이상의 task 문서 | **Phase 3으로 롤백** — taskmaster 재디스패치 |
 | 3 | `ORCHESTRATOR_STATE.md` 존재 + 유효 스키마 | **Phase 3으로 롤백** — taskmaster dag 모드 재실행 |
 | 4 | Phase 3 최종 사용자 승인 기록 (task + DAG/Wave) | 사용자 승인 요청 |
@@ -448,16 +452,6 @@ sdd 리드는 오케스트레이터 실행 결과만 수신한다. 리뷰 루프
 
 > **상세 판정 기준**: [P1]은 `agents/sdd-reviewer.md`, [P2]는 `agents/sdd-performance-engineer.md` 참조.
 
-### 심각도 체계 (SOT)
-
-| 심각도 | 범위 | 판정 주체 |
-|--------|------|----------|
-| `[P1]` | 기능 오류, 아키텍처 위반 | sdd-reviewer — **반드시 수정** |
-| `[P2]` | 실측 성능 문제 | sdd-performance-engineer — **반드시 수정** |
-| `[P3]` | 스타일, 네이밍 | 린터/포매터 위임 |
-
-> **상세 판정 기준**: [P1]은 `agents/sdd-reviewer.md`, [P2]는 `agents/sdd-performance-engineer.md` 참조.
-
 ---
 
 ## 게이트 정책
@@ -466,7 +460,7 @@ sdd 리드는 오케스트레이터 실행 결과만 수신한다. 리뷰 루프
 |------|--------|
 | Phase 1 → 2 | spec + blocker-checker PASS + 사용자 승인 |
 | Phase 2 | 조건부 아키텍처. 별도 게이트 없음 |
-| Phase 3 → 4 | spec `## 구현 계획` + task 문서 + ORCHESTRATOR_STATE + DAG/Wave + 사용자 승인 1회 (plan·tasks 포함) |
+| Phase 3 → 4 | spec `## 구현 계획` 요약 + 설계 결정("사용자 확인 필요") + task 문서 + ORCHESTRATOR_STATE + DAG/Wave + 사용자 승인 1회 (plan·tasks 포함) |
 | Phase 4 내부 루프 | `sdd-orchestrator`가 담당 (RED/GREEN/VERIFY 게이트 전부) |
 | Phase 4 완료 | 통합 테스트 → result → 사용자 확인 → 머지 |
 | 중단 | 현재 태스크 완료 → result → 머지 |

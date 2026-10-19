@@ -162,7 +162,7 @@ DIRECTIVES = {
     ),
     "PHASE3_DAG_CONSTRUCTED": (
         "[SDD-PIPELINE] DAG 구성 완료. 사용자 승인 필요.\n"
-        "1. 태스크 목록 + Wave 구성 + 예상 시간을 사용자에게 제시\n"
+        "1. 구현 계획 요약 + 설계 결정(사용자 확인 필요 표시분) + 태스크 목록 + Wave 구성 + 예상 시간을 사용자에게 제시\n"
         "2. waiting_for_user=true, approval_type='plan' 설정\n"
         "3. 승인 시 current_label=PHASE3_USER_APPROVED"
     ),
