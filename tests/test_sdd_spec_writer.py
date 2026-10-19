@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 from pathlib import Path
 
@@ -86,8 +87,22 @@ def test_writer_saves_spec_with_write_directly():
     assert "Write" in text
 
 
-def test_writer_keeps_blocker_pass():
-    assert "BLOCKER_PASS" in _read(WRITER)
+def test_writer_has_no_blocker_pass_literal():
+    # has_blocker_pass 는 문자열 포함만 검사 — 리터럴이 있으면 게이트 우회
+    assert "BLOCKER_PASS" not in _read(WRITER)
+
+
+def test_writer_says_controller_adds_mark_after_blocker_checker():
+    text = _read(WRITER)
+    assert "blocker-checker" in text
+    assert "컨트롤러" in text or "리드" in text
+
+
+def test_writer_missing_input_reports_needs_context_without_write():
+    text = _read(WRITER)
+    assert "NEEDS_CONTEXT" in text
+    assert "원문" in text or "요약" in text
+    assert "저장하지" in text or "Write하지" in text
 
 
 def test_writer_does_not_write_implementation_plan_section():
@@ -136,8 +151,20 @@ def test_template_has_no_removed_fields(forbidden):
     assert forbidden not in _read(TEMPLATE)
 
 
-def test_template_keeps_blocker_pass():
-    assert "BLOCKER_PASS" in _read(TEMPLATE)
+def test_template_has_no_blocker_pass_literal():
+    assert "BLOCKER_PASS" not in _read(TEMPLATE)
+
+
+def test_template_does_not_trip_has_blocker_pass_gate(tmp_path):
+    sp = importlib.util.spec_from_file_location(
+        "stop_pipeline", REPO / "hooks" / "enforcement" / "stop-pipeline.py"
+    )
+    mod = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(mod)
+    spec_dir = tmp_path / "docs" / "sdd" / "spec"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "x.md").write_text(_read(TEMPLATE), encoding="utf-8")
+    assert mod.has_blocker_pass(tmp_path, "x") is False
 
 
 def test_template_links_claude_md_instead_of_copying_commands():
