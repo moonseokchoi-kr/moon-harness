@@ -330,3 +330,60 @@ def test_plan_start_directive_skips_creation_when_worktree_path_already_exists(
     assert "worktree_path" in line
     assert "건너" in line
     assert WT_CREATED in line
+
+
+# ── spec 충돌 대기: approval_type 과 재개 경로 (T-7 리뷰 P1) ────────────────
+
+
+def test_worktree_created_conflict_branch_sets_spec_conflict_approval_type(stop_pipeline):
+    text = stop_pipeline.DIRECTIVES[WT_CREATED]
+    line = _line_with(text, "다르")
+    assert "set_waiting_for_user true spec_conflict" in line
+
+
+def test_worktree_created_directive_resume_keeps_label_and_restarts(stop_pipeline):
+    text = stop_pipeline.DIRECTIVES[WT_CREATED]
+    release = _line_with(text, "set_waiting_for_user false null")
+    assert WT_CREATED in release
+    assert "유지" in release
+    assert "다시" in release or "처음부터" in release
+
+
+def test_worktree_created_directive_forbids_advance_label_on_conflict_resolution(
+    stop_pipeline,
+):
+    text = stop_pipeline.DIRECTIVES[WT_CREATED]
+    line = _line_with(text, "advance_label")
+    assert "하지 않" in line or "금지" in line
+
+
+def test_decide_spec_conflict_waiting_continues_then_reinjects_after_release(
+    stop_pipeline, dirs
+):
+    project, worktree = dirs
+    path = _write_state(
+        project,
+        stop_pipeline,
+        WT_CREATED,
+        worktree_path=str(worktree),
+        waiting_for_user=True,
+        waiting_for_approval_type="spec_conflict",
+    )
+
+    waiting = stop_pipeline.decide({}, project, path)
+    assert waiting.get("continue") is True
+
+    _write_state(
+        project,
+        stop_pipeline,
+        WT_CREATED,
+        worktree_path=str(worktree),
+        waiting_for_user=False,
+        waiting_for_approval_type=None,
+    )
+
+    released = stop_pipeline.decide({}, project, path)
+    assert released == {
+        "decision": "block",
+        "reason": stop_pipeline.DIRECTIVES[WT_CREATED],
+    }
