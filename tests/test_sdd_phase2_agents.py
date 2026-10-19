@@ -127,3 +127,75 @@ def test_architect_keeps_test_strategy_instruction(name: str) -> None:
         r"test-automator",
     )
     assert hits, f"{name}: 테스트 전략 지침 줄 없음"
+
+
+# --- T-6 iteration 2: 보강 범위 / spec 경로 입력 / Write 제거 ---
+
+
+def _frontmatter_tools(name: str) -> list[str]:
+    text = (AGENTS / f"{name}.md").read_text(encoding="utf-8")
+    m = re.match(r"---\n(.*?)\n---\n", text, re.DOTALL)
+    assert m, f"{name}: frontmatter 없음"
+    tm = re.search(r"^tools:\s*(.+)$", m.group(1), re.MULTILINE)
+    assert tm, f"{name}: frontmatter tools 없음"
+    return [t.strip() for t in tm.group(1).split(",") if t.strip()]
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_has_no_unconditional_always_produce(name: str) -> None:
+    assert not re.search(r"Always produce", _body(name), re.IGNORECASE), (
+        f"{name}: 무조건 산출('Always produce') 지시가 보강 전용 지시와 충돌"
+    )
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_limits_to_items_the_change_touches(name: str) -> None:
+    hits = _lines_matching(_body(name), r"변경이 닿는", r"해당 없(으면|는)", r"생략")
+    assert hits, f"{name}: '변경이 닿는 항목만, 해당 없으면 생략' 줄 없음"
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_has_no_implementation_plan_items(name: str) -> None:
+    body = _body(name)
+    for pat in (
+        r"implementation phases",
+        r"rollout order",
+        r"migration plan",
+        r"구현 단계",
+    ):
+        assert not re.search(pat, body, re.IGNORECASE), (
+            f"{name}: '{pat}' 항목은 taskmaster 소유 영역 침범"
+        )
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_states_implementation_plan_is_taskmaster_owned(name: str) -> None:
+    hits = _lines_matching(_body(name), r"구현 계획", r"taskmaster")
+    assert hits, f"{name}: '구현 계획은 taskmaster 소유' 문장 없음"
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_receives_absolute_spec_path_via_dispatch_prompt(name: str) -> None:
+    hits = _lines_matching(_body(name), r"절대 경로", r"디스패치", r"spec")
+    assert hits, f"{name}: spec 절대 경로를 디스패치 프롬프트로 받는다는 줄 없음"
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_asks_back_when_spec_path_missing(name: str) -> None:
+    hits = _lines_matching(_body(name), r"되묻", r"수정하지 (않|말)", r"경로", r"파일")
+    assert hits, f"{name}: 경로/파일 없으면 수정하지 않고 되묻는다는 줄 없음"
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_does_not_modify_sections_other_than_design_decisions(name: str) -> None:
+    hits = _lines_matching(
+        _body(name), r"설계 결정", r"(외|이외)", r"(수정하지|건드리지|변경하지)"
+    )
+    assert hits, f"{name}: '설계 결정 외 섹션 비수정' 문장 없음"
+
+
+@pytest.mark.parametrize("name", ARCHITECTS)
+def test_architect_tools_have_edit_but_not_write(name: str) -> None:
+    tools = _frontmatter_tools(name)
+    assert "Edit" in tools, f"{name}: tools에 Edit 없음: {tools}"
+    assert "Write" not in tools, f"{name}: tools에 Write 남아 있음(spec 통째 덮어쓰기 위험): {tools}"
