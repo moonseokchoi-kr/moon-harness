@@ -16,7 +16,7 @@ gate_block() {
 }
 
 # 경고 메시지 출력 (stderr, 차단 없음)
-# 사용: gate_warn "PHASE-GATE" "design/api 누락 감지"
+# 사용: gate_warn "PHASE-GATE" "spec 누락 감지"
 gate_warn() {
   local gate="$1"
   local reason="$2"

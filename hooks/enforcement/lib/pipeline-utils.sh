@@ -4,9 +4,9 @@
 #
 # 사용법:
 #   source "$HARNESS_HOOKS/enforcement/lib/pipeline-utils.sh"
-#   init_pipeline "modal-system" "FULL"
+#   init_pipeline "modal-system"
 #   set_waiting_for_user "true" "arch"
-#   advance_label "PHASE2_ARCH_STRUCTURE_DONE"
+#   advance_label "PHASE1_INTERVIEW_START"
 
 # Windows(cp949 등) 에서 UTF-8 pipeline.json(한글 directive 포함) 디코드 실패를
 # 막기 위해 UTF-8 모드 강제. 이 파일을 source 한 셸의 모든 python3 호출이 상속한다.
@@ -30,10 +30,10 @@ _now_iso() {
 }
 
 # ─── pipeline.json 초기화 ─────────────────────────────────────
-# 사용: init_pipeline <feature> <mode:FULL|SIMPLE>
+# 사용: init_pipeline <feature> [mode]
+#   mode(2번째 인자)는 하위호환용으로 받아도 무시한다 — pipeline.json 에 기록하지 않는다.
 init_pipeline() {
   local feature="$1"
-  local mode="${2:-SIMPLE}"
 
   if [ -z "$feature" ]; then
     echo "[pipeline-utils] feature 이름 필수" >&2
@@ -54,7 +54,6 @@ reset_at = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
 state = {
     'schema_version': 1,
     'feature': '$feature',
-    'mode': '$mode',
     'session_id': '$session_id',
     'worktree_path': '',
     'current_label': 'PHASE1_INTERVIEW_START',
@@ -73,7 +72,7 @@ state = {
 with open('$HARNESS_PIPELINE_STATE', 'w') as f:
     json.dump(state, f, indent=2, ensure_ascii=False)
 "
-  echo "[pipeline] ✓ 초기화 완료: $feature ($mode)"
+  echo "[pipeline] ✓ 초기화 완료: $feature"
 }
 
 # ─── 라벨 전환 ────────────────────────────────────────────────
@@ -146,7 +145,8 @@ show_pipeline() {
 import json
 with open('$HARNESS_PIPELINE_STATE') as f: s = json.load(f)
 print(f\"  feature: {s.get('feature')}\")
-print(f\"  mode:    {s.get('mode')}\")
+if 'mode' in s:
+    print(f\"  mode:    {s['mode']}\")
 print(f\"  label:   {s.get('current_label')}\")
 print(f\"  waiting: {s.get('waiting_for_user')} ({s.get('waiting_for_approval_type') or '-'})\")
 print(f\"  blocks:  {s.get('circuit_breaker', {}).get('blocks', 0)}/20\")
