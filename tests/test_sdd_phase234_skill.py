@@ -453,3 +453,10 @@ def test_gate_policy_phase3_to_4_row_presents_plan_and_design_decisions(body):
 def test_severity_scheme_heading_appears_exactly_once(body):
     heads = [ln for ln in body.splitlines() if re.match(r"#+\s*심각도 체계", ln)]
     assert len(heads) == 1, f"'심각도 체계' 헤딩이 {len(heads)}회: {heads}"
+
+
+# ── 통합 검증 후속: 헬퍼 목록의 init_pipeline 인자 (F11 폐지 mode 인자) ─────
+def test_helper_list_init_pipeline_has_no_mode_arg(body):
+    helpers = _section(body, "### 핵심 헬퍼 함수")
+    assert "init_pipeline <feature> <mode>" not in helpers
+    assert re.search(r"init_pipeline <feature>(?! <mode>)", helpers)

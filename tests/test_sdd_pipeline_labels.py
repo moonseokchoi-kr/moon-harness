@@ -382,3 +382,21 @@ def test_directives_after_taskmaster_done_unchanged(stop_pipeline):
         "3. Skill(sdd-orchestrator) 를 호출하여 Wave/Task 실행을 위임\n"
         "파이프라인은 여기서 종료됩니다. 이후 Stop 훅은 개입하지 않습니다."
     )
+
+
+# ── 통합 검증 후속: 요약 yes 미수신 시 interview 대기 재설정 ────────────────
+
+
+def test_phase1_directive_reasserts_interview_wait(stop_pipeline):
+    import re
+
+    for label in PHASE1_LABELS:
+        text = stop_pipeline.DIRECTIVES[label]
+        hits = [
+            ln
+            for ln in text.splitlines()
+            if re.search(r"yes가 아닌|재요청|인터뷰.{0,10}계속", ln)
+            and "set_waiting_for_user true interview" in ln
+            and re.search(r"다시|재", ln)
+        ]
+        assert hits, f"{label}: yes 아닌 응답 시 interview 대기 재설정 문장이 없다"

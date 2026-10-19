@@ -220,3 +220,28 @@ def test_phase1_blocker_pass_literal_only_on_second_pass(phase1):
     assert _lines_matching(
         phase1, r"BLOCKER_PASS", r"1차", r"않|금지|아니"
     ), "1차 PASS에는 BLOCKER_PASS를 붙이지 않는다는 문장이 없다"
+
+
+# ── 통합 검증 후속: 요약 재요청 시 대기 재설정 / 조사 대상 없음 명시 ─────────
+def test_phase1_reasserts_interview_wait_when_not_yes(phase1):
+    """F8: yes 아닌 응답으로 재요청·인터뷰 계속 시 턴 종료 전 interview 대기를 다시 설정."""
+    hits = _lines_matching(
+        phase1,
+        r"yes가 아닌|재요청|인터뷰.{0,10}계속",
+        r"set_waiting_for_user true interview",
+        r"다시|재",
+    )
+    assert hits, "Phase 1 에 yes 아닌 응답 시 set_waiting_for_user true interview 재설정 지시가 없다"
+
+
+def test_phase1_spec_writer_dispatch_states_no_research(phase1):
+    """spec-writer 는 조사 결과 없으면 NEEDS_CONTEXT — 조사 안 했으면 '조사 대상 없음'을 프롬프트에 명시."""
+    lines = phase1.splitlines()
+    idxs = [i for i, ln in enumerate(lines) if "sdd-spec-writer" in ln and "디스패치" in ln]
+    assert idxs, "spec-writer 디스패치 줄이 없다"
+    ok = any(
+        re.search(r"조사 대상 없음", w) and re.search(r"명시|프롬프트", w)
+        for i in idxs
+        for w in ["\n".join(lines[i : i + 2])]
+    )
+    assert ok, "spec-writer 디스패치 줄/인접 줄에 '조사 대상 없음' 명시 지시가 없다"
