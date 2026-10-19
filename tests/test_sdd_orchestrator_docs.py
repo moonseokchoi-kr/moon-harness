@@ -203,3 +203,54 @@ def test_step4_result_records_manual_test_scenarios_for_ui(skill_text: str) -> N
     assert _lines_with(step4, r"수동 테스트 시나리오", r"result")
     assert _lines_with(step4, r"UI", r"수동 테스트 시나리오|result")
     assert _lines_with(step4, r"E2E", r"요청", r"작성")
+
+
+# ---- T-11 iteration 2: 리뷰 P1 반영 ----
+
+def test_step1_claude_local_md_read_order_worktree_then_main_repo(step1: str) -> None:
+    hits = _lines_with(step1, r"CLAUDE\.local\.md", r"worktree", r"git rev-parse --git-common-dir|메인 repo")
+    assert hits
+    assert any(
+        re.search(r"worktree", ln).start() < re.search(r"git rev-parse --git-common-dir|메인 repo", ln).start()
+        and re.search(r"없으면|이어서|다음", ln)
+        for ln in hits
+    )
+
+
+def test_step1_result_persisted_to_main_repo_claude_local_md(step1: str) -> None:
+    assert _lines_with(step1, r"CLAUDE\.local\.md", r"메인 repo 루트", r"재사용|사이클 간")
+    assert _lines_with(step1, r"CLAUDE\.local\.md", r"worktree에만", r"메인.*(반영|복사|옮)")
+
+
+def test_step1_state_records_source_file_path(step1: str) -> None:
+    assert _lines_with(step1, r"출처", r"(읽은|확보한) 파일 경로", r"STATE|빌드 프로파일")
+
+
+def test_step1_build_notes_only_in_interactive_context(step1: str) -> None:
+    assert _lines_with(step1, r"build-notes", r"사용자 질문이 가능한", r"팀원", r"건너")
+
+
+def test_step1_build_notes_skill_missing_or_denied_is_failure_and_continues(step1: str) -> None:
+    assert _lines_with(step1, r"Skill", r"없음|거부", r"실패", r"다음 단계")
+
+
+def test_step1_blocked_records_reason_in_state(step1: str) -> None:
+    assert _lines_with(step1, r"BLOCKED", r"STATE", r"사유", r"기록")
+
+
+def test_step1_blocked_resume_via_confirmed_profile_value(step1: str) -> None:
+    assert _lines_with(step1, r"리드", r"재디스패치", r"빌드 프로파일 확정값")
+    assert _lines_with(step1, r"확정값", r"## 빌드 프로파일", r"기록", r"BLOCKED.*반복|같은 BLOCKED")
+
+
+def test_test_scope_filter_follows_profile_filter_syntax(skill_text: str) -> None:
+    assert _lines_with(skill_text, r"\{filter\}", r"테스트 필터 문법", r"여러 개|복수")
+
+
+def test_empty_test_scope_reports_task_doc_error_without_full_run(skill_text: str) -> None:
+    assert _lines_with(skill_text, r"스코프", r"비(어|면)", r"전체 (테스트 )?실행", r"task 문서 오류", r"디스패치")
+
+
+def test_step4_ui_criterion_is_spec_ui_section_or_task_test_type(skill_text: str) -> None:
+    step4 = _section(_split_frontmatter(skill_text)[1], "Step 4")
+    assert _lines_with(step4, r"`## UI`", r"E2E/UI|E2E|UI", r"테스트 타입", r"수동 테스트 시나리오")
