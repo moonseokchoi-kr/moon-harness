@@ -108,58 +108,46 @@ DIRECTIVES = {
         "4. 승인 시 current_label=PHASE1_USER_APPROVED, waiting_for_user=false"
     ),
     "PHASE1_USER_APPROVED": (
-        "[SDD-PIPELINE] Phase 1 완료. Phase 2 시작.\n"
-        "current_label 을 PHASE2_START 로 갱신하세요."
+        "[SDD-PIPELINE] Phase 1 완료. Phase 2 판단.\n"
+        "spec 의 설계 결정 섹션을 읽고 아키텍처 변경이 필요한지 판단하세요.\n"
+        "- 아키텍처 변경이 필요하면 current_label 을 PHASE2_ARCH_START 로 갱신하세요.\n"
+        "- 아키텍처 변경이 불필요하면 current_label 을 PHASE2_ARCH_SKIP 로 갱신하세요."
     ),
-    "PHASE2_START": (
-        "[SDD-PIPELINE] Phase 2 시작. Worktree 생성 필요.\n"
-        "Skill(git-worktree) 를 호출하여 feature/{feature} 브랜치와 worktree 를 생성하세요.\n"
-        "완료 후 pipeline.json 의 worktree_path 기록 + current_label=PHASE2_WORKTREE_CREATED."
-    ),
-    "PHASE2_WORKTREE_CREATED": (
-        "[SDD-PIPELINE] Worktree 준비 완료. 아키텍처 설계 필요.\n"
-        "프로젝트 스택 감지 후 적절한 architect 디스패치:\n"
+    "PHASE2_ARCH_START": (
+        "[SDD-PIPELINE] Phase 2 시작. 조건부 아키텍처 보강.\n"
+        "프로젝트 스택 감지 후 적절한 architect 를 디스패치하세요:\n"
         "- Flutter: flutter-architect\n"
         "- React/Vue/Next: webapp-architect\n"
         "- Rust/C++: native-architect\n"
-        "완료 후 sdd-architect-reviewer 로 리뷰 → PASS → current_label=PHASE2_ARCH_STRUCTURE_DONE."
+        "메인 체크아웃의 spec 문서에서 설계 결정 섹션만 보강하게 하세요. 새 파일은 만들지 마세요.\n"
+        "architect 디스패치 프롬프트에 수정 대상 spec 의 절대 경로"
+        "(메인 체크아웃의 docs/sdd/spec/{date}-{feature}.md)를 반드시 넘기세요.\n"
+        "architect 는 그 spec 의 설계 결정 섹션만 Edit 하며 다른 섹션·다른 spec 은 건드리지 않습니다.\n"
+        "완료 후 current_label=PHASE2_ARCH_DONE."
     ),
-    "PHASE2_ARCH_STRUCTURE_DONE": (
-        "[SDD-PIPELINE] 아키텍처 설계 완료. 사용자 승인 필요.\n"
-        "1. 아키텍처 구조 요약을 사용자에게 제시\n"
-        "2. waiting_for_user=true, approval_type='arch' 설정\n"
-        "3. 승인 시 current_label=PHASE2_ARCH_USER_APPROVED"
+    "PHASE2_ARCH_DONE": (
+        "[SDD-PIPELINE] 아키텍처 보강 완료. Phase 3 시작.\n"
+        "current_label 을 PHASE3_PLAN_START 로 갱신하세요."
     ),
-    "PHASE2_ARCH_USER_APPROVED": (
-        "[SDD-PIPELINE] 아키텍처 승인됨.\n"
-        "모드에 따라 분기:\n"
-        "- FULL 모드: Agent(sdd-ui-designer) 디스패치 + e2e-config.json 생성 → current_label=PHASE2_UI_DESIGN_COMPLETE\n"
-        "- SIMPLE 모드: UI/API 건너뛰고 current_label=PHASE2_DESIGN_USER_APPROVED"
-    ),
-    "PHASE2_UI_DESIGN_COMPLETE": (
-        "[SDD-PIPELINE] UI 명세 완료. 사용자 승인 필요.\n"
-        "1. UI 명세 + Stitch 링크를 사용자에게 제시\n"
-        "2. waiting_for_user=true, approval_type='ui' 설정\n"
-        "3. 승인 시 Agent(sdd-api-designer) 디스패치 → current_label=PHASE2_API_DESIGN_COMPLETE"
-    ),
-    "PHASE2_API_DESIGN_COMPLETE": (
-        "[SDD-PIPELINE] API 명세 완료. 사용자 승인 필요.\n"
-        "1. API 계약을 사용자에게 제시\n"
-        "2. waiting_for_user=true, approval_type='api' 설정\n"
-        "3. 승인 시 current_label=PHASE2_DESIGN_USER_APPROVED"
-    ),
-    "PHASE2_DESIGN_USER_APPROVED": (
-        "[SDD-PIPELINE] 전체 설계 승인됨.\n"
-        "FULL 모드: Agent(sdd-context-manager) 디스패치하여 context 문서 생성.\n"
-        "완료 후 current_label=PHASE2_USER_APPROVED."
-    ),
-    "PHASE2_USER_APPROVED": (
-        "[SDD-PIPELINE] Phase 2 완료. Phase 3 시작.\n"
+    "PHASE2_ARCH_SKIP": (
+        "[SDD-PIPELINE] 아키텍처 변경 없음. Phase 3 시작.\n"
         "current_label 을 PHASE3_PLAN_START 로 갱신하세요."
     ),
     "PHASE3_PLAN_START": (
-        "[SDD-PIPELINE] Phase 3 시작. 태스크 문서 생성 필요.\n"
-        "Agent(sdd-taskmaster, mode='tasks') 를 디스패치하세요.\n"
+        "[SDD-PIPELINE] Phase 3 시작. Worktree 생성 필요.\n"
+        "1. pipeline.json 의 worktree_path 가 이미 있으면 생성을 건너뛰고 current_label=PHASE3_WORKTREE_CREATED 로 갱신하세요.\n"
+        "2. 없으면 Skill(git-worktree) 를 호출하여 feature/{feature} 브랜치와 worktree 를 생성하세요.\n"
+        "3. 완료 후 pipeline.json 의 worktree_path 기록 + current_label=PHASE3_WORKTREE_CREATED."
+    ),
+    "PHASE3_WORKTREE_CREATED": (
+        "[SDD-PIPELINE] Worktree 준비 완료. spec 을 worktree 로 이동하세요 (복사 아님).\n"
+        "docs/sdd/spec/ 의 spec 문서를 다음 세 경우로 처리하세요:\n"
+        "1. worktree 에 같은 파일이 없으면 mv 로 메인에서 worktree 로 이동하세요.\n"
+        "2. worktree 에 같은 파일이 있고 cmp 결과 동일하면 메인 사본을 삭제하고 진행하세요.\n"
+        "3. worktree 에 같은 파일이 있고 내용이 다르면 전이를 중단하고 waiting_for_user=true 로 설정한 뒤 사용자에게 보고하세요.\n"
+        "   어느 쪽이 정본인지 임의로 결정하지 않습니다 (금지).\n"
+        "이동이 끝나면 Agent(sdd-taskmaster, mode='tasks') 를 worktree 경로 기준으로 디스패치하여 "
+        "spec 의 구현 계획 섹션에서 태스크 문서를 생성하세요.\n"
         "완료 후 current_label=PHASE3_TASKMASTER_DONE."
     ),
     "PHASE3_TASKMASTER_DONE": (
@@ -202,6 +190,23 @@ DIRECTIVES = {
 # 구 라벨 별칭 — 저장된 pipeline.json 호환. 같은 값을 참조한다.
 DIRECTIVES["PHASE1_UX_RESEARCH_DONE"] = DIRECTIVES["PHASE1_INTERVIEW_START"]
 
+# 구 PHASE2 라벨 별칭 — 저장된 pipeline.json 호환. 모두 같은 directive 객체를 참조한다.
+_LEGACY_PHASE2_DIRECTIVE = (
+    "[SDD-PIPELINE] 하위호환 라벨입니다. 기존 design/·context/ 문서는 수정하지 말고 그대로 두세요.\n"
+    "current_label 을 PHASE3_PLAN_START 로 갱신하여 진행하세요."
+)
+for _legacy_label in (
+    "PHASE2_START",
+    "PHASE2_WORKTREE_CREATED",
+    "PHASE2_ARCH_STRUCTURE_DONE",
+    "PHASE2_ARCH_USER_APPROVED",
+    "PHASE2_UI_DESIGN_COMPLETE",
+    "PHASE2_API_DESIGN_COMPLETE",
+    "PHASE2_DESIGN_USER_APPROVED",
+    "PHASE2_USER_APPROVED",
+):
+    DIRECTIVES[_legacy_label] = _LEGACY_PHASE2_DIRECTIVE
+
 # ─── 파일 존재 검사 (라벨별 전이 조건) ────────────────────────
 
 def has_spec(project_dir: Path, feature: str) -> bool:
@@ -233,12 +238,17 @@ def has_api(project_dir: Path, feature: str) -> bool:
 def has_context(project_dir: Path, feature: str) -> bool:
     return bool(list(project_dir.glob("docs/sdd/context/*.md")))
 
-def has_tasks(project_dir: Path, feature: str) -> bool:
-    return bool(list(project_dir.glob(f"docs/sdd/task/{feature}/T-*.md")) or
-                list(project_dir.glob("docs/sdd/task/*/T-*.md")))
+def _plan_root(project_dir: Path, worktree_path: str) -> Path:
+    """worktree_path 가 있으면 그 경로, 없거나 비면 project_dir 로 폴백."""
+    return Path(worktree_path) if worktree_path else project_dir
 
-def has_orchestrator_state(project_dir: Path) -> bool:
-    return (project_dir / "docs/sdd/ORCHESTRATOR_STATE.md").exists()
+def has_tasks(project_dir: Path, feature: str, worktree_path: str = "") -> bool:
+    root = _plan_root(project_dir, worktree_path)
+    return bool(list(root.glob(f"docs/sdd/task/{feature}/T-*.md")) or
+                list(root.glob("docs/sdd/task/*/T-*.md")))
+
+def has_orchestrator_state(project_dir: Path, worktree_path: str = "") -> bool:
+    return (_plan_root(project_dir, worktree_path) / "docs/sdd/ORCHESTRATOR_STATE.md").exists()
 
 
 # ─── 상태 파일 I/O ─────────────────────────────────────────────
@@ -358,8 +368,9 @@ def label_prerequisite_met(label: str, state: dict, project_dir: Path) -> tuple:
         "PHASE2_USER_APPROVED":          lambda: (
             has_context(project_dir, feature) if state.get("mode") == "FULL" else True
         ),
-        "PHASE3_TASKMASTER_DONE":        lambda: has_tasks(project_dir, feature),
-        "PHASE3_DAG_CONSTRUCTED":        lambda: has_orchestrator_state(project_dir),
+        "PHASE3_WORKTREE_CREATED":       lambda: has_worktree(project_dir, feature, worktree),
+        "PHASE3_TASKMASTER_DONE":        lambda: has_tasks(project_dir, feature, worktree),
+        "PHASE3_DAG_CONSTRUCTED":        lambda: has_orchestrator_state(project_dir, worktree),
     }
 
     if label not in checks:
@@ -374,7 +385,7 @@ def label_prerequisite_met(label: str, state: dict, project_dir: Path) -> tuple:
 
 
 # ─── kompound 박제 완료 게이트 (F1, T-12) ──────────────────────
-# 설계 SSOT: docs/sdd/design/arch/2026-07-29-kompound-snapshot-hook.md §5.1
+# 설계 SSOT: kompound-snapshot-hook arch 문서 §5.1
 # (F1 — T1 통합 전체). decide()의 Step 0(context limit) 직후, Step 1
 # (pipeline.json 로드) 이전에 호출된다 — pipeline.json을 읽지도 쓰지도
 # 않는다(C3, §5.1.1). 판정 자체(무장 조건·상태 전이·블록 예산·
