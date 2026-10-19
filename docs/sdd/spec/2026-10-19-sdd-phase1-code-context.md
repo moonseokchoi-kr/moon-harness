@@ -519,5 +519,10 @@ Never:
 - 2026-10-19 blocker-check: 3회 실시, 마지막 잔여 1건(F12 스캔 범위)은 리드가 수정 후 rg 실측으로 확인하기로 사용자 합의.
 - 2026-10-19 사용자 Phase 1 spec 승인("진행해줘"). protected 파일 변경 승인 포함: hooks/enforcement/stop-pipeline.py, hooks/enforcement/phase-gate.sh.
 - 아키텍처 변경 없음 → PHASE2_ARCH_SKIP.
+- 2026-10-19 사용자 Phase 3 plan+tasks 승인("진행해줘").
+- Phase 4 정정(리뷰 결과, 사용자 확인 대기 — 상세는 docs/sdd/result/2026-10-19-sdd-phase1-code-context.md §3):
+  - F5·F6: "통과 마크 유지" 문구는 "마크는 blocker-checker PASS 후 컨트롤러만 추가, 템플릿·spec-writer는 쓰지 않음"으로 정정(T-3).
+  - F8: yes가 아닌 응답으로 재요청할 때 대기 재설정, 조사 미실시 시 "조사 대상 없음" 명시 추가.
+  - F10: taskmaster를 `plan`(구현 계획 단독 1회) → `tasks`(spec 읽기 전용)로 분리(T-9). spec 충돌 대기에 `spec_conflict` 타입·재개 경로·승인 표 예외 추가(T-7). `PHASE3_DAG_CONSTRUCTED` 제시 항목에 구현 계획·사용자 확인 필요 설계 결정 추가(T-12). spec 위치는 worktree_path 우선으로 판정(T-12).
 
 BLOCKER_PASS
