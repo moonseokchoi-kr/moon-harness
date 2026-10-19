@@ -387,3 +387,53 @@ def test_decide_spec_conflict_waiting_continues_then_reinjects_after_release(
         "decision": "block",
         "reason": stop_pipeline.DIRECTIVES[WT_CREATED],
     }
+
+
+# ── PHASE3_WORKTREE_CREATED directive: taskmaster plan 1회 → tasks 병렬 (T-9 리뷰, T-12) ──
+
+
+def _plan_and_tasks_lines(text: str) -> tuple[int, int, str, str]:
+    plan = tasks = None
+    for ln in _lines(text):
+        if "sdd-taskmaster" not in ln:
+            continue
+        if re.search(r"mode='plan'|plan 모드", ln) and plan is None:
+            plan = ln
+        if re.search(r"mode='tasks'|tasks 모드", ln) and tasks is None:
+            tasks = ln
+    assert plan, f"taskmaster plan 모드 디스패치 줄이 없다:\n{text}"
+    assert tasks, f"taskmaster tasks 모드 디스패치 줄이 없다:\n{text}"
+    return text.index(plan), text.index(tasks), plan, tasks
+
+
+def test_worktree_created_directive_dispatches_plan_before_tasks(stop_pipeline):
+    text = stop_pipeline.DIRECTIVES[WT_CREATED]
+    plan_pos, tasks_pos, _, _ = _plan_and_tasks_lines(text)
+    assert plan_pos < tasks_pos
+
+
+def test_worktree_created_directive_plan_is_single_standalone_run(stop_pipeline):
+    _, _, plan_line, _ = _plan_and_tasks_lines(stop_pipeline.DIRECTIVES[WT_CREATED])
+    assert "1회" in plan_line or "한 번" in plan_line
+    assert "단독" in plan_line
+
+
+def test_worktree_created_directive_tasks_parallel_with_readonly_spec(stop_pipeline):
+    _, _, _, tasks_line = _plan_and_tasks_lines(stop_pipeline.DIRECTIVES[WT_CREATED])
+    assert "병렬" in tasks_line
+    assert re.search(r"읽기 ?전용", tasks_line)
+    assert "spec" in tasks_line
+
+
+def test_worktree_created_directive_move_then_plan_then_tasks_then_transition(stop_pipeline):
+    text = stop_pipeline.DIRECTIVES[WT_CREATED]
+    plan_pos, tasks_pos, _, _ = _plan_and_tasks_lines(text)
+    assert text.index("mv") < plan_pos < tasks_pos < text.index("PHASE3_TASKMASTER_DONE")
+
+
+def test_worktree_created_directive_tasks_not_dispatched_before_plan_completes(stop_pipeline):
+    text = stop_pipeline.DIRECTIVES[WT_CREATED]
+    _, _, _, tasks_line = _plan_and_tasks_lines(text)
+    assert re.search(r"plan.*(완료|끝)|(완료|끝).*plan", tasks_line) or re.search(
+        r"plan.*(완료|끝)", text[: text.index(tasks_line)]
+    ), "plan 완료 후 tasks 를 디스패치한다는 순서 문장이 없다"
