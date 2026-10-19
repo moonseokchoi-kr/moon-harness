@@ -80,12 +80,19 @@ def test_template_block_still_passes_check_format_completeness(text):
     assert ok, missing
 
 
-def test_core_package_unchanged_vs_head():
-    proc = subprocess.run(
-        ["git", "diff", "--stat", "HEAD", "--", "hooks/lib/code_mapper"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
+def _git(*args):
+    return subprocess.run(
+        ["git", *args], cwd=REPO_ROOT, capture_output=True, text=True
     )
-    assert proc.returncode == 0
-    assert proc.stdout.strip() == ""
+
+
+def test_core_package_unchanged_vs_base():
+    base = _git("merge-base", "HEAD", "main")
+    if base.returncode != 0 or not base.stdout.strip():
+        pytest.skip("브랜치 base(merge-base HEAD main)를 구할 수 없음")
+    committed = _git("diff", "--stat", base.stdout.strip(), "HEAD", "--", "hooks/lib/code_mapper")
+    assert committed.returncode == 0
+    assert committed.stdout.strip() == "", committed.stdout
+    uncommitted = _git("diff", "--stat", "HEAD", "--", "hooks/lib/code_mapper")
+    assert uncommitted.returncode == 0
+    assert uncommitted.stdout.strip() == "", uncommitted.stdout
