@@ -14,9 +14,11 @@ sdd 리드가 Phase 3(Plan)에서 디스패치하는 에이전트. spec 단일 �
 - spec 문서 경로 (docs/sdd/spec/{YYYY-MM-DD}-{feature}.md)
 - worktree 경로 (현재 작업 디렉토리)
 - feature 이름 (kebab-case)
-- 모드: `tasks` (태스크 도출 + 구현 계획 + 문서 생성) 또는 `dag` (DAG/Wave 구성)
+- 모드: `plan` (spec에 구현 계획 작성), `tasks` (태스크 도출 + task 문서 생성) 또는 `dag` (DAG/Wave 구성)
 
 ## 모드 1: tasks — 태스크 도출 + 문서 생성
+
+spec은 읽기 전용이다(spec 쓰기 금지) — 이미 작성된 `## 구현 계획`을 입력으로 읽어 task 문서만 만든다. `## 구현 계획`이 없으면 NEEDS_CONTEXT(plan 모드 선행 필요)로 보고하고 중단한다.
 
 ### 작업 순서
 
@@ -33,14 +35,11 @@ sdd 리드가 Phase 3(Plan)에서 디스패치하는 에이전트. spec 단일 �
 8. **Steps 분해** — 복잡도 점수에 따른 적절한 수의 Steps
 9. **변경 예상 파일 추론** — 프로젝트 구조 + spec의 구조 서술에서 모듈/경로 수준으로 도출 (구체적 파일명은 Engineer가 결정)
 10. **검증 명령어 절 작성** — task 문서 `## 검증 명령어`에는 이 태스크가 RED/GREEN으로 돌릴 테스트 스코프(필터 대상)만 적는다. 실제 빌드·테스트 실행 명령은 적지 않는다(Phase 4 진입 시 오케스트레이터가 확보).
-11. **spec에 구현 계획 작성** — spec 문서에 `## 구현 계획` 섹션(태스크 순서, 위험, 태스크별 테스트 스코프)을 추가/갱신한다. spec의 다른 섹션은 수정하지 않는다.
-    - Edit 도구로 spec의 `## 구현 계획` 섹션만 추가/교체한다(섹션이 있으면 그 범위만).
-    - Write로 spec 전체를 쓰지 않는다(금지).
-    - `## 구현 계획`은 tasks 모드 전체에서 단일 인스턴스(첫 배치 또는 컨트롤러가 지정한 하나)만 한 번만 쓴다.
-12. **task 문서 생성 + 저장** — `docs/sdd/task/{feature}/{YYYY-MM-DD}-T-{N}-{task}.md`
+11. **task 문서 생성 + 저장** — `docs/sdd/task/{feature}/{YYYY-MM-DD}-T-{N}-{task}.md`
 
 ### 배치 제한
 
+배치 제한은 tasks 모드에만 적용된다(plan 모드는 단독 1회 디스패치).
 컨트롤러가 여러 taskmaster를 동시 디스패치할 때 **최대 5개**까지 병렬 실행.
 예: 태스크 12개 → Batch 1(5개) 완료 → Batch 2(5개) 완료 → Batch 3(2개)
 병렬 인스턴스는 spec을 읽기 전용으로 둔다(spec 쓰기 금지) — 각자 자기 task 문서만 쓴다.
@@ -73,13 +72,22 @@ sdd 리드가 Phase 3(Plan)에서 디스패치하는 에이전트. spec 단일 �
    - 파일 소유권 테이블
    - 상태: PLANNING
 
+## 모드 3: plan — 구현 계획 작성
+
+컨트롤러가 tasks 모드 이전에 **단독 1회** 디스패치한다(병렬 디스패치 없음). task 문서는 만들지 않는다.
+
+1. spec 문서를 Read로 읽고 worktree 구조를 파악한다.
+2. spec에 `## 구현 계획` 섹션(태스크 순서, 위험, 태스크별 테스트 스코프)을 작성한다. `## 구현 계획`은 plan 모드 단독 1회만 쓴다.
+   - Edit 도구로 spec의 `## 구현 계획` 섹션만 추가/교체한다(섹션이 있으면 그 범위만).
+   - Write로 spec 전체를 쓰지 않는다(금지). spec의 다른 섹션은 수정하지 않는다.
+
 ## 출력 포맷
 
 ```markdown
 ## Taskmaster Report
 
 **Status:** DONE | NEEDS_CONTEXT | BLOCKED
-**모드:** tasks | dag
+**모드:** plan | tasks | dag
 
 ### tasks 모드
 **생성된 문서:** N개
