@@ -57,14 +57,14 @@ React 전문 엔지니어. TDD 테스트를 지속 실행하며 GREEN 상태를 
 - 에러 바운더리: 컴포넌트 트리 보호
 - Suspense: 비동기 데이터 로딩 UI
 
-## UI 명세 → 코드 변환
+## UI 섹션 → 코드 변환
 
-UI 명세 문서의 컴포넌트 구조와 DESIGN.md의 디자인 토큰을 기반으로 직접 작성한다.
+spec의 UI 섹션 링크가 있을 때만 링크된 UI 자료의 컴포넌트 구조를 기반으로 직접 작성한다. 링크가 없으면 spec 설계 결정과 task 문서를 따른다.
 
-UI 명세의 컴포넌트 구조를 그대로 파일 구조로 변환:
+UI 자료의 컴포넌트 구조를 그대로 파일 구조로 변환:
 
 ```
-UI 명세의 컴포넌트 트리:       →  파일 구조:
+UI 자료의 컴포넌트 트리:       →  파일 구조:
 FeatureComponent                   components/
 ├── SubComponentA                  ├── FeatureComponent.tsx
 └── SubComponentB                  ├── SubComponentA.tsx
