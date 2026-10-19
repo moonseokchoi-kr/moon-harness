@@ -287,3 +287,48 @@ def test_step1_claude_local_md_reflect_to_main_does_not_overwrite(step1: str) ->
         re.search(r"기존 내용", ln) and re.search(r"병합|append|추가", ln) for ln in reflect
     ), "기존 내용 보존 + 병합/append/추가 지시 없음"
     assert _lines_with(step1, r"메인", r"파일이 없을 때만", r"새로|만든|생성")
+
+
+# ---- T-11 iteration 4: verify 변이 실험 보강 ----
+
+def test_step4_manual_scenario_input_is_test_automator_report_field_moved_by_orchestrator(skill_text: str) -> None:
+    step4 = _section(_split_frontmatter(skill_text)[1], "Step 4")
+    hits = _lines_with(
+        step4, r"test-automator", r"수동 테스트 시나리오", r"필드|보고", r"옮|result"
+    )
+    assert hits, "수동 시나리오 입력이 test-automator verify 보고 필드이고 오케스트레이터가 result로 옮긴다는 줄 없음"
+    assert any(re.search(r"오케스트레이터", ln) and re.search(r"옮", ln) for ln in hits)
+
+
+def test_step1_claude_md_precedes_claude_local_md(step1: str) -> None:
+    claude = re.search(r"CLAUDE\.md(?!\S)", step1)
+    local = re.search(r"CLAUDE\.local\.md", step1)
+    assert claude and local
+    assert claude.start() < local.start(), "확보 순서는 CLAUDE.md -> CLAUDE.local.md"
+
+
+def test_step1_state_profile_present_means_no_reacquire(step1: str) -> None:
+    assert _lines_with(step1, r"STATE", r"이미 있으면", r"재확보하지 않")
+    assert not _lines_with(step1, r"STATE", r"이미 있어도", r"재확보한다")
+
+
+def test_empty_test_scope_negations_kept(skill_text: str) -> None:
+    hits = _lines_with(skill_text, r"스코프", r"비(어|면)", r"전체 (테스트 )?실행")
+    assert any(re.search(r"하지 않|대체하지 않|금지", ln) for ln in hits)
+    assert any(re.search(r"디스패치하지 않", ln) for ln in hits)
+    assert not any(re.search(r"전체 실행으로 대체하고|Engineer를 디스패치한다", ln) for ln in hits)
+
+
+def test_step4_e2e_only_when_requested(skill_text: str) -> None:
+    step4 = _section(_split_frontmatter(skill_text)[1], "Step 4")
+    assert _lines_with(step4, r"E2E", r"요청할 때만", r"작성")
+    assert not _lines_with(step4, r"E2E", r"항상 작성")
+
+
+def test_test_stage_forbids_full_run_substitution_and_keeps_no_clean(skill_text: str) -> None:
+    stage = re.search(r"^### 2\.4 .*?\n(.*?)(?=^### |^## |\Z)", skill_text, re.DOTALL | re.MULTILINE)
+    assert stage, "### 2.4 테스트 절 없음"
+    body = stage.group(1)
+    assert _lines_with(body, r"전체 테스트 1회 실행", r"대체 금지")
+    assert not re.search(r"대체 가능", body)
+    assert re.search(r"no-clean", body)
