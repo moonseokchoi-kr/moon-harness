@@ -38,30 +38,44 @@ def _body_lines(path: Path) -> list[str]:
     return _split(path)[1].splitlines()
 
 
-def _sections(path: Path) -> dict[str, list[str]]:
-    """헤딩(## / ###) 제목 -> 해당 절의 줄 목록(하위 헤딩 전까지)."""
-    sections: dict[str, list[str]] = {}
-    current = None
+def _sections_list(path: Path) -> list[tuple[str, str, list[str]]]:
+    """(상위 모드 헤딩, 제목, 줄 목록) 순서 목록. 같은 제목이 여러 번 나와도 모두 보존한다.
+
+    상위 모드 헤딩 = 가장 가까운 `## ` 제목(`## ` 절 자신은 자기 제목). 줄 목록은 다음 헤딩 전까지.
+    """
+    sections: list[tuple[str, str, list[str]]] = []
+    parent = ""
     in_code = False
     for line in _body_lines(path):
         if line.lstrip().startswith("```"):
             in_code = not in_code
-        heading = None if in_code else re.match(r"^#{2,3}\s+(.*)$", line)
+        heading = None if in_code else re.match(r"^(#{2,3})\s+(.*)$", line)
         if heading:
-            current = heading.group(1).strip()
-            sections[current] = []
-        elif current is not None:
-            sections[current].append(line)
+            title = heading.group(2).strip()
+            if len(heading.group(1)) == 2:
+                parent = title
+            sections.append((parent, title, []))
+        elif sections:
+            sections[-1][2].append(line)
     return sections
 
 
-def _section(path: Path, title_pattern: str) -> list[str]:
+def _sections(path: Path) -> dict[str, list[str]]:
+    """헤딩 제목 -> 줄 목록. 중복 제목은 덮어쓰지 않고 이어붙인다(모드 구분이 필요하면 _section(mode=))."""
+    merged: dict[str, list[str]] = {}
+    for _, title, lines in _sections_list(path):
+        merged.setdefault(title, []).extend(lines)
+    return merged
+
+
+def _section(path: Path, title_pattern: str, mode: str | None = None) -> list[str]:
+    """제목이 title_pattern에 매칭되는 절들의 줄. mode가 있으면 상위 `## ` 헤딩이 mode에 매칭되는 절만."""
     matches = [
         lines
-        for title, lines in _sections(path).items()
-        if re.search(title_pattern, title)
+        for parent, title, lines in _sections_list(path)
+        if re.search(title_pattern, title) and (mode is None or re.search(mode, parent))
     ]
-    assert matches, f"{path.name}: '{title_pattern}' 헤딩 절이 없다"
+    assert matches, f"{path.name}: '{title_pattern}' (mode={mode}) 헤딩 절이 없다"
     return [line for lines in matches for line in lines]
 
 
@@ -111,6 +125,11 @@ class TestComplianceChecker:
         lines = _section(COMPLIANCE, r"설계 준수")
         assert _any_line(lines, r"spec", r"설계 결정")
 
+    def test_empty_design_decisions_fall_back_to_functional_requirements(self):
+        lines = _section(COMPLIANCE, r"설계 준수")
+        assert _any_line(lines, r"설계 결정", r"(?:비어|ARCH_SKIP)", r"기능 요구사항")
+        assert _any_line(lines, r"헬퍼", r"P1", r"(?:내지 않|제기하지 않|금지)")
+
     def test_design_compliance_checks_ui_link_and_functional_requirements(self):
         lines = _section(COMPLIANCE, r"설계 준수")
         assert _any_line(lines, r"UI", r"(?:링크|섹션)")
@@ -143,8 +162,9 @@ class TestTestAutomator:
         assert _hits(lines, pattern) == []
 
     def test_no_e2e_failure_forces_blocked(self):
+        """헬퍼 수정 후: verify 모드 절 + verify 모드의 작업 순서만 검사한다(이전엔 마지막 '작업 순서'=refactor를 봤음)."""
         verify = _section(TEST_AUTOMATOR, r"verify 모드")
-        verify += _section(TEST_AUTOMATOR, r"^작업 순서$")
+        verify += _section(TEST_AUTOMATOR, r"^작업 순서$", mode=r"verify 모드")
         pattern = re.compile(r"E2E.{0,30}실패.{0,30}BLOCKED")
         assert _hits(verify, pattern) == []
 
@@ -158,7 +178,8 @@ class TestTestAutomator:
         assert _any_line(lines, r"spec", r"(?:단일 문서|테스트 전략|설계 결정)")
 
     def test_tdd_scenarios_derived_from_spec(self):
-        lines = _section(TEST_AUTOMATOR, r"작업 순서")
+        """헬퍼 수정 후: tdd 모드의 작업 순서를 검사한다(이전엔 마지막 '작업 순서'=refactor를 봐 검사 대상이 틀렸음)."""
+        lines = _section(TEST_AUTOMATOR, r"^작업 순서$", mode=r"tdd 모드")
         assert _any_line(lines, r"시나리오|도출", r"spec")
 
     def test_manual_scenario_then_e2e_on_request_sentence(self):
@@ -170,10 +191,77 @@ class TestTestAutomator:
         lines = _body_lines(TEST_AUTOMATOR)
         assert _any_line(lines, r"수동 테스트 시나리오")
 
+    def test_verify_framework_selection_is_integration_layer_only(self):
+        steps = _section(TEST_AUTOMATOR, r"^작업 순서$", mode=r"verify 모드")
+        assert _any_line(steps, r"통합", r"레이어"), "verify 작업 순서에 통합 레이어 선택 줄이 없다"
+        bare = [l for l in steps if re.search(r"E2E\s*레이어", l) and "요청" not in l]
+        assert bare == [], f"요청 조건 없는 E2E 레이어 선택 지시: {bare}"
+
+    def test_verify_e2e_framework_lines_carry_request_condition(self):
+        steps = _section(TEST_AUTOMATOR, r"^작업 순서$", mode=r"verify 모드")
+        pat = re.compile(r"Maestro|Playwright|Cypress|integration_test|E2E\s*기기")
+        bare = [l for l in steps if pat.search(l) and "요청" not in l]
+        assert bare == [], f"요청 조건 없는 E2E 프레임워크 줄: {bare}"
+
+    def test_verify_output_e2e_lines_carry_request_marker(self):
+        out = _section(TEST_AUTOMATOR, r"^출력 포맷$", mode=r"verify 모드")
+        e2e = [l for l in out if "E2E" in l]
+        assert e2e, "verify 출력 포맷에 E2E 항목이 없다"
+        bare = [l for l in e2e if "요청 시" not in l]
+        assert bare == [], f"'요청 시' 없는 E2E 출력 줄: {bare}"
+
+    def test_missing_e2e_does_not_block_done_sentence(self):
+        assert _any_line(_body_lines(TEST_AUTOMATOR), r"E2E", r"DONE", r"막지 않")
+
+    def test_verify_output_has_manual_scenario_field(self):
+        out = _section(TEST_AUTOMATOR, r"^출력 포맷$", mode=r"verify 모드")
+        assert _any_line(out, r"수동 테스트 시나리오")
+
+    def test_result_doc_written_by_orchestrator_not_automator(self):
+        lines = _body_lines(TEST_AUTOMATOR)
+        assert _any_line(lines, r"result 문서", r"직접 쓰지 않"), "result 문서 직접 쓰지 않는다는 문장이 없다"
+        assert _any_line(lines, r"오케스트레이터", r"(?:옮|전달|기록)")
+
+    def test_manual_scenario_trigger_is_spec_ui_section_or_task_test_type(self):
+        steps = _section(TEST_AUTOMATOR, r"^작업 순서$", mode=r"verify 모드")
+        assert _any_line(steps, r"spec", r"`## UI`")
+        assert _any_line(steps, r"task", r"테스트 타입", r"E2E/UI")
+
+    def test_refactor_edge_case_item_has_no_test_fitted_filler(self):
+        steps = _section(TEST_AUTOMATOR, r"^작업 순서$", mode=r"refactor 모드")
+        assert _any_line(steps, r"엣지 케이스")
+        assert _hits(steps, re.compile(r"추가 시나리오")) == []
+
     def test_verify_integration_layer_still_mentions_e2e_frameworks(self):
         """E2E 프레임워크 지식 표 자체는 유지된다(요청 시 작성에 필요)."""
         text = "\n".join(_body_lines(TEST_AUTOMATOR))
         assert "Playwright" in text and "Maestro" in text
+
+
+# ---------------------------------------------------------------- helper self-test
+
+
+class TestSectionsHelper:
+    def _doc(self, tmp_path: Path) -> Path:
+        p = tmp_path / "doc.md"
+        p.write_text(
+            "---\nname: x\n---\n"
+            "## A 모드\n### 작업 순서\nA-step\n### 출력 포맷\nA-out\n"
+            "## B 모드\n### 작업 순서\nB-step\n### 출력 포맷\nB-out\n",
+            encoding="utf-8",
+        )
+        return p
+
+    def test_duplicate_titles_distinguished_by_mode(self, tmp_path):
+        p = self._doc(tmp_path)
+        assert _section(p, r"^작업 순서$", mode=r"^A") == ["A-step"]
+        assert _section(p, r"^작업 순서$", mode=r"^B") == ["B-step"]
+        assert _section(p, r"^출력 포맷$", mode=r"^A") == ["A-out"]
+
+    def test_duplicate_titles_not_overwritten_without_mode(self, tmp_path):
+        p = self._doc(tmp_path)
+        assert _section(p, r"^작업 순서$") == ["A-step", "B-step"]
+        assert _sections(p)["작업 순서"] == ["A-step", "B-step"]
 
 
 # ---------------------------------------------------------------- blocker-checker
