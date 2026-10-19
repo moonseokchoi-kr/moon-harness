@@ -37,24 +37,14 @@ Claude Code 재시작 후 모든 스킬, 에이전트, 훅이 자동 활성화�
 ## 파이프라인
 
 ```
-아이디어                       구현                   배포
-──────────────────────    ──────────────    ──────────────────────
-idea-workshop              SDD Phase 1       Phase 4-1: Review
-  Phase 1: 발산               ↓                 ↓
-  Phase 2: 리프레이밍          Phase 2 → 3       Phase 4-2: Ship
-  Phase 3A: 팀 리서치                            ↓
-  Phase 3B: 냉철 검증                            Phase 4-3: Verify
-  Phase 3C: PRD 작성
-  (Phase 2 ↔ 3B 이터레이션)
+구현                    배포
+──────────────    ──────────────────────
+SDD Phase 1       Phase 4-1: Review
+  ↓                 ↓
+Phase 2 → 3       Phase 4-2: Ship
+                    ↓
+                  Phase 4-3: Verify
 ```
-
-### 아이디어 단계
-
-| 스킬 | 역할 |
-|------|------|
-| `/idea-workshop` | 아이디어 전체 라이프사이클 통합 (발산 → 리프레이밍 → 팀 리서치 → 냉철 검증 → PRD) |
-
-Phase 3A에서 **기획팀 Agent Team** (market/user/feasibility/biz-model researcher + reviewer) 이 병렬 리서치를 수행하고, Phase 3B에서 리서치 실증 데이터를 근거로 냉철 대화 검증, Phase 3C에서 리뷰어가 품질 게이트 통과 후 `docs/PRD.md` 작성.
 
 ### 구현 단계
 
