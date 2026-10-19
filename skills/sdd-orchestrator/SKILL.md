@@ -44,10 +44,12 @@ Phase 3(Plan)에서 생성된 ORCHESTRATOR_STATE.md와 task 문서를 입력으�
 4. Wave 구성과 태스크 목록을 파악 (담당 Wave 범위만 필터링)
 5. **빌드 프로파일 확보** — Phase 4 진입 시 오케스트레이터가 직접 확보한다. 인터프리터·툴의 경로는 하드코딩하지 않고 확정된 명령만 기록한다:
    1. STATE의 `## 빌드 프로파일`에 프로파일이 이미 있으면 재확보하지 않고 그대로 쓴다(이후 단계는 건너뛴다).
-   2. 없으면 프로젝트 CLAUDE.md → CLAUDE.local.md 순서로 빌드·테스트 명령을 찾는다.
-   3. 거기에도 없으면 `/build-notes` 스킬이 사용 가능할 때 `Skill(build-notes)`를 실행한다. build-notes는 사용자 전역 스킬이라 플러그인에 없을 수 있으며(이관하지 않는다), 결과는 `CLAUDE.local.md`에 기록되므로 그 내용을 STATE로 옮긴다.
-   4. build-notes가 없거나 불가하면(정상 경로) 사용자 질문으로 폴백해 빌드·테스트 명령을 확인한다.
-   5. Agent Team 팀원(sdd-team-leader) 컨텍스트처럼 사용자 질문이 불가하면 BLOCKED를 반환하고, 팀 리드가 사용자에게 중계한다.
+   2. 없으면 프로젝트 CLAUDE.md → CLAUDE.local.md 순서로 빌드·테스트 명령을 찾는다. CLAUDE.local.md는 worktree 경로를 먼저 읽고, 없으면 이어서 메인 repo 루트(`git rev-parse --git-common-dir`로 구함)를 읽는다.
+   3. 거기에도 없으면 `/build-notes` 스킬을 `Skill(build-notes)`로 실행한다. 단 사용자 질문이 가능한 컨텍스트에서만 실행하고, 팀원 컨텍스트에서는 건너뛴다. build-notes는 사용자 전역 스킬이라 플러그인에 없을 수 있다(이관하지 않는다). Skill 호출이 없음/거부 오류면 실패로 보고 다음 단계로 진행한다. 성공하면 build-notes 결과는 `CLAUDE.local.md`에 기록되므로 그 내용을 STATE로 옮긴다.
+   4. build-notes가 없거나 건너뛰었거나 실패했으면 사용자 질문으로 폴백해 빌드·테스트 명령을 확인한다(사용자 질문이 가능한 경우).
+   5. 사용자 질문이 불가한 Agent Team 팀원(sdd-team-leader) 컨텍스트면 BLOCKED를 반환하고 STATE에 BLOCKED 사유를 기록한다. 팀 리드가 사용자에게 중계한다. 리드가 사용자 답을 재디스패치 프롬프트의 "빌드 프로파일 확정값"으로 넘기면, 오케스트레이터는 그 확정값을 STATE `## 빌드 프로파일`에 기록하고 진행한다(같은 BLOCKED 반복 금지).
+   - 확보 결과는 메인 repo 루트 CLAUDE.local.md에 남겨 다음 사이클(사이클 간)에 재사용한다. worktree에만 생겼으면 메인 repo 루트로 반영(복사)한다.
+   - 출처로 읽은 파일 경로를 STATE 빌드 프로파일 출처에 기록한다(확보한 파일 경로 포함).
    6. 확보한 프로파일을 STATE `## 빌드 프로파일`에 기록한다(출처 포함, 스키마: [state-schema.md](references/state-schema.md)).
 6. **워밍업 빌드 (build-aware TDD, 1회)**:
    - 프로파일 유형이 `build-required`이고 `워밍업 완료`가 미기록이면 → 프로파일의 **워밍업 빌드 명령을 1회 실행**해 콜드 캐시를 데운다. 완료 후 STATE에 `워밍업 완료: <시각>` 기록(중복 방지).
@@ -103,7 +105,8 @@ Agent(T-3, run_in_background: true)
 3. 결과 수신 후 ORCHESTRATOR_STATE.md: T-N → 결과 반영
 ```
 
-**테스트 스코프 연결**: task 문서에는 실행 명령이 없고 "테스트 스코프" 값만 있다. 오케스트레이터가 task 문서의 "테스트 스코프" 값을 읽어 빌드 프로파일 `테스트 실행` 명령의 `{filter}` 자리에 채운 완성 명령을 프롬프트에 넣는다(이 연결이 없으면 Engineer가 실행 명령을 만들 수 없다).
+**테스트 스코프 연결**: task 문서에는 실행 명령이 없고 "테스트 스코프" 값만 있다. 오케스트레이터가 task 문서의 "테스트 스코프" 값을 읽어 빌드 프로파일 `테스트 실행` 명령의 `{filter}` 자리에 채운 완성 명령을 프롬프트에 넣는다(이 연결이 없으면 Engineer가 실행 명령을 만들 수 없다). 스코프가 여러 개이면 `{filter}`는 프로파일의 "테스트 필터 문법"에 따라 조합한다.
+테스트 스코프가 비어 있으면 전체 실행으로 대체하지 않고 task 문서 오류로 보고하며 Engineer를 디스패치하지 않는다.
 
 Engineer는 작업 완료 후 결과만 반환한다. ORCHESTRATOR_STATE.md 수정 금지.
 
@@ -172,7 +175,8 @@ Agent(subagent_type: "sdd-test-automator",
 main에 직접 머지하지 않는다. PR을 열고 외부 신호가 전부 green이 될 때까지 수렴시킨 뒤, **최종 머지는 사람이 승인**한다.
 
 1. result 문서 생성: `docs/sdd/result/{date}-{feature}.md`
-   - UI 변경이 있으면 result 문서에 수동 테스트 시나리오를 기록한다(개발자가 직접 확인할 조작 순서·기대 결과).
+   - spec에 `## UI` 섹션이 있거나 task 문서 테스트 타입에 E2E/UI가 있으면 result 문서에 수동 테스트 시나리오를 기록한다(개발자가 직접 확인할 조작 순서·기대 결과).
+   - 시나리오의 입력은 test-automator verify 보고의 "수동 테스트 시나리오" 필드이며, 오케스트레이터가 그 필드를 result 문서에 옮긴다(test-automator는 result 문서를 직접 쓰지 않음).
    - E2E 테스트는 개발자가 수동 확인 후 요청할 때만 작성한다.
 2. ORCHESTRATOR_STATE.md 상태를 COMPLETED로 변경
 3. **kompound 박제 실행** (F1, T-12) — `hooks/enforcement/stop-pipeline.py`의 완료 게이트가 이 시점 이후의 Stop 훅에서 자동으로 directive를 발화한다. directive 지시에 따라 kompound 박제 CLI(`python3 -m hooks.lib.kompound_snapshot apply --json`, 절대경로는 directive가 제시)를 실행하고, 성공/실패 결과를 사용자에게 보고한다. 실패해도 사이클을 되돌리지 않고 사용자 판단을 요청한다.
