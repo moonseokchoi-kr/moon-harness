@@ -104,7 +104,8 @@ def _write_pipeline(tmp_path: Path, state: dict) -> Path:
 # label_prerequisite_met() 이 항상 (True, "") 을 반환하므로 decide() 는
 # 항상 directive 를 그대로(경고 접미사 없이) block 으로 반환한다.
 _ALWAYS_MET_LABELS = [
-    "PHASE1_UX_RESEARCH_DONE",
+    "PHASE1_INTERVIEW_START",
+    "PHASE1_UX_RESEARCH_DONE",  # 구 라벨(별칭, 하위호환)
     "PHASE1_USER_APPROVED",
     "PHASE2_START",
     "PHASE2_ARCH_USER_APPROVED",
@@ -423,7 +424,7 @@ def test_decide_phase3_dag_constructed_unmet(stop_pipeline, tmp_path):
 
 @pytest.mark.parametrize(
     "label",
-    ["PHASE1_UX_RESEARCH_DONE", "PHASE4_WORKTREE_CREATED"],
+    ["PHASE1_INTERVIEW_START", "PHASE1_UX_RESEARCH_DONE", "PHASE4_WORKTREE_CREATED"],
 )
 def test_decide_result_unaffected_by_plugin_root_on_syspath(
     stop_pipeline, tmp_path, monkeypatch, label
@@ -459,7 +460,8 @@ def test_decide_result_unaffected_by_plugin_root_on_syspath(
 # 부분집합으로만 단정한다 — `len(DIRECTIVES) == N` 이나
 # `set(DIRECTIVES) == {...}` 형태의 전체집합 단정은 절대 하지 않는다.
 _KNOWN_NON_TERMINAL_LABELS = [
-    "PHASE1_UX_RESEARCH_DONE",
+    "PHASE1_INTERVIEW_START",
+    "PHASE1_UX_RESEARCH_DONE",  # 구 라벨(별칭, 하위호환)
     "PHASE1_SPEC_DRAFT",
     "PHASE1_BLOCKER_CHECK_PASS",
     "PHASE1_USER_APPROVED",
@@ -503,13 +505,16 @@ def test_directives_contains_known_labels_as_subset_not_exact_set(stop_pipeline)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.parametrize(
+    "label", ["PHASE1_INTERVIEW_START", "PHASE1_UX_RESEARCH_DONE"]
+)
 def test_label_prerequisite_met_defaults_true_for_label_without_check(
-    stop_pipeline, tmp_path
+    stop_pipeline, tmp_path, label
 ):
     """checks 딕셔너리에 없는 라벨(파일 검증 불필요한 user_gate/transition-only
     라벨)은 항상 (True, "") 을 반환한다(L322)."""
     met, reason = stop_pipeline.label_prerequisite_met(
-        "PHASE1_UX_RESEARCH_DONE", {"feature": "demo"}, tmp_path
+        label, {"feature": "demo"}, tmp_path
     )
     assert (met, reason) == (True, "")
 

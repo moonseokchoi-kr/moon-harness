@@ -379,7 +379,10 @@ def test_gate_fires_even_without_pipeline_json(stop_pipeline, tmp_path, monkeypa
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_gate_evaluated_before_stale_and_session_checks(stop_pipeline, tmp_path, monkeypatch):
+@pytest.mark.parametrize("label", ["PHASE1_INTERVIEW_START", "PHASE1_UX_RESEARCH_DONE"])
+def test_gate_evaluated_before_stale_and_session_checks(
+    stop_pipeline, tmp_path, monkeypatch, label
+):
     """pipeline.json이 2시간 이상 stale하고 session_id도 불일치하는
     상태이더라도(Step 2/3이라면 즉시 통과했을 상황), 게이트가 그보다 먼저
     평가되어 pending>=1이면 여전히 차단한다."""
@@ -414,7 +417,7 @@ def test_gate_evaluated_before_stale_and_session_checks(stop_pipeline, tmp_path,
     from datetime import datetime, timedelta, timezone
 
     stale_state = {
-        "current_label": "PHASE1_UX_RESEARCH_DONE",
+        "current_label": label,
         "feature": "demo",
         "session_id": "some-other-session",
         "circuit_breaker": {},
