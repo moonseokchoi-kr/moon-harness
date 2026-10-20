@@ -17,8 +17,13 @@ SDD 파이프라인(grill 인터뷰 → 단일 spec → 조건부 아키텍처 �
 ## 빌드 / 테스트
 
 ```bash
-python3 -m pytest tests/ -q
+# 1) <PY> 확정: pytest를 import할 수 있는 python3 (PATH 순서를 가정하지 않는다)
+for p in $(which -a python3); do "$p" -c 'import pytest,sys;print(sys.executable)' 2>/dev/null && break; done
+# 2) 빌드 큐로, 위에서 확정한 절대경로를 넘겨 실행
+bq submit --wait --lane light -- <PY> -m pytest tests/ -q
 ```
+
+맨 `python3 -m pytest`는 이 머신에서 bq 경유 여부와 무관하게 실패한다 — PATH 첫 `python3`(`/opt/homebrew`)에 pytest가 없다(2026-10-19 사이클 확인 에이전트 6회+ 실패). 확정한 절대경로는 실행 시점 값일 뿐 문서에 고정하지 않는다.
 
 > 📌 **인터프리터 경로를 하드코딩하지 말 것.** 이전 문구는 `PATH="/opt/homebrew/bin:$PATH"`를
 > prepend했는데, 이 머신의 pytest는 `/usr/local`(Intel prefix) homebrew python 3.14.4에 있고
