@@ -138,3 +138,30 @@ critic 판정: UPHELD 1 · NARROW 2 · REFUTED 0.
 "폐기 · 절대 사용 금지"**로 명시한다(태그 on-demand 라우팅으로 대체). 두 하네스 스킬이 정면
 충돌하며, 이번 승인 범위 밖이라 손대지 않았다. F18이 옳다면 sdd/SKILL.md의 로딩 절을 고쳐야 하고,
 그러면 "다음 사이클 시작 시 자동 로드" 서술의 대체 경로도 함께 정의해야 한다.
+
+## 2026-10-20 retro — 신규 6건 처리 / 적용 2 · 제안 1(pending) · 폐기 4
+
+### 적용 (프로젝트 티어, 자동)
+- **docs/lessons-learned.md** ← 공유 worktree 병렬 커밋은 경로 지정 커밋(파일 경로만, git mv는 양 경로)
+  - critic: NARROW (rename 시 옛 경로 삭제 잔존으로 동일 사고 재발 — 스크래치 repo 실측)
+  - 근거: `2026-10-19 — sdd-phase1-code-context / 공유 worktree 커밋에 타 태스크 stage 흡수`, `2026-06-17 — self-improving-harness / Phase 4 orchestration`
+  - rollback: `## 공유 worktree git` 절(하위 `### 병렬 커밋은 경로 지정 커밋으로` 포함) 제거
+- **docs/lessons-learned.md** ← 스킬·에이전트 Markdown 정적 테스트 원칙 3항(절/줄 범위, 한국어 경계 ASCII lookaround, RED 없이 통과한 문서 테스트 삭제 변이 1회)
+  - critic: NARROW (② lookaround/re.ASCII 명시, ③ 적용 범위 한정, ① 금지어 스캔 예외)
+  - 근거: `2026-10-19 — sdd-phase1-code-context / 정적 문서 테스트의 거짓 GREEN 두 유형`, 연관 `2026-07-30 — kompound-snapshot-hook / T-10-apply`
+  - rollback: `## 스킬·에이전트 Markdown 정적 테스트` 절 제거
+- **docs/lessons-learned.md** ← 참고 노트(행동 규칙 아님): 사이클 시뮬레이션 리뷰 (신호 1건)
+  - 근거: `2026-10-19 — sdd-phase1-code-context / 문서 변경도 사이클 시뮬레이션 리뷰가 필요`
+  - rollback: `## 참고 노트 (1회성 — 행동 규칙 아님)` 절 제거
+
+### 제안 (하네스 티어, 승인 대기)
+- `harness-proposals/2026-10-20-blocker-checker-stop-state-exit-path.md` — agents/sdd-blocker-checker.md / 정지 상태 해제 경로 검사 (NARROW, **pending**: 콜드스타트 + F16 교차 재현 없음)
+
+### 폐기
+- 커서 마커 형식 불일치 — 중복 (0.13.0 `640c19f`와 `harness-proposals/2026-08-06-cursor-marker-prefix-mismatch.md`로 이미 반영)
+- 경로 지정 커밋의 dispatch 지침·L3 게이트 — REFUTED: F16 교차 재현 없음. L3 차단은 merge·--amend·격리 워커 오탐으로 재상정 시에도 경고(exit 0) 상한 권고
+- 정적 문서 테스트 원칙의 sdd-test-automator 반영 — REFUTED: 단일 repo·단일 사이클, Markdown 정적 테스트는 플러그인 레포 특유 상황
+- bq 경유 실행 교훈 문단 — REFUTED: **원인 오진 정정.** LEARNING 엔트리의 "bq 데몬 PATH 상속"은 틀렸다 — 일반 셸에서도 `python3`가 pytest 없는 `/opt/homebrew` 인터프리터로 해석된다. 기존 승격 규칙(`<PY> -m` 고정)의 중복이기도 함. 실제 빈틈은 SSOT: `CLAUDE.md` 빌드/테스트 코드 블록이 아직 맨 `python3 -m pytest`(사용자 결정 사항으로 보고)
+
+### 메모
+- 2026-10-19 엔트리 5건에 provenance 태그(`<!-- tags: ... -->`) 누락 — 캡처 시 작성자(메인 세션) 실수. 원본 미수정 규칙에 따라 고치지 않음, 이번 회고는 provenance_repo=moon-harness로 간주.

@@ -1,6 +1,10 @@
 {
   "schema_version": 1,
-  "last_processed_marker": "2026-08-06 — harness-docs / 인터프리터 경로 하드코딩이 무해→유해로 전환",
-  "last_retro_at": "2026-08-06T00:00:00Z",
-  "cumulative": { "applied_project": 4, "proposed_harness": 6, "dropped": 5 }
+  "last_processed_marker": "2026-10-19 — sdd-phase1-code-context / 문서 변경도 사이클 시뮬레이션 리뷰가 필요",
+  "last_retro_at": "2026-10-20T00:32:43Z",
+  "cumulative": {
+    "applied_project": 6,
+    "proposed_harness": 7,
+    "dropped": 9
+  }
 }

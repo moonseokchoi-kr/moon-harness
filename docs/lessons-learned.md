@@ -76,3 +76,62 @@ SSOT 문서(`CLAUDE.md`/`CLAUDE.local.md`)와 SDD 산출물(spec/arch/task)에 *
 - 실측: 3번째 독립 발현. 선행 2건은
   `docs/sdd/design/arch/2026-06-30-cross-project-learning-aggregation.md:299`, `HANDOFF.md:74`
   (둘 다 실행자가 우회하고 SSOT는 고치지 않음). 현재도 미수정 산출물 20여 개 파일에 잔존.
+
+## 공유 worktree git
+
+### 병렬 커밋은 경로 지정 커밋으로
+
+공유 worktree에서 병렬 에이전트가 커밋할 때는 `git add <소유 파일>` 후
+`git commit -m "<msg>" -- <소유 파일 경로들>`로 한다. `git commit`은 인덱스 전체를
+커밋하므로, 소유 파일만 add해도 다른 에이전트가 먼저 stage한 파일이 내 커밋에 섞인다.
+경로 지정 커밋(`--only` 기본 동작)은 지정 경로만 커밋하고 다른 stage분은 인덱스에 남긴다.
+
+- pathspec은 **파일 경로**로 나열한다. 디렉터리를 주면 그 아래 남의 stage분까지 커밋된다.
+- 새 파일은 먼저 `git add`해야 한다(안 하면 pathspec 에러로 실패 — 정상).
+- `git mv`는 **옛 경로와 새 경로를 둘 다** 지정한다. 새 경로만 주면 옛 경로 삭제가
+  인덱스에 남아 다음 에이전트 커밋에 흡수된다.
+- 경로 지정 커밋은 stage 내용이 아니라 working tree 내용을 커밋한다(`git add -p` 부분 stage 무시).
+- merge 진행 중에는 쓸 수 없다(partial commit 거부) — 병렬 워커는 merge하지 않는다.
+
+- 근거: `.harness/LEARNING.md` `## 2026-10-19 — sdd-phase1-code-context / 공유 worktree 커밋에 타 태스크 stage 흡수`
+  (보완 대상: `## 2026-06-17 — self-improving-harness / Phase 4 orchestration`)
+- critic: NARROW (원안은 rename 시 옛 경로 삭제가 인덱스에 남아 동일 사고 재발 — 양 경로 지정 조건 추가.
+  디렉터리 pathspec·부분 stage 함정 명시. 스크래치 repo 실측)
+- 실측: `4b52cb9`(T-2)에 T-3 소유 2파일 흡수. 경로 지정 전환 후 50+ 커밋 재발 0
+
+## 스킬·에이전트 Markdown 정적 테스트
+
+### 핵심 행동 문장은 절/줄 범위로 고정한다
+
+스킬·에이전트·템플릿 Markdown의 **핵심 행동 문장**(에이전트가 반드시 따라야 하는 지시)을
+검증하는 정적 테스트는 "키워드가 파일 어딘가에 있는가"로 단언하지 않는다. 해당 `##` 절을
+잘라낸 범위(절 헬퍼) 안에서 찾거나, 한 줄에 여러 정규식이 동시에 맞는지(줄 헬퍼)로 고정한다.
+파일 전체 검색은 frontmatter·다른 절의 같은 단어로 통과해, 핵심 문장을 지워도 GREEN이 된다.
+금지어 전수 스캔처럼 "어디에도 없어야 한다"는 단언은 파일 전체 범위가 맞으므로 적용하지 않는다.
+
+### 한국어 문서에서 식별자 경계는 ASCII lookaround로
+
+한국어 본문 안의 ASCII 식별자(에이전트명, 라벨 등)를 경계 매칭할 때 `\b`나 `(?![\w-])`를
+쓰지 않는다. Python `re`의 기본(유니코드) 모드는 한글을 `\w`로 취급해 `ui-designer가`,
+`SIMPLE이면`에서 경계가 성립하지 않는다(매칭 실패 → 금지어 스캔이면 거짓 GREEN).
+`(?<![A-Za-z0-9_-])NAME(?![A-Za-z0-9_-])` 음성 lookaround 또는 `re.ASCII` 플래그를 쓰고,
+"이름+조사" 케이스를 테스트 자체의 단위 테스트로 둔다.
+
+### 처음부터 통과한 문서 테스트는 삭제 변이로 1회 확인한다
+
+산문 문장을 단언하는 정적 테스트가 **정당한 RED(그 문장 부재로 인한 실패)를 거치지 않고**
+처음부터 통과했다면, 대상 파일에서 그 문장만 지운 임시 사본(또는 미커밋 수정)으로 FAIL을
+1회 확인하고 되돌린다. 확인 결과(변이 / FAIL 여부)를 태스크 보고에 한 줄 남긴다.
+RED를 정상적으로 본 테스트와 코드 대상 테스트에는 적용하지 않는다.
+
+- 근거: `.harness/LEARNING.md` `## 2026-10-19 — sdd-phase1-code-context / 정적 문서 테스트의 거짓 GREEN 두 유형`
+  (연관: `## 2026-07-30 — kompound-snapshot-hook / T-10-apply`, 실행 안 된 채 GREEN)
+- critic: NARROW (② "ASCII 클래스"는 소비형 클래스로 오구현될 여지 → lookaround/`re.ASCII`로 명시.
+  ③ 전 테스트 강제는 과잉 → "RED 없이 처음부터 통과한 문서 테스트"로 한정. ① 금지어 스캔 예외 명시)
+- 실측: `tests/test_sdd_static_docs.py` `_name_pattern`, 절 헬퍼 `tests/test_sdd_spec_writer.py`
+
+## 참고 노트 (1회성 — 행동 규칙 아님)
+
+- 워크플로·프롬프트 문서 변경 리뷰에 "요구사항부터 마지막 Phase까지 한 사이클을 따라가라"를 지시하면
+  절 단위 리뷰가 놓친 단계 간 불일치(앞 단계의 파일 이동 ↔ 뒤 단계 검증 경로)를 잡았다(2026-10-19 T-12, 신호 1건).
+  재발 시 sdd-reviewer 관점으로 승격 검토. 근거: `.harness/LEARNING.md` `## 2026-10-19 — sdd-phase1-code-context / 문서 변경도 사이클 시뮬레이션 리뷰가 필요`
