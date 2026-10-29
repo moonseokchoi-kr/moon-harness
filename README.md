@@ -52,6 +52,7 @@ Phase 2 → 3       Phase 4-2: Ship
 |------|------|
 | `/sdd` | 자동 파이프라인 기반 Spec-Driven Development |
 | `/grill` | 요구사항 인터뷰 (Phase 1) |
+| `/deepen` | 작업 프롬프트를 더 깊은 버전으로 재작성 (grill 전 단계, sdd 비연동) |
 | `/why` | 코드 변경 이유·이력 조사 |
 | `/adversarial-review` | 리뷰 3회 실패 시 에스컬레이션 |
 | `/git-worktree` | 격리된 feature 브랜치 |
